@@ -33,7 +33,12 @@
       </div>
     </header>
 
-    <main class="cards">
+    <nav class="view-toggle">
+      <button class="vtab active" id="tab-cards">Cards</button>
+      <button class="vtab" id="tab-flow">Flow</button>
+    </nav>
+
+    <main id="cards-view" class="cards">
       <!-- Battery card -->
       <div class="card card-battery">
         <div class="card-header">
@@ -109,6 +114,54 @@
         </div>
       </div>
     </main>
+
+    <section id="flow-view" class="flow-view" hidden>
+      <svg viewBox="0 0 500 440" class="flow-svg" xmlns="http://www.w3.org/2000/svg">
+
+        <!-- Flow paths (bottom layer) -->
+        <path id="fp-solar" class="fp" d="M250,100 L250,195"/>
+        <path id="fp-gen"   class="fp" d="M100,215 L230,215"/>
+        <path id="fp-load"  class="fp" d="M270,215 L400,215"/>
+        <path id="fp-bat"   class="fp" d="M250,235 L250,340"/>
+
+        <!-- Flow watt labels -->
+        <text id="fl-solar" class="fl" x="268" y="150" text-anchor="start"></text>
+        <text id="fl-gen"   class="fl" x="165" y="203" text-anchor="middle"></text>
+        <text id="fl-load"  class="fl" x="335" y="203" text-anchor="middle"></text>
+        <text id="fl-bat"   class="fl" x="268" y="290" text-anchor="start"></text>
+
+        <!-- Node: Solar -->
+        <circle id="fn-solar-bg" cx="250" cy="58" r="42" class="fn-bg"/>
+        <text x="250" y="38" class="fn-lbl" text-anchor="middle">SOLAR</text>
+        <text x="250" y="60" class="fn-icon" text-anchor="middle">&#9728;&#65039;</text>
+        <text id="fn-solar-v" x="250" y="82" class="fn-val" text-anchor="middle">--</text>
+
+        <!-- Node: Generator -->
+        <circle id="fn-gen-bg" cx="58" cy="215" r="42" class="fn-bg"/>
+        <text x="58" y="195" class="fn-lbl" text-anchor="middle">GEN</text>
+        <text x="58" y="218" class="fn-icon" text-anchor="middle">&#x2699;&#65039;</text>
+        <text id="fn-gen-v" x="58" y="240" class="fn-val" text-anchor="middle">OFF</text>
+
+        <!-- Node: Inverter (center hub) -->
+        <circle cx="250" cy="215" r="20" class="fn-bg fn-inv-bg"/>
+        <text x="250" y="219" class="fn-icon fn-icon-sm" text-anchor="middle">&#9889;</text>
+
+        <!-- Node: House -->
+        <circle id="fn-house-bg" cx="442" cy="215" r="42" class="fn-bg"/>
+        <text x="442" y="195" class="fn-lbl" text-anchor="middle">HOUSE</text>
+        <text x="442" y="218" class="fn-icon" text-anchor="middle">&#127968;</text>
+        <text id="fn-house-v" x="442" y="240" class="fn-val" text-anchor="middle">--</text>
+
+        <!-- Node: Battery -->
+        <circle id="fn-bat-bg" cx="250" cy="382" r="42" class="fn-bg"/>
+        <text x="250" y="362" class="fn-lbl" text-anchor="middle">BATTERY</text>
+        <text x="250" y="385" class="fn-icon" text-anchor="middle">&#128267;</text>
+        <text id="fn-bat-v" x="250" y="407" class="fn-val" text-anchor="middle">--</text>
+
+        <!-- Battery detail below circle -->
+        <text id="fn-bat-detail" x="250" y="436" class="fn-detail" text-anchor="middle"></text>
+      </svg>
+    </section>
 
     <footer>
       <span id="last-update">Last update: --</span>

@@ -156,6 +156,104 @@ const els = {
   energyToday: $("energy-today"),
 };
 
+/* Flow view DOM refs */
+const fEls = {
+  cardsView:  $("cards-view"),
+  flowView:   $("flow-view"),
+  tabCards:   $("tab-cards"),
+  tabFlow:    $("tab-flow"),
+  fpSolar:    $("fp-solar"),
+  fpGen:      $("fp-gen"),
+  fpLoad:     $("fp-load"),
+  fpBat:      $("fp-bat"),
+  flSolar:    $("fl-solar"),
+  flGen:      $("fl-gen"),
+  flLoad:     $("fl-load"),
+  flBat:      $("fl-bat"),
+  fnSolarBg:  $("fn-solar-bg"),
+  fnGenBg:    $("fn-gen-bg"),
+  fnHouseBg:  $("fn-house-bg"),
+  fnBatBg:    $("fn-bat-bg"),
+  fnSolarV:   $("fn-solar-v"),
+  fnGenV:     $("fn-gen-v"),
+  fnHouseV:   $("fn-house-v"),
+  fnBatV:     $("fn-bat-v"),
+  fnBatDetail:$("fn-bat-detail"),
+};
+
+/* ── View toggle ── */
+const VIEW_KEY = "solar_view";
+
+function setView(view) {
+  localStorage.setItem(VIEW_KEY, view);
+  const isFlow = view === "flow";
+  fEls.cardsView.hidden = isFlow;
+  fEls.flowView.hidden = !isFlow;
+  fEls.tabCards.classList.toggle("active", !isFlow);
+  fEls.tabFlow.classList.toggle("active", isFlow);
+}
+
+fEls.tabCards.addEventListener("click", () => setView("cards"));
+fEls.tabFlow.addEventListener("click", () => setView("flow"));
+
+function fmtW(w) {
+  const abs = Math.abs(w);
+  if (abs >= 10000) return (w / 1000).toFixed(0) + " kW";
+  if (abs >= 1000) return (w / 1000).toFixed(1) + " kW";
+  return Math.round(w) + " W";
+}
+
+function renderFlow(d) {
+  const { solarW, loadW, gridW, batA, batV, soc, genOn } = d;
+
+  /* Solar */
+  const solActive = solarW > 10;
+  fEls.fpSolar.classList.toggle("active", solActive);
+  fEls.fnSolarBg.classList.toggle("active", solActive);
+  fEls.fnSolarV.textContent = fmtW(solarW);
+  fEls.flSolar.classList.toggle("active", solActive);
+  fEls.flSolar.textContent = solActive ? fmtW(solarW) : "";
+
+  /* Generator */
+  fEls.fpGen.classList.toggle("active", genOn);
+  fEls.fnGenBg.classList.toggle("active", genOn);
+  fEls.fnGenV.textContent = genOn ? fmtW(Math.abs(gridW)) : "OFF";
+  fEls.flGen.classList.toggle("active", genOn);
+  fEls.flGen.textContent = genOn ? fmtW(Math.abs(gridW)) : "";
+
+  /* House */
+  const loadActive = loadW > 10;
+  fEls.fpLoad.classList.toggle("active", loadActive);
+  fEls.fnHouseBg.classList.toggle("active", loadActive);
+  fEls.fnHouseV.textContent = fmtW(loadW);
+  fEls.flLoad.classList.toggle("active", loadActive);
+  fEls.flLoad.textContent = loadActive ? fmtW(loadW) : "";
+
+  /* Battery */
+  const charging = batA < -2;
+  const discharging = batA > 2;
+
+  fEls.fpBat.classList.remove("active", "charging", "discharging");
+  if (charging) {
+    fEls.fpBat.setAttribute("d", "M250,235 L250,340");
+    fEls.fpBat.classList.add("active", "charging");
+  } else if (discharging) {
+    fEls.fpBat.setAttribute("d", "M250,340 L250,235");
+    fEls.fpBat.classList.add("active", "discharging");
+  }
+
+  const batPower = Math.abs(batV * batA);
+  fEls.flBat.classList.toggle("active", charging || discharging);
+  fEls.flBat.textContent = (charging || discharging) ? fmtW(batPower) : "";
+
+  fEls.fnBatBg.classList.remove("charging", "discharging", "idle");
+  fEls.fnBatBg.classList.add(charging ? "charging" : discharging ? "discharging" : "idle");
+
+  fEls.fnBatV.textContent = soc + "%";
+  const batState = charging ? "Charging" : discharging ? "Discharging" : "Idle";
+  fEls.fnBatDetail.textContent = batV.toFixed(1) + "V \u00B7 " + batState;
+}
+
 /* ── UI updates ── */
 function showLogin() {
   els.loginScreen.hidden = false;
@@ -265,6 +363,8 @@ function renderDevice(dat) {
 
   const timePart = (ts.split(" ")[1]) || ts;
   els.lastUpdate.textContent = `Last update: ${timePart}`;
+
+  renderFlow({ solarW, loadW, gridW, gridV, batA, batV, soc, genOn });
 }
 
 function renderPlantCurrent(dat) {
@@ -348,6 +448,8 @@ els.logoutBtn.addEventListener("click", () => {
 });
 
 /* ── Boot ── */
+setView(localStorage.getItem(VIEW_KEY) || "cards");
+
 (async function boot() {
   const sess = loadSession();
   if (isSessionValid(sess)) {
