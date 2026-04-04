@@ -1,0 +1,213 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f1117;
+  --card-bg: #1a1d27;
+  --card-border: #2a2d3a;
+  --text: #e4e6ed;
+  --text-dim: #8b8fa3;
+  --accent-bat: #22c55e;
+  --accent-sol: #f59e0b;
+  --accent-load: #3b82f6;
+  --error: #ef4444;
+  --radius: 16px;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+}
+
+.screen { min-height: 100dvh; }
+.screen[hidden] { display: none !important; }
+
+/* ---------- LOGIN ---------- */
+
+#login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.login-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+.login-icon { font-size: 2.5rem; margin-bottom: .5rem; }
+
+.login-card h1 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: .25rem;
+}
+
+.login-subtitle {
+  color: var(--text-dim);
+  font-size: .85rem;
+  margin-bottom: 1.5rem;
+}
+
+#login-form { display: flex; flex-direction: column; gap: .75rem; }
+
+#login-form input {
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: .7rem 1rem;
+  color: var(--text);
+  font-size: .95rem;
+  outline: none;
+  transition: border-color .2s;
+}
+
+#login-form input:focus { border-color: var(--accent-sol); }
+
+#login-btn {
+  background: var(--accent-sol);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  padding: .75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .2s;
+}
+
+#login-btn:disabled { opacity: .5; cursor: wait; }
+
+.error {
+  color: var(--error);
+  font-size: .85rem;
+  margin-top: .75rem;
+}
+
+/* ---------- HEADER ---------- */
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem .5rem;
+}
+
+header h1 { font-size: 1.15rem; font-weight: 600; }
+
+.header-right { display: flex; align-items: center; gap: .75rem; }
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-ok  { background: var(--accent-bat); }
+.dot-err { background: var(--error); }
+
+#logout-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+/* ---------- CARDS ---------- */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: .75rem 1.25rem;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .75rem;
+}
+
+.card-icon { font-size: 1.25rem; }
+.card-title { font-size: .9rem; color: var(--text-dim); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+
+.card-value {
+  display: flex;
+  align-items: baseline;
+  gap: .15rem;
+  margin-bottom: .6rem;
+}
+
+.big-number { font-size: 3rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.unit { font-size: 1.2rem; color: var(--text-dim); font-weight: 500; }
+
+.card-bar-wrap {
+  height: 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: .6rem;
+}
+
+.card-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width .6s ease;
+}
+
+.card-battery .card-bar { background: var(--accent-bat); }
+.card-solar  .card-bar { background: var(--accent-sol); }
+.card-load   .card-bar { background: var(--accent-load); }
+
+.card-battery .big-number { color: var(--accent-bat); }
+.card-solar   .big-number { color: var(--accent-sol); }
+.card-load    .big-number { color: var(--accent-load); }
+
+.card-detail {
+  font-size: .85rem;
+  color: var(--text-dim);
+}
+
+.sep { margin: 0 .35rem; opacity: .4; }
+
+/* ---------- FOOTER ---------- */
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  padding: .5rem 1.25rem 1.5rem;
+  font-size: .75rem;
+  color: var(--text-dim);
+}
+
+/* ---------- TABLET + ---------- */
+
+@media (min-width: 640px) {
+  .cards {
+    flex-direction: row;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .card { flex: 1; }
+}

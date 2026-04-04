@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar Dashboard — Rio del Medio</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Login screen -->
+  <div id="login-screen" class="screen">
+    <div class="login-card">
+      <div class="login-icon">&#9728;</div>
+      <h1>Solar Dashboard</h1>
+      <p class="login-subtitle">Rio del Medio</p>
+      <form id="login-form" autocomplete="on">
+        <input type="text" id="login-user" placeholder="Username" autocomplete="username" required>
+        <input type="password" id="login-pass" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" id="login-btn">Sign in</button>
+      </form>
+      <p id="login-error" class="error" hidden></p>
+    </div>
+  </div>
+
+  <!-- Dashboard screen -->
+  <div id="dashboard-screen" class="screen" hidden>
+    <header>
+      <h1>Solar Dashboard</h1>
+      <div class="header-right">
+        <span id="status-dot" class="dot dot-ok" title="Connected"></span>
+        <button id="logout-btn" title="Sign out">&#x2715;</button>
+      </div>
+    </header>
+
+    <main class="cards">
+      <!-- Battery card -->
+      <div class="card card-battery">
+        <div class="card-header">
+          <span class="card-icon">&#x1F50B;</span>
+          <span class="card-title">Battery</span>
+        </div>
+        <div class="card-value">
+          <span id="bat-pct" class="big-number">--</span><span class="unit">%</span>
+        </div>
+        <div class="card-bar-wrap">
+          <div id="bat-bar" class="card-bar" style="width:0%"></div>
+        </div>
+        <div class="card-detail">
+          <span id="bat-volts">--</span> V
+          <span class="sep">|</span>
+          <span id="bat-current">--</span> A
+        </div>
+      </div>
+
+      <!-- Solar card -->
+      <div class="card card-solar">
+        <div class="card-header">
+          <span class="card-icon">&#9728;</span>
+          <span class="card-title">Solar</span>
+        </div>
+        <div class="card-value">
+          <span id="sol-pct" class="big-number">--</span><span class="unit">%</span>
+        </div>
+        <div class="card-bar-wrap">
+          <div id="sol-bar" class="card-bar" style="width:0%"></div>
+        </div>
+        <div class="card-detail">
+          <span id="sol-watts">--</span> W
+          <span class="sep">|</span>
+          <span id="sol-pv-volts">--</span> V pv
+        </div>
+      </div>
+
+      <!-- Load card -->
+      <div class="card card-load">
+        <div class="card-header">
+          <span class="card-icon">&#9889;</span>
+          <span class="card-title">Load</span>
+        </div>
+        <div class="card-value">
+          <span id="load-pct" class="big-number">--</span><span class="unit">%</span>
+        </div>
+        <div class="card-bar-wrap">
+          <div id="load-bar" class="card-bar" style="width:0%"></div>
+        </div>
+        <div class="card-detail">
+          <span id="load-watts">--</span> W
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <span id="last-update">Last update: --</span>
+      <span id="energy-today"></span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
