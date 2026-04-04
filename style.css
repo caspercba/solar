@@ -184,12 +184,64 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .card-solar   .big-number { color: var(--accent-sol); }
 .card-load    .big-number { color: var(--accent-load); }
 
+.bat-status {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .45rem;
+}
+
+.bat-direction {
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.bat-rate {
+  font-size: .7rem;
+  font-weight: 600;
+  padding: .15rem .45rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.bat-rate.rate-slow  { background: rgba(34,197,94,.15);  color: #22c55e; }
+.bat-rate.rate-mid   { background: rgba(245,158,11,.15); color: #f59e0b; }
+.bat-rate.rate-fast   { background: rgba(239,68,68,.15);  color: #ef4444; }
+
+.bat-direction.dir-charging    { color: #22c55e; }
+.bat-direction.dir-discharging { color: #f59e0b; }
+.bat-direction.dir-idle        { color: var(--text-dim); }
+
 .card-detail {
   font-size: .85rem;
   color: var(--text-dim);
 }
 
 .sep { margin: 0 .35rem; opacity: .4; }
+
+/* ---------- GENERATOR CARD ---------- */
+
+.card-gen { border-color: var(--card-border); }
+.card-gen.gen-active { border-color: #a855f7; }
+
+.gen-status-row {
+  margin-bottom: .6rem;
+}
+
+.gen-badge {
+  display: inline-block;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  padding: .15rem .6rem;
+  border-radius: 6px;
+}
+
+.gen-on  { background: rgba(168,85,247,.15); color: #a855f7; }
+.gen-off { background: rgba(139,143,163,.1);  color: var(--text-dim); }
 
 /* ---------- FOOTER ---------- */
 
@@ -205,9 +257,14 @@ footer {
 
 @media (min-width: 640px) {
   .cards {
+    flex-wrap: wrap;
     flex-direction: row;
-    max-width: 900px;
+    max-width: 960px;
     margin: 0 auto;
   }
-  .card { flex: 1; }
+  .card { flex: 1 1 calc(50% - .5rem); min-width: 200px; }
+}
+
+@media (min-width: 960px) {
+  .card { flex: 1 1 0; min-width: 0; }
 }

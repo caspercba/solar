@@ -46,6 +46,10 @@
         <div class="card-bar-wrap">
           <div id="bat-bar" class="card-bar" style="width:0%"></div>
         </div>
+        <div class="bat-status">
+          <span id="bat-direction" class="bat-direction">--</span>
+          <span id="bat-rate" class="bat-rate"></span>
+        </div>
         <div class="card-detail">
           <span id="bat-volts">--</span> V
           <span class="sep">|</span>
@@ -86,6 +90,22 @@
         </div>
         <div class="card-detail">
           <span id="load-watts">--</span> W
+        </div>
+      </div>
+
+      <!-- Generator card -->
+      <div id="card-gen" class="card card-gen">
+        <div class="card-header">
+          <span class="card-icon">&#x2699;</span>
+          <span class="card-title">Generator</span>
+        </div>
+        <div class="gen-status-row">
+          <span id="gen-status" class="gen-badge gen-off">OFF</span>
+        </div>
+        <div class="card-detail">
+          <span id="gen-watts">0</span> W
+          <span class="sep">|</span>
+          <span id="gen-volts">--</span> V
         </div>
       </div>
     </main>

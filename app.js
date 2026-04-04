@@ -8,26 +8,24 @@ const API_BASE = "https://web.shinemonitor.com/public/";
 const COMPANY_KEY = "bnrl_frRFjEz8Mkn";
 const PLANT_ID = "77218";
 const DEVICE = { pn: "B1419120275203", devcode: "697", sn: "FFFFFFFF", devaddr: "4" };
-const SOLAR_MAX_W = 5000;
-const INVERTER_MAX_VA = 5000;
 const POLL_MS = 60_000;
 
-/* 48 V lead-acid voltage-to-SOC (resting, approximate) */
-const SOC_TABLE = [
-  [52.0, 100], [51.6, 95], [51.2, 90], [50.8, 80], [50.4, 75],
-  [50.0, 65],  [49.6, 55], [49.2, 50], [48.8, 40], [48.4, 30],
-  [48.0, 25],  [47.2, 15], [46.0, 5],  [44.0, 0]
-];
+/*
+ * Battery SOC range — based on inverter charge profile (not exposed via API).
+ * Low cutoff: voltage at which inverter stops discharging (~42V).
+ * Float voltage: voltage the charger holds once the battery is full (~53.5V).
+ * Anything at or above float = 100%. Bulk/absorption charging runs at ~56V
+ * but that's the charger pushing harder, not the battery being over 100%.
+ */
+let batLowV = 42.0;
+let batHighV = 53.5;
+let solarMaxW = 5000;
+let inverterMaxVA = 5000;
 
 function voltageToSoc(v) {
-  if (v >= SOC_TABLE[0][0]) return 100;
-  if (v <= SOC_TABLE[SOC_TABLE.length - 1][0]) return 0;
-  for (let i = 0; i < SOC_TABLE.length - 1; i++) {
-    const [v1, s1] = SOC_TABLE[i];
-    const [v2, s2] = SOC_TABLE[i + 1];
-    if (v >= v2) return Math.round(s2 + (s1 - s2) * (v - v2) / (v1 - v2));
-  }
-  return 0;
+  if (v >= batHighV) return 100;
+  if (v <= batLowV) return 0;
+  return Math.round(((v - batLowV) / (batHighV - batLowV)) * 100);
 }
 
 /* ── Session helpers ── */
@@ -103,6 +101,27 @@ async function fetchPlantCurrent(session) {
   );
 }
 
+async function fetchDeviceCtrlValue(session, id) {
+  return apiGet(session,
+    `&action=queryDeviceCtrlValue&pn=${DEVICE.pn}&devcode=${DEVICE.devcode}&sn=${DEVICE.sn}&devaddr=${DEVICE.devaddr}&id=${id}`
+  );
+}
+
+async function fetchPlantInfo(session) {
+  return apiGet(session, `&action=queryPlantInfo&plantid=${PLANT_ID}`);
+}
+
+async function fetchInverterSettings(session) {
+  try {
+    const plantInfo = await fetchPlantInfo(session);
+    const nominal = parseFloat(plantInfo.nominalPower);
+    if (nominal > 0) solarMaxW = nominal * 1000;
+    console.log(`Settings: battery ${batLowV}–${batHighV}V, solar max ${solarMaxW}W`);
+  } catch (err) {
+    console.warn("Could not fetch plant info, using defaults:", err);
+  }
+}
+
 /* ── DOM refs ── */
 const $ = (id) => document.getElementById(id);
 
@@ -118,6 +137,8 @@ const els = {
   statusDot: $("status-dot"),
   batPct: $("bat-pct"),
   batBar: $("bat-bar"),
+  batDirection: $("bat-direction"),
+  batRate: $("bat-rate"),
   batVolts: $("bat-volts"),
   batCurrent: $("bat-current"),
   solPct: $("sol-pct"),
@@ -127,6 +148,10 @@ const els = {
   loadPct: $("load-pct"),
   loadBar: $("load-bar"),
   loadWatts: $("load-watts"),
+  genStatus: $("gen-status"),
+  genWatts: $("gen-watts"),
+  genVolts: $("gen-volts"),
+  genCard: $("card-gen"),
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
 };
@@ -146,34 +171,99 @@ function setBar(barEl, pct) {
   barEl.style.width = Math.max(0, Math.min(100, pct)) + "%";
 }
 
+function setBatRate(absAmps) {
+  if (absAmps < 15) {
+    els.batRate.textContent = "Slow";
+    els.batRate.className = "bat-rate rate-slow";
+  } else if (absAmps < 40) {
+    els.batRate.textContent = "Mid";
+    els.batRate.className = "bat-rate rate-mid";
+  } else {
+    els.batRate.textContent = "Fast";
+    els.batRate.className = "bat-rate rate-fast";
+  }
+}
+
+function fieldIndex(titles, name) {
+  return titles.findIndex(t => t.title === name);
+}
+
 function renderDevice(dat) {
   if (!dat || !dat.row || !dat.row.length) return;
+  const titles = dat.title;
   const f = dat.row[0].field;
-  const ts = f[1];
-  const batV = parseFloat(f[2]);
-  const pvV = parseFloat(f[3]);
-  const batA = parseFloat(f[5]);
-  const solarW = parseFloat(f[7]);
-  const loadW = parseFloat(f[8]);
 
+  const idx = {
+    ts:       fieldIndex(titles, "Timestamp"),
+    batV:     fieldIndex(titles, "Battery Voltage"),
+    pvV:      fieldIndex(titles, "PV Voltage"),
+    batA:     fieldIndex(titles, "Batt Current"),
+    solarW:   fieldIndex(titles, "Charger Power"),
+    loadW:    fieldIndex(titles, "PLoad"),
+    gridW:    fieldIndex(titles, "PGrid"),
+    gridV:    fieldIndex(titles, "Grid Voltage"),
+    workState:fieldIndex(titles, "work state"),
+    ratedW:   fieldIndex(titles, "rated power"),
+  };
+
+  const ts     = idx.ts >= 0 ? f[idx.ts] : "--";
+  const batV   = idx.batV >= 0 ? parseFloat(f[idx.batV]) : 0;
+  const pvV    = idx.pvV >= 0 ? parseFloat(f[idx.pvV]) : 0;
+  const batA   = idx.batA >= 0 ? parseFloat(f[idx.batA]) : 0;
+  const solarW = idx.solarW >= 0 ? parseFloat(f[idx.solarW]) : 0;
+  const loadW  = idx.loadW >= 0 ? parseFloat(f[idx.loadW]) : 0;
+  const gridW  = idx.gridW >= 0 ? parseFloat(f[idx.gridW]) : 0;
+  const gridV  = idx.gridV >= 0 ? parseFloat(f[idx.gridV]) : 0;
+  const workState = idx.workState >= 0 ? f[idx.workState] : "";
+  const ratedW = idx.ratedW >= 0 ? parseFloat(f[idx.ratedW]) : 0;
+
+  if (ratedW > 0) inverterMaxVA = ratedW;
+
+  /* Battery */
   const soc = voltageToSoc(batV);
   els.batPct.textContent = soc;
   setBar(els.batBar, soc);
   els.batVolts.textContent = batV.toFixed(1);
   els.batCurrent.textContent = batA.toFixed(0);
 
-  const solPct = Math.round((solarW / SOLAR_MAX_W) * 100);
+  const absA = Math.abs(batA);
+  if (absA < 2) {
+    els.batDirection.textContent = "Idle";
+    els.batDirection.className = "bat-direction dir-idle";
+    els.batRate.textContent = "";
+    els.batRate.className = "bat-rate";
+  } else if (batA < 0) {
+    els.batDirection.textContent = "Charging";
+    els.batDirection.className = "bat-direction dir-charging";
+    setBatRate(absA);
+  } else {
+    els.batDirection.textContent = "Discharging";
+    els.batDirection.className = "bat-direction dir-discharging";
+    setBatRate(absA);
+  }
+
+  /* Solar */
+  const solPct = Math.round((solarW / solarMaxW) * 100);
   els.solPct.textContent = solPct;
   setBar(els.solBar, solPct);
   els.solWatts.textContent = Math.round(solarW);
   els.solPvVolts.textContent = pvV.toFixed(0);
 
-  const ldPct = Math.round((loadW / INVERTER_MAX_VA) * 100);
+  /* Load */
+  const ldPct = Math.round((loadW / inverterMaxVA) * 100);
   els.loadPct.textContent = ldPct;
   setBar(els.loadBar, ldPct);
   els.loadWatts.textContent = Math.round(loadW);
 
-  const timePart = ts.split(" ")[1] || ts;
+  /* Generator */
+  const genOn = gridV > 30 && Math.abs(gridW) > 5;
+  els.genStatus.textContent = genOn ? "ON" : "OFF";
+  els.genStatus.className = genOn ? "gen-badge gen-on" : "gen-badge gen-off";
+  els.genWatts.textContent = genOn ? Math.abs(Math.round(gridW)) : "0";
+  els.genVolts.textContent = genOn ? gridV.toFixed(0) : "--";
+  els.genCard.className = genOn ? "card card-gen gen-active" : "card card-gen";
+
+  const timePart = (ts.split(" ")[1]) || ts;
   els.lastUpdate.textContent = `Last update: ${timePart}`;
 }
 
@@ -193,9 +283,17 @@ function setStatus(ok) {
 /* ── Poll loop ── */
 let pollTimer = null;
 
+let batterySettingsLoaded = false;
+
 async function poll() {
   const sess = loadSession();
   if (!isSessionValid(sess)) { clearSession(); showLogin(); return; }
+
+  if (!batterySettingsLoaded) {
+    await fetchInverterSettings(sess);
+    batterySettingsLoaded = true;
+  }
+
   try {
     const [dev, plant] = await Promise.all([
       fetchDeviceData(sess),
@@ -245,16 +343,32 @@ els.loginForm.addEventListener("submit", async (e) => {
 els.logoutBtn.addEventListener("click", () => {
   clearSession();
   if (pollTimer) clearTimeout(pollTimer);
+  batterySettingsLoaded = false;
   showLogin();
 });
 
 /* ── Boot ── */
-(function boot() {
+(async function boot() {
   const sess = loadSession();
   if (isSessionValid(sess)) {
     showDash();
     startPolling();
-  } else {
-    showLogin();
+    return;
   }
+
+  const params = new URLSearchParams(window.location.search);
+  const user = params.get("user");
+  const pass = params.get("pass");
+  if (user && pass) {
+    window.history.replaceState({}, "", window.location.pathname);
+    try {
+      const sess = await apiAuth(user, pass);
+      saveSession(sess);
+      showDash();
+      startPolling();
+      return;
+    } catch (_) { /* fall through to login screen */ }
+  }
+
+  showLogin();
 })();
