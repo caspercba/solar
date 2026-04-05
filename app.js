@@ -475,6 +475,16 @@ els.disconnectBtn.addEventListener("click", () => {
 setView(localStorage.getItem(VIEW_KEY) || "cards");
 
 (async function boot() {
+  const params = new URLSearchParams(location.search);
+  const urlProxy = params.get("proxy");
+  const urlToken = params.get("token");
+
+  if (urlProxy && urlToken) {
+    const url = urlProxy.replace(/\/+$/, "");
+    saveConn({ url, token: urlToken });
+    history.replaceState(null, "", location.pathname);
+  }
+
   const conn = loadConn();
   if (!conn) { showSetup(); return; }
 
