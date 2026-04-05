@@ -1,0 +1,10 @@
+name = "solar-proxy"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+
+[[kv_namespaces]]
+binding = "SYSTEMS"
+id = "3dc7a4785e91472ba8b3a59464ebc49c"
+
+# Set the shared access token as a secret:
+#   wrangler secret put API_TOKEN

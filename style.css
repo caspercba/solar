@@ -29,9 +29,9 @@ body {
 .screen[hidden] { display: none !important; }
 [hidden] { display: none !important; }
 
-/* ---------- LOGIN ---------- */
+/* ---------- SETUP / LOGIN ---------- */
 
-#login-screen {
+#setup-screen {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -62,9 +62,9 @@ body {
   margin-bottom: 1.5rem;
 }
 
-#login-form { display: flex; flex-direction: column; gap: .75rem; }
+#setup-form { display: flex; flex-direction: column; gap: .75rem; }
 
-#login-form input {
+#setup-form input {
   background: var(--bg);
   border: 1px solid var(--card-border);
   border-radius: 8px;
@@ -75,9 +75,9 @@ body {
   transition: border-color .2s;
 }
 
-#login-form input:focus { border-color: var(--accent-sol); }
+#setup-form input:focus { border-color: var(--accent-sol); }
 
-#login-btn {
+#setup-btn, #add-submit, #manage-close {
   background: var(--accent-sol);
   color: #000;
   border: none;
@@ -89,7 +89,7 @@ body {
   transition: opacity .2s;
 }
 
-#login-btn:disabled { opacity: .5; cursor: wait; }
+#setup-btn:disabled, #add-submit:disabled { opacity: .5; cursor: wait; }
 
 .error {
   color: var(--error);
@@ -119,12 +119,46 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .dot-ok  { background: var(--accent-bat); }
 .dot-err { background: var(--error); }
 
-#logout-btn {
+#disconnect-btn, #manage-btn {
   background: none;
   border: none;
   color: var(--text-dim);
   font-size: 1.1rem;
   cursor: pointer;
+}
+
+/* ---------- SYSTEM TABS ---------- */
+
+.system-tabs {
+  display: flex;
+  gap: .35rem;
+  padding: 0 1.25rem .5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sys-tab {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  padding: .45rem 1rem;
+  font-size: .8rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background .2s, color .2s;
+}
+
+.sys-tab:hover { color: var(--text); }
+
+.sys-tab.active {
+  background: var(--accent-sol);
+  color: #000;
+  border-color: var(--accent-sol);
+  font-weight: 600;
 }
 
 /* ---------- CARDS ---------- */
@@ -210,7 +244,7 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 .bat-rate.rate-slow  { background: rgba(34,197,94,.15);  color: #22c55e; }
 .bat-rate.rate-mid   { background: rgba(245,158,11,.15); color: #f59e0b; }
-.bat-rate.rate-fast   { background: rgba(239,68,68,.15);  color: #ef4444; }
+.bat-rate.rate-fast  { background: rgba(239,68,68,.15);  color: #ef4444; }
 
 .bat-direction.dir-charging    { color: #22c55e; }
 .bat-direction.dir-discharging { color: #f59e0b; }
@@ -228,9 +262,7 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .card-gen { border-color: var(--card-border); }
 .card-gen.gen-active { border-color: #a855f7; }
 
-.gen-status-row {
-  margin-bottom: .6rem;
-}
+.gen-status-row { margin-bottom: .6rem; }
 
 .gen-badge {
   display: inline-block;
@@ -287,7 +319,6 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   height: auto;
 }
 
-/* Node circles */
 .fn-bg {
   fill: var(--card-bg);
   stroke: var(--card-border);
@@ -307,7 +338,6 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 #fn-bat-bg.discharging { stroke: #f59e0b; stroke-width: 2.5; }
 #fn-bat-bg.idle        { stroke: var(--card-border); }
 
-/* Node text */
 .fn-icon {
   font-size: 22px;
   pointer-events: none;
@@ -335,7 +365,6 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* Flow paths */
 .fp {
   fill: none;
   stroke: var(--card-border);
@@ -363,7 +392,6 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 #fp-bat.active.charging     { stroke: #22c55e; }
 #fp-bat.active.discharging  { stroke: #f59e0b; }
 
-/* Flow watt labels */
 .fl {
   font-size: 12px;
   fill: var(--text-dim);
@@ -373,6 +401,124 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   transition: opacity .3s;
 }
 .fl.active { opacity: 1; }
+
+/* ---------- MODALS ---------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 100;
+}
+
+.modal-overlay[hidden] { display: none !important; }
+
+.modal {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  width: 100%;
+  max-width: 400px;
+}
+
+.modal h2 {
+  font-size: 1.2rem;
+  margin-bottom: 1.25rem;
+}
+
+.modal label {
+  display: block;
+  font-size: .8rem;
+  color: var(--text-dim);
+  margin-bottom: .3rem;
+  margin-top: .75rem;
+}
+
+.modal label:first-of-type { margin-top: 0; }
+
+.modal input, .modal select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: .6rem .9rem;
+  color: var(--text);
+  font-size: .9rem;
+  outline: none;
+}
+
+.modal input:focus, .modal select:focus { border-color: var(--accent-sol); }
+
+.modal select { appearance: none; cursor: pointer; }
+
+.modal-actions {
+  display: flex;
+  gap: .75rem;
+  margin-top: 1.5rem;
+}
+
+.modal-actions button {
+  flex: 1;
+  padding: .65rem;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--text-dim);
+}
+
+/* ---------- MANAGE LIST ---------- */
+
+.manage-list { max-height: 300px; overflow-y: auto; }
+
+.manage-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .75rem 0;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.manage-row:last-child { border-bottom: none; }
+
+.manage-info strong {
+  display: block;
+  font-size: .9rem;
+}
+
+.manage-service {
+  font-size: .75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.manage-delete {
+  background: transparent;
+  border: 1px solid var(--error);
+  color: var(--error);
+  border-radius: 6px;
+  padding: .35rem .7rem;
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.manage-empty {
+  color: var(--text-dim);
+  font-size: .85rem;
+  text-align: center;
+  padding: 1.5rem 0;
+}
 
 /* ---------- FOOTER ---------- */
 

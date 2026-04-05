@@ -3,35 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Solar Dashboard — Rio del Medio</title>
-  <link rel="stylesheet" href="style.css?v=3">
+  <title>Solar Dashboard</title>
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
-  <!-- Login screen -->
-  <div id="login-screen" class="screen">
+  <!-- Setup screen (first-time: enter proxy token) -->
+  <div id="setup-screen" class="screen" hidden>
     <div class="login-card">
       <div class="login-icon">&#9728;</div>
       <h1>Solar Dashboard</h1>
-      <p class="login-subtitle">Rio del Medio</p>
-      <form id="login-form" autocomplete="on">
-        <input type="text" id="login-user" placeholder="Username" autocomplete="username" required>
-        <input type="password" id="login-pass" placeholder="Password" autocomplete="current-password" required>
-        <button type="submit" id="login-btn">Sign in</button>
+      <p class="login-subtitle">Connect to your proxy</p>
+      <form id="setup-form" autocomplete="on">
+        <input type="url" id="setup-url" placeholder="Proxy URL" autocomplete="url" required
+               value="https://solar-proxy.gaspar-solar.workers.dev">
+        <input type="password" id="setup-token" placeholder="Access Token" autocomplete="current-password" required>
+        <button type="submit" id="setup-btn">Connect</button>
       </form>
-      <p id="login-error" class="error" hidden></p>
+      <p id="setup-error" class="error" hidden></p>
     </div>
   </div>
 
   <!-- Dashboard screen -->
   <div id="dashboard-screen" class="screen" hidden>
     <header>
-      <h1>Solar Dashboard</h1>
+      <h1 id="header-title">Solar Dashboard</h1>
       <div class="header-right">
         <span id="status-dot" class="dot dot-ok" title="Connected"></span>
-        <button id="logout-btn" title="Sign out">&#x2715;</button>
+        <button id="manage-btn" title="Manage systems">&#x2699;</button>
+        <button id="disconnect-btn" title="Disconnect">&#x2715;</button>
       </div>
     </header>
+
+    <!-- System tabs -->
+    <nav id="system-tabs" class="system-tabs" hidden></nav>
 
     <nav class="view-toggle">
       <button class="vtab active" id="tab-cards">Cards</button>
@@ -117,48 +122,39 @@
 
     <section id="flow-view" class="flow-view" hidden>
       <svg viewBox="0 0 500 440" class="flow-svg" xmlns="http://www.w3.org/2000/svg">
-
-        <!-- Flow paths (bottom layer) -->
         <path id="fp-solar" class="fp" d="M250,100 L250,195"/>
         <path id="fp-gen"   class="fp" d="M100,215 L230,215"/>
         <path id="fp-load"  class="fp" d="M270,215 L400,215"/>
         <path id="fp-bat"   class="fp" d="M250,235 L250,340"/>
 
-        <!-- Flow watt labels -->
         <text id="fl-solar" class="fl" x="268" y="150" text-anchor="start"></text>
         <text id="fl-gen"   class="fl" x="165" y="203" text-anchor="middle"></text>
         <text id="fl-load"  class="fl" x="335" y="203" text-anchor="middle"></text>
         <text id="fl-bat"   class="fl" x="268" y="290" text-anchor="start"></text>
 
-        <!-- Node: Solar -->
         <circle id="fn-solar-bg" cx="250" cy="58" r="42" class="fn-bg"/>
         <text x="250" y="38" class="fn-lbl" text-anchor="middle">SOLAR</text>
         <text x="250" y="60" class="fn-icon" text-anchor="middle">&#9728;&#65039;</text>
         <text id="fn-solar-v" x="250" y="82" class="fn-val" text-anchor="middle">--</text>
 
-        <!-- Node: Generator -->
         <circle id="fn-gen-bg" cx="58" cy="215" r="42" class="fn-bg"/>
         <text x="58" y="195" class="fn-lbl" text-anchor="middle">GEN</text>
         <text x="58" y="218" class="fn-icon" text-anchor="middle">&#x2699;&#65039;</text>
         <text id="fn-gen-v" x="58" y="240" class="fn-val" text-anchor="middle">OFF</text>
 
-        <!-- Node: Inverter (center hub) -->
         <circle cx="250" cy="215" r="20" class="fn-bg fn-inv-bg"/>
         <text x="250" y="219" class="fn-icon fn-icon-sm" text-anchor="middle">&#9889;</text>
 
-        <!-- Node: House -->
         <circle id="fn-house-bg" cx="442" cy="215" r="42" class="fn-bg"/>
         <text x="442" y="195" class="fn-lbl" text-anchor="middle">HOUSE</text>
         <text x="442" y="218" class="fn-icon" text-anchor="middle">&#127968;</text>
         <text id="fn-house-v" x="442" y="240" class="fn-val" text-anchor="middle">--</text>
 
-        <!-- Node: Battery -->
         <circle id="fn-bat-bg" cx="250" cy="382" r="42" class="fn-bg"/>
         <text x="250" y="362" class="fn-lbl" text-anchor="middle">BATTERY</text>
         <text x="250" y="385" class="fn-icon" text-anchor="middle">&#128267;</text>
         <text id="fn-bat-v" x="250" y="407" class="fn-val" text-anchor="middle">--</text>
 
-        <!-- Battery detail below circle -->
         <text id="fn-bat-detail" x="250" y="436" class="fn-detail" text-anchor="middle"></text>
       </svg>
     </section>
@@ -169,6 +165,44 @@
     </footer>
   </div>
 
-  <script src="app.js?v=3"></script>
+  <!-- Add System modal -->
+  <div id="add-system-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h2>Add System</h2>
+      <form id="add-system-form">
+        <label>Service</label>
+        <select id="add-service" required>
+          <option value="">Select service...</option>
+          <option value="shinemonitor">ShineMonitor</option>
+          <option value="growatt">Growatt</option>
+        </select>
+        <label>Name (optional)</label>
+        <input type="text" id="add-name" placeholder="e.g. My Home Solar">
+        <label>Username</label>
+        <input type="text" id="add-user" required>
+        <label>Password</label>
+        <input type="password" id="add-pass" required>
+        <div class="modal-actions">
+          <button type="button" id="add-cancel" class="btn-secondary">Cancel</button>
+          <button type="submit" id="add-submit">Add System</button>
+        </div>
+      </form>
+      <p id="add-error" class="error" hidden></p>
+    </div>
+  </div>
+
+  <!-- Manage Systems modal -->
+  <div id="manage-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h2>Systems</h2>
+      <div id="manage-list" class="manage-list"></div>
+      <div class="modal-actions">
+        <button type="button" id="manage-add" class="btn-secondary">+ Add System</button>
+        <button type="button" id="manage-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=4"></script>
 </body>
 </html>
