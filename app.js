@@ -482,7 +482,6 @@ setView(localStorage.getItem(VIEW_KEY) || "cards");
   if (urlProxy && urlToken) {
     const url = urlProxy.replace(/\/+$/, "");
     saveConn({ url, token: urlToken });
-    history.replaceState(null, "", location.pathname);
   }
 
   const conn = loadConn();
