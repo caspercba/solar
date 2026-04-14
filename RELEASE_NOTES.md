@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+## v1.1.0
+
 - Add skeleton shimmer loading state on all card values and progress bars during
   first load and when switching between systems.
+- Add pull-to-refresh gesture on the dashboard with visual arrow indicator.
 - Use plant timezone offset for device data date queries instead of UTC.
 - Add fallback to yesterday's date when today's device data is not yet available.
 
