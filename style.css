@@ -23,6 +23,7 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100dvh;
+  overscroll-behavior-y: contain;
 }
 
 .screen { min-height: 100dvh; }
@@ -528,6 +529,45 @@ footer {
   padding: .5rem 1.25rem 1.5rem;
   font-size: .75rem;
   color: var(--text-dim);
+}
+
+/* ---------- PULL TO REFRESH ---------- */
+
+.ptr {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  height: 0;
+  transition: height .2s ease;
+}
+
+.ptr-arrow {
+  font-size: 1.4rem;
+  color: var(--text-dim);
+  padding: .4rem 0;
+  transition: transform .2s ease, opacity .2s ease;
+  opacity: .5;
+}
+
+.ptr.pulling .ptr-arrow {
+  opacity: 1;
+}
+
+.ptr.armed .ptr-arrow {
+  transform: rotate(180deg);
+  opacity: 1;
+  color: var(--accent-sol);
+}
+
+.ptr.refreshing .ptr-arrow {
+  animation: ptr-spin .6s linear infinite;
+  opacity: 1;
+  color: var(--accent-sol);
+}
+
+@keyframes ptr-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 /* ---------- SKELETON / LOADING ---------- */

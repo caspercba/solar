@@ -513,6 +513,59 @@ els.disconnectBtn.addEventListener("click", () => {
   showSetup();
 });
 
+/* ── Pull to refresh ── */
+{
+  const ptr = $("ptr");
+  const dash = $("dashboard-screen");
+  const THRESHOLD = 60;
+  const MAX_PULL = 90;
+  let startY = 0;
+  let pulling = false;
+  let refreshing = false;
+
+  function isAtTop() {
+    return window.scrollY <= 0;
+  }
+
+  dash.addEventListener("touchstart", (e) => {
+    if (refreshing || !isAtTop()) return;
+    startY = e.touches[0].clientY;
+    pulling = true;
+  }, { passive: true });
+
+  dash.addEventListener("touchmove", (e) => {
+    if (!pulling || refreshing) return;
+    const dy = Math.max(0, e.touches[0].clientY - startY);
+    if (dy === 0) return;
+    const clamped = Math.min(dy, MAX_PULL);
+    const h = Math.round(clamped * 0.6);
+    ptr.style.height = h + "px";
+    ptr.className = clamped >= THRESHOLD ? "ptr armed" : "ptr pulling";
+  }, { passive: true });
+
+  dash.addEventListener("touchend", () => {
+    if (!pulling) return;
+    pulling = false;
+    const armed = ptr.classList.contains("armed");
+    if (armed && !refreshing) {
+      refreshing = true;
+      ptr.className = "ptr refreshing";
+      ptr.style.height = "36px";
+      if (pollTimer) clearTimeout(pollTimer);
+      pollNow().then(() => {
+        pollTimer = setTimeout(() => startPolling(), POLL_MS);
+      }).finally(() => {
+        refreshing = false;
+        ptr.className = "ptr";
+        ptr.style.height = "0";
+      });
+    } else {
+      ptr.className = "ptr";
+      ptr.style.height = "0";
+    }
+  });
+}
+
 /* ── Boot ── */
 setView(localStorage.getItem(VIEW_KEY) || "cards");
 
