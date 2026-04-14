@@ -150,6 +150,7 @@ function buildCredentials(service, password, discovered) {
       plantId: discovered.plantId,
       device: discovered.device,
       nominalPower: discovered.nominalPower,
+      timezone: discovered.timezone,
     };
   }
   if (service === "growatt") {

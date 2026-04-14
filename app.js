@@ -95,6 +95,40 @@ const manageList = $("manage-list");
 let systems = [];
 let activeSystemId = null;
 let pollTimer = null;
+let hasData = false;
+
+/* ── Loading skeleton ── */
+const skeletonTargets = () => [
+  els.batPct, els.batDirection, els.batRate,
+  els.batVolts, els.batCurrent,
+  els.solPct, els.solWatts, els.solPvVolts,
+  els.loadPct, els.loadWatts,
+  els.genStatus, els.genWatts, els.genVolts,
+];
+const skeletonBars = () => [
+  els.batBar.parentElement,
+  els.solBar.parentElement,
+  els.loadBar.parentElement,
+];
+
+function setLoading(on) {
+  const cls = "skeleton";
+  for (const el of skeletonTargets()) {
+    if (!el) continue;
+    el.classList.toggle(cls, on);
+    if (on) el.textContent = "\u00A0";
+  }
+  for (const bar of skeletonBars()) {
+    if (!bar) continue;
+    bar.classList.toggle(cls, on);
+  }
+  const flowCls = "skeleton-flow";
+  for (const el of [fEls.fnSolarV, fEls.fnGenV, fEls.fnHouseV, fEls.fnBatV, fEls.fnBatDetail]) {
+    if (!el) continue;
+    el.classList.toggle(flowCls, on);
+    if (on) el.textContent = "";
+  }
+}
 
 /* ── View toggle ── */
 function setView(view) {
@@ -167,8 +201,11 @@ function renderSystemTabs() {
     btn.className = "sys-tab" + (sys.id === activeSystemId ? " active" : "");
     btn.textContent = sys.name;
     btn.addEventListener("click", () => {
+      if (sys.id === activeSystemId) return;
       activeSystemId = sys.id;
       localStorage.setItem(ACTIVE_KEY, sys.id);
+      hasData = false;
+      setLoading(true);
       renderSystemTabs();
       pollNow();
     });
@@ -182,6 +219,9 @@ function renderData(d) {
     setStatus(false);
     return;
   }
+
+  setLoading(false);
+  hasData = true;
 
   const bat = d.battery || {};
   const sol = d.solar || {};
@@ -310,11 +350,13 @@ function renderFlow(d) {
 /* ── Polling ── */
 async function pollNow() {
   if (!activeSystemId) return;
+  if (!hasData) setLoading(true);
   try {
     const data = await api("GET", `/api/systems/${activeSystemId}/data`);
     renderData(data);
   } catch (err) {
     console.error("poll error:", err);
+    setLoading(false);
     setStatus(false);
   }
 }

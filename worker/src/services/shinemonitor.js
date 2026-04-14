@@ -102,20 +102,38 @@ export async function discover(credentials) {
       devaddr: String(dev.devaddr),
     },
     nominalPower: plantInfo.nominalPower ? parseFloat(plantInfo.nominalPower) * 1000 : 5000,
+    timezone: plantInfo.address?.timezone ?? 0,
   };
 }
 
 /* ── Data fetch + normalize ── */
 
+function localDate(tzOffsetSeconds) {
+  const now = new Date(Date.now() + tzOffsetSeconds * 1000);
+  return now.toISOString().slice(0, 10);
+}
+
 export async function fetchData(systemConfig) {
   const sess = await getSession(systemConfig);
-  const { plantId, device } = systemConfig.credentials;
-  const today = new Date().toISOString().slice(0, 10);
+  const { plantId, device, timezone } = systemConfig.credentials;
+  const tzOffset = timezone ?? 0;
+  const today = localDate(tzOffset);
 
-  const [devData, plantCurrent] = await Promise.all([
-    apiGet(sess, `&action=queryDeviceDataOneDayPaging&pn=${device.pn}&devcode=${device.devcode}&sn=${device.sn}&devaddr=${device.devaddr}&date=${today}&page=0&pagesize=1`),
-    apiGet(sess, `&action=queryPlantCurrentData&plantid=${plantId}&par=CURRENT_POWER,ENERGY_TODAY,BATTERY_SOC`),
-  ]);
+  async function fetchDeviceData(date) {
+    return apiGet(sess, `&action=queryDeviceDataOneDayPaging&pn=${device.pn}&devcode=${device.devcode}&sn=${device.sn}&devaddr=${device.devaddr}&date=${date}&page=0&pagesize=1`);
+  }
+
+  const plantCurrentPromise = apiGet(sess, `&action=queryPlantCurrentData&plantid=${plantId}&par=CURRENT_POWER,ENERGY_TODAY,BATTERY_SOC`);
+
+  let devData;
+  try {
+    devData = await fetchDeviceData(today);
+  } catch {
+    const yesterday = localDate(tzOffset - 86400);
+    devData = await fetchDeviceData(yesterday);
+  }
+
+  const plantCurrent = await plantCurrentPromise;
 
   const titles = devData?.title || [];
   const fields = devData?.row?.[0]?.field || [];

@@ -530,6 +530,73 @@ footer {
   color: var(--text-dim);
 }
 
+/* ---------- SKELETON / LOADING ---------- */
+
+.skeleton {
+  position: relative;
+  color: transparent !important;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--card-border);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255,255,255,.06) 40%,
+    rgba(255,255,255,.06) 60%,
+    transparent 100%
+  );
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton * { visibility: hidden; }
+
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.big-number.skeleton {
+  min-width: 3ch;
+  min-height: 1em;
+  display: inline-block;
+}
+
+.bat-direction.skeleton,
+.bat-rate.skeleton {
+  min-width: 5ch;
+  min-height: 1em;
+  display: inline-block;
+}
+
+.card-detail .skeleton {
+  min-width: 3ch;
+  min-height: 1em;
+  display: inline-block;
+}
+
+.gen-badge.skeleton {
+  min-width: 3ch;
+  min-height: 1em;
+}
+
+.card-bar-wrap.skeleton {
+  border-radius: 4px;
+}
+
+.fn-val.skeleton-flow {
+  fill: transparent;
+}
+
+.fn-detail.skeleton-flow {
+  fill: transparent;
+}
+
 /* ---------- TABLET + ---------- */
 
 @media (min-width: 640px) {
