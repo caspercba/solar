@@ -14,7 +14,7 @@ _Last updated: 2026-07-03_
 - URL deep-link auto-login (`?proxy=...&token=...`)
 - Timezone-aware date queries and yesterday fallback (ShineMonitor)
 - RELEASE_NOTES.md changelog (v1.0.0, v1.1.0)
-- **PLAN.md** — project definition, roadmap, historical data storage plan
+- **PLAN.md** — project definition and roadmap (vendor-only history policy)
 - Root README with architecture and deployment guide
 - Credentials redacted from `discovery/growatt/README.md`
 - Health check endpoint (`GET /api/health`)
@@ -28,26 +28,27 @@ _Last updated: 2026-07-03_
 - `GET /api/systems/:id/history` with `fetchHistory` in both adapters
 - PWA manifest and service worker
 - GitHub Actions CI for worker tests and deploy-on-tag
+- KV history storage module, cron snapshots, and stored-first history API _(implemented; pending removal per vendor-only policy)_
+- `GET /api/systems/:id/history/summary` endpoint _(currently reads KV; to be refactored to vendor)_
+- 7-day energy bar chart, SOC trend overlay, and CSV export in Chart view
 
 ## In Progress
 
 - (developer) Add SOC threshold alerts via Worker cron
-- (planner) historical data — PLAN.md updated with storage architecture and Phase 3b roadmap
+- (planner) update PLAN.md — vendor-only history policy
 
 ## Up Next
 
-_Priority order from PLAN.md Phase 3b — stored history and extended graphs._
+_Priority order from PLAN.md Phase 3b — vendor-only history refactor._
 
-1. Worker cron snapshot job (store normalized realtime every 5–15 min)
-2. KV history storage module (write, read, merge, prune with 90-day retention)
-3. History API: serve stored data first, vendor `fetchHistory` fallback
-4. `GET /api/systems/:id/history/summary?days=7` endpoint
-5. 7-day energy bar chart on dashboard
-6. SOC trend chart (intraday overlay + 7-day summary)
-7. CSV export for chart data
-8. History storage unit tests
-9. Worker deployment runbook (cron triggers, retention config)
-10. Always-on `API_TOKEN` in production (ops/config)
+1. Remove KV history storage module and cron snapshots from Worker
+2. Refactor `/api/systems/:id/history` to call `adapter.fetchHistory` directly
+3. Refactor `/api/systems/:id/history/summary` to aggregate from vendor APIs
+4. Add ShineMonitor `fetchHistorySummary` adapter method
+5. Update README to remove KV snapshot documentation
+6. Update history unit tests for vendor-only paths
+7. Chart empty states for vendor API gaps
+8. Always-on `API_TOKEN` in production (ops/config)
 
 ## Blocked
 
@@ -56,15 +57,13 @@ _None._
 ## Decisions Made
 
 - **No frontend build step** — plain HTML/CSS/JS with cache-busting `?v=N` params; keeps hosting trivial.
-- **Cloudflare Worker as sole backend** — required for Growatt CORS; KV for system configs; no separate database.
+- **Cloudflare Worker as sole backend** — required for Growatt CORS; KV for system configs only; no historical data archive.
 - **Normalize at adapter boundary** — frontend consumes one JSON shape regardless of inverter brand.
 - **Discover once, poll many** — plant ID, device SN, nominal power captured at setup and stored in KV.
 - **Multi-plant selection at setup** — `requiresPlantSelection` flow when account has multiple plants.
 - **ShineMonitor SOC** — prefer API `BATTERY_SOC` when valid; voltage interpolation (42.0 V → 0%, 53.5 V → 100%) as fallback.
 - **Generator label for grid input** — `grid.active` drives the "Generator" card; suitable for off-grid setups with gen input.
-- **On-demand history first** — intraday charts fetch from vendor APIs today; Phase 3b adds Worker-owned snapshots.
-- **KV for history storage** — daily keys `history:day:<id>:<date>`; 90-day default retention; cron merges realtime polls into day buckets.
-- **Stored-first history API** — serve KV snapshots when available; fall back to vendor `fetchHistory` for backfill.
+- **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV. _(Reverses earlier stored-snapshot plan.)_
 
 ## Blocked / Open Questions
 
@@ -73,14 +72,11 @@ _None._
 3. "Generator" vs "Grid" labeling — configurable per system?
 4. Password rotation UX — edit credentials in place vs delete/re-add?
 5. Multi-user access — shared token sufficient or per-user tokens needed?
-6. Snapshot interval — 5 min vs 15 min?
-7. History merge — prefer vendor or stored data when both exist?
-8. Retention default — 90 days sufficient or configurable?
 
 ## Known Risks
 
 - **Upstream API breakage** — ShineMonitor/Growatt can change endpoints without notice; discovery scripts are the first line of detection.
 - **Session cache per isolate** — cold Worker starts re-authenticate; acceptable today, may need KV-backed sessions at scale.
-- **Vendor history gaps** — mitigated by Phase 3b Worker snapshots; until then, chart view depends on vendor APIs.
-- **KV write volume from cron** — batch into single daily key update per snapshot tick to limit writes.
+- **Vendor history gaps** — chart view depends on vendor API availability; no local backfill; clear empty states needed.
+- **Vendor rate limits** — multi-day summary may require N vendor round-trips; in-memory cache and `days` cap mitigate.
 - **No E2E tests** — adapter/route regressions covered by Vitest; full browser flow untested.
