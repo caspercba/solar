@@ -7,7 +7,6 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
-import { resolveIntradayHistory } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -214,7 +213,7 @@ export default {
       }
 
       try {
-        const data = await resolveIntradayHistory(env, raw, adapter, dateParam || null);
+        const data = await adapter.fetchHistory(raw, dateParam || null);
         return jsonResponse(data, 200, origin);
       } catch (err) {
         return errorResponse(`History fetch failed: ${err.message}`, 502, origin);

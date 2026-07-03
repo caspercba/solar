@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchData, fetchSocChart, fetchSocDailySummary } from "../src/services/growatt.js";
+import { fetchData, fetchHistory, fetchSocChart, fetchSocDailySummary } from "../src/services/growatt.js";
 import { expectNormalizedShape } from "./helpers.js";
 
 describe("growatt fetchData normalization", () => {
@@ -102,6 +102,40 @@ describe("growatt SOC history supplement", () => {
       return extraHandler(u, init);
     });
   }
+
+  it("fetchHistory merges SOC from getStorageBatChart", async () => {
+    mockLoginFetch(async (u) => {
+      if (u.includes("getStorageEnergyDayChart")) {
+        return Response.json({
+          result: 1,
+          obj: { ppv: ["1200"], userLoad: ["850"] },
+        });
+      }
+      if (u.includes("getStorageLineChartData")) {
+        return Response.json({
+          result: 1,
+          obj: { batPower: ["-723"] },
+        });
+      }
+      if (u.includes("getStorageBatChart")) {
+        return Response.json({
+          result: 1,
+          obj: { date: "2026-07-03", socChart: { capacity: ["72"] } },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const data = await fetchHistory(systemConfig, "2026-07-03");
+    expect(data.points[0]).toMatchObject({
+      time: "00:00",
+      solar: 1200,
+      load: 850,
+      battery: -723,
+      soc: 72,
+    });
+    expect(data.source).toBeUndefined();
+  });
 
   it("fetchSocChart returns intraday SOC for matching date", async () => {
     mockLoginFetch(async (u) => {
