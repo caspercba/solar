@@ -1,3 +1,5 @@
+import { computeDailySummary, dateRange } from "../history.js";
+
 /**
  * ShineMonitor service adapter.
  *
@@ -218,9 +220,17 @@ export async function fetchHistory(systemConfig, date) {
   const sess = await getSession(systemConfig);
   const { device, timezone } = systemConfig.credentials;
   const tzOffset = timezone ?? 0;
-  const queryDate = date || localDate(tzOffset);
+  const today = localDate(tzOffset);
+  let queryDate = date || today;
 
-  const { titles, rows } = await fetchAllDeviceData(sess, device, queryDate);
+  let { titles, rows } = await fetchAllDeviceData(sess, device, queryDate);
+
+  // When no explicit date, fall back to yesterday if today's series is not ready yet.
+  if (!rows.length && !date && queryDate === today) {
+    queryDate = localDate(tzOffset - 86400);
+    ({ titles, rows } = await fetchAllDeviceData(sess, device, queryDate));
+  }
+
   const points = parseHistoryRows(titles, rows);
 
   return {
@@ -231,6 +241,53 @@ export async function fetchHistory(systemConfig, date) {
     timezoneOffset: tzOffset,
     intervalMinutes: 5,
     points,
+  };
+}
+
+function emptySummaryDay(date) {
+  return {
+    date,
+    solarKwh: null,
+    loadKwh: null,
+    peakSolarW: null,
+    minSoc: null,
+    maxSoc: null,
+    source: null,
+  };
+}
+
+/** Aggregate daily solar/load kWh for the last N plant-local days via fetchHistory. */
+export async function fetchHistorySummary(systemConfig, days = 7, endDate = null) {
+  const tzOffset = systemConfig.credentials.timezone ?? 0;
+  const end = endDate || localDate(tzOffset);
+  const dates = dateRange(end, days);
+
+  const series = await Promise.all(
+    dates.map(async (date) => {
+      try {
+        const history = await fetchHistory(systemConfig, date);
+        if (!history.points?.length) return emptySummaryDay(date);
+        const summary = computeDailySummary(history.points);
+        return {
+          date,
+          solarKwh: summary.solarKwh,
+          loadKwh: summary.loadKwh,
+          peakSolarW: summary.peakSolarW,
+          minSoc: summary.minSoc,
+          maxSoc: summary.maxSoc,
+          source: "vendor",
+        };
+      } catch {
+        return emptySummaryDay(date);
+      }
+    }),
+  );
+
+  return {
+    systemId: systemConfig.id,
+    days,
+    endDate: end,
+    series,
   };
 }
 

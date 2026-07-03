@@ -195,6 +195,37 @@ export default {
       }
     }
 
+    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from vendor APIs
+    const summaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
+    if (summaryMatch && request.method === "GET") {
+      const id = summaryMatch[1];
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const daysParam = url.searchParams.get("days");
+      const days = daysParam ? Number(daysParam) : 7;
+      if (!Number.isFinite(days) || days < 1 || days > 90) {
+        return errorResponse("Invalid days (expected 1–90)", 400, origin);
+      }
+
+      const endDate = url.searchParams.get("end");
+      if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        return errorResponse("Invalid end date (expected YYYY-MM-DD)", 400, origin);
+      }
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter?.fetchHistorySummary) {
+        return errorResponse(`History summary not supported for service: ${raw.service}`, 501, origin);
+      }
+
+      try {
+        const summary = await adapter.fetchHistorySummary(raw, days, endDate || null);
+        return jsonResponse(summary, 200, origin);
+      } catch (err) {
+        return errorResponse(`History summary failed: ${err.message}`, 502, origin);
+      }
+    }
+
     // GET /api/systems/:id/history?date=YYYY-MM-DD — intraday power series
     const historyMatch = path.match(/^\/api\/systems\/([^/]+)\/history$/);
     if (historyMatch && request.method === "GET") {
