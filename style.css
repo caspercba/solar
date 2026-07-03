@@ -423,6 +423,38 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   background: var(--card-bg);
 }
 
+.chart-empty {
+  flex-direction: column;
+  gap: .75rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.chart-empty-msg {
+  margin: 0;
+  max-width: 22rem;
+  line-height: 1.45;
+}
+
+.chart-empty-error .chart-empty-msg {
+  color: var(--accent-load);
+}
+
+.chart-retry-btn {
+  padding: .45rem 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: .85rem;
+  cursor: pointer;
+}
+
+.chart-retry-btn:hover {
+  border-color: var(--accent-sol);
+  color: var(--accent-sol);
+}
+
 .chart-legend {
   display: flex;
   flex-wrap: wrap;
