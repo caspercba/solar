@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Solar Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -45,6 +45,10 @@
     </nav>
 
     <main id="cards-view" class="cards">
+      <div class="inverter-status-row">
+        <span id="inverter-status" class="inverter-status status-unavailable">--</span>
+      </div>
+
       <!-- Battery card -->
       <div class="card card-battery">
         <div class="card-header">
@@ -183,6 +187,10 @@
         <input type="text" id="add-user" required>
         <label>Password</label>
         <input type="password" id="add-pass" required>
+        <div id="add-plant-group" hidden>
+          <label for="add-plant">Plant</label>
+          <select id="add-plant"></select>
+        </div>
         <div class="modal-actions">
           <button type="button" id="add-cancel" class="btn-secondary">Cancel</button>
           <button type="submit" id="add-submit">Add System</button>
@@ -204,6 +212,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

@@ -3,13 +3,19 @@
 Reverse-engineered API for the Growatt SPF 3500 ES solar/storage inverter
 monitored via `https://mqtt.growatt.com/`.
 
+## Security
+
+> **Do not commit real credentials.** Set `GROWATT_ACCOUNT` and `GROWATT_PASSWORD` in your
+> environment (or pass them as arguments to `fetch_data.py`). The curl examples below use
+> placeholders — substitute your own values or shell variables before running.
+
 ## Quick Start
 
 ```bash
 # Login (get session cookie)
 curl -s -X POST 'https://mqtt.growatt.com/login' \
   -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d 'account=riodelmedio&password=rio2909&validateCode=&isReadPact=0&lang=en' \
+  -d 'account=YOUR_ACCOUNT&password=YOUR_PASSWORD&validateCode=&isReadPact=0&lang=en' \
   -c cookies.txt
 
 # Fetch real-time status

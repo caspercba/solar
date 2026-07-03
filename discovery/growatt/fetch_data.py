@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Growatt API client — fetch real-time data for SPF 3500 ES storage inverter."""
+"""Growatt API client — fetch real-time data for SPF 3500 ES storage inverter.
+
+Environment:
+  GROWATT_ACCOUNT, GROWATT_PASSWORD — required unless passed as CLI arguments
+"""
 
 import json
+import os
 import sys
 import urllib.request
 import urllib.parse
@@ -59,8 +64,11 @@ def post_json(opener, path, body_dict=None):
 
 
 def main():
-    account = sys.argv[1] if len(sys.argv) > 1 else "riodelmedio"
-    password = sys.argv[2] if len(sys.argv) > 2 else "rio2909"
+    account = os.environ.get("GROWATT_ACCOUNT") or (sys.argv[1] if len(sys.argv) > 1 else None)
+    password = os.environ.get("GROWATT_PASSWORD") or (sys.argv[2] if len(sys.argv) > 2 else None)
+    if not account or not password:
+        print("Set GROWATT_ACCOUNT and GROWATT_PASSWORD", file=sys.stderr)
+        sys.exit(1)
 
     opener = create_session()
     print("Logging in...")

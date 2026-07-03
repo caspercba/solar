@@ -71,7 +71,7 @@ async function getSession(systemConfig) {
 
 /* ── Discovery: find plant + device info on first setup ── */
 
-export async function discover(credentials) {
+export async function discover(credentials, plantId = null) {
   const pwdSha1 = await sha1Hex(credentials.password);
   const sess = await apiAuth(credentials.user, pwdSha1);
 
@@ -79,12 +79,22 @@ export async function discover(credentials) {
   const plantList = plantsData?.info || [];
   if (!plantList.length) throw new Error("No plants found");
 
-  const plant = plantList[0];
-  const plantId = String(plant.pid);
+  const plants = plantList.map((p) => ({
+    id: String(p.pid),
+    name: p.pname || `Plant ${p.pid}`,
+  }));
 
-  const plantInfo = await apiGet(sess, `&action=queryPlantInfo&plantid=${plantId}`);
+  if (!plantId && plants.length > 1) {
+    return { plants, requiresPlantSelection: true, pwdSha1 };
+  }
 
-  const devData = await apiGet(sess, `&action=queryPlantDeviceStatus&plantid=${plantId}`);
+  const selectedId = plantId || plants[0].id;
+  const plant = plantList.find((p) => String(p.pid) === String(selectedId));
+  if (!plant) throw new Error(`Plant not found: ${selectedId}`);
+
+  const plantInfo = await apiGet(sess, `&action=queryPlantInfo&plantid=${selectedId}`);
+
+  const devData = await apiGet(sess, `&action=queryPlantDeviceStatus&plantid=${selectedId}`);
   const collectors = devData?.collector || [];
   if (!collectors.length || !collectors[0].device?.length) throw new Error("No devices found");
 
@@ -92,8 +102,9 @@ export async function discover(credentials) {
   const dev = collector.device[0];
 
   return {
+    plants,
     pwdSha1,
-    plantId,
+    plantId: selectedId,
     plantName: plant.pname || plantInfo.name || "Unknown",
     device: {
       pn: collector.pn,
@@ -107,6 +118,29 @@ export async function discover(credentials) {
 }
 
 /* ── Data fetch + normalize ── */
+
+const BAT_LOW_V = 42.0;
+const BAT_HIGH_V = 53.5;
+
+function estimateSocFromVoltage(batV) {
+  if (batV >= BAT_HIGH_V) return 100;
+  if (batV <= BAT_LOW_V) return 0;
+  return Math.round(((batV - BAT_LOW_V) / (BAT_HIGH_V - BAT_LOW_V)) * 100);
+}
+
+/** @returns {{ soc: number, socSource: 'api' | 'estimated' }} */
+export function resolveBatterySoc(plantCurrent, batV) {
+  if (Array.isArray(plantCurrent)) {
+    const item = plantCurrent.find(i => i.key === "BATTERY_SOC");
+    if (item?.val != null && item.val !== "") {
+      const apiSoc = parseFloat(item.val);
+      if (!Number.isNaN(apiSoc) && apiSoc >= 0 && apiSoc !== -1) {
+        return { soc: Math.round(apiSoc), socSource: "api" };
+      }
+    }
+  }
+  return { soc: estimateSocFromVoltage(batV), socSource: "estimated" };
+}
 
 function localDate(tzOffsetSeconds) {
   const now = new Date(Date.now() + tzOffsetSeconds * 1000);
@@ -157,12 +191,7 @@ export async function fetchData(systemConfig) {
   const nominalPV = systemConfig.credentials.nominalPower || 5000;
   const ratedPower = ratedW || 5000;
 
-  const batLowV = 42.0;
-  const batHighV = 53.5;
-  let soc;
-  if (batV >= batHighV) soc = 100;
-  else if (batV <= batLowV) soc = 0;
-  else soc = Math.round(((batV - batLowV) / (batHighV - batLowV)) * 100);
+  const { soc, socSource } = resolveBatterySoc(plantCurrent, batV);
 
   const genOn = gridV > 30 && Math.abs(gridW) > 5;
 
@@ -177,7 +206,7 @@ export async function fetchData(systemConfig) {
     name: systemConfig.name,
     service: "shinemonitor",
     timestamp: ts,
-    battery: { voltage: batV, soc, current: batA, power: Math.round(batV * batA) },
+    battery: { voltage: batV, soc, socSource, current: batA, power: Math.round(batV * batA) },
     solar: { power: solarW, voltage: pvV },
     load: { power: loadW, percent: Math.round((loadW / ratedPower) * 100) },
     grid: { power: gridW, voltage: gridV, active: genOn },

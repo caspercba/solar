@@ -35,12 +35,17 @@ export default {
 
     const origin = cors.origin;
 
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    // GET /api/health — lightweight uptime check (no auth required)
+    if (path === "/api/health" && request.method === "GET") {
+      return jsonResponse({ ok: true, version: "1.1.0" }, 200, origin);
+    }
+
     if (!checkAuth(request, env)) {
       return errorResponse("Unauthorized", 401, origin);
     }
-
-    const url = new URL(request.url);
-    const path = url.pathname;
 
     // GET /api/services — list supported service types
     if (path === "/api/services" && request.method === "GET") {
@@ -60,7 +65,7 @@ export default {
     // POST /api/systems — add a new system
     if (path === "/api/systems" && request.method === "POST") {
       const body = await request.json();
-      const { service, name, user, password } = body;
+      const { service, name, user, password, plantId } = body;
 
       if (!service || !user || !password) {
         return errorResponse("Missing required fields: service, user, password", 400, origin);
@@ -73,9 +78,16 @@ export default {
 
       let discovered;
       try {
-        discovered = await adapter.discover({ user, password });
+        discovered = await adapter.discover({ user, password }, plantId || null);
       } catch (err) {
         return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
+      }
+
+      if (discovered.requiresPlantSelection) {
+        return jsonResponse({
+          requiresPlantSelection: true,
+          plants: discovered.plants,
+        }, 200, origin);
       }
 
       const id = generateId();
