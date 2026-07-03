@@ -7,7 +7,7 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
-import { resolveDayHistory, resolveHistorySummary } from "./history.js";
+import { resolveDayHistory } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -196,7 +196,7 @@ export default {
       }
     }
 
-    // GET /api/systems/:id/history/summary?days=7 — daily energy totals
+    // GET /api/systems/:id/history/summary?days=7&end=YYYY-MM-DD — daily energy totals (vendor)
     const historySummaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
     if (historySummaryMatch && request.method === "GET") {
       const id = historySummaryMatch[1];
@@ -209,16 +209,21 @@ export default {
         }
       }
 
+      const endDate = url.searchParams.get("end");
+      if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        return errorResponse("Invalid end date (expected YYYY-MM-DD)", 400, origin);
+      }
+
       const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
 
       const adapter = ADAPTERS[raw.service];
-      if (!adapter?.fetchHistory) {
-        return errorResponse(`History not supported for service: ${raw.service}`, 501, origin);
+      if (!adapter?.fetchHistorySummary) {
+        return errorResponse(`History summary not supported for service: ${raw.service}`, 501, origin);
       }
 
       try {
-        const summary = await resolveHistorySummary(env, raw, adapter, days);
+        const summary = await adapter.fetchHistorySummary(raw, days, endDate || null);
         return jsonResponse(summary, 200, origin);
       } catch (err) {
         return errorResponse(`History summary failed: ${err.message}`, 502, origin);

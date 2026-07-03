@@ -1,3 +1,5 @@
+import { computeDailySummary, dateRange } from "../history.js";
+
 /**
  * ShineMonitor service adapter.
  *
@@ -174,13 +176,21 @@ export function parseHistoryRows(titles, rows) {
     const batA = parseFloat(fieldVal("Batt Current", fields)) || 0;
     const solarW = parseFloat(fieldVal("Charger Power", fields)) || 0;
     const loadW = parseFloat(fieldVal("PLoad", fields)) || 0;
+    const socRaw = fieldVal("BATTERY_SOC", fields);
+    let soc;
+    if (socRaw != null && socRaw !== "" && socRaw !== "-1") {
+      const parsed = parseFloat(socRaw);
+      if (Number.isFinite(parsed) && parsed >= 0) soc = Math.round(parsed);
+    }
 
-    points.push({
+    const point = {
       time: ts.includes(" ") ? ts.split(" ")[1].slice(0, 5) : ts.slice(0, 5),
       solar: Math.round(solarW),
       load: Math.round(loadW),
       battery: Math.round(batV * batA),
-    });
+    };
+    if (soc != null) point.soc = soc;
+    points.push(point);
   }
 
   return points;
@@ -208,6 +218,49 @@ async function fetchAllDeviceData(sess, device, date) {
   }
 
   return { titles, rows: allRows.reverse() };
+}
+
+function emptySummaryDay(date) {
+  return {
+    date,
+    solarKwh: null,
+    loadKwh: null,
+    minSoc: null,
+    maxSoc: null,
+  };
+}
+
+/** Aggregate daily solar/load kWh for the last N plant-local days via fetchHistory. */
+export async function fetchHistorySummary(systemConfig, days = 7, endDate = null) {
+  const tzOffset = systemConfig.credentials.timezone ?? 0;
+  const end = endDate || localDate(tzOffset);
+  const dates = dateRange(end, days);
+
+  const series = await Promise.all(
+    dates.map(async (date) => {
+      try {
+        const history = await fetchHistory(systemConfig, date);
+        if (!history.points?.length) return emptySummaryDay(date);
+        const summary = computeDailySummary(history.points);
+        return {
+          date,
+          solarKwh: summary.solarKwh,
+          loadKwh: summary.loadKwh,
+          minSoc: summary.minSoc,
+          maxSoc: summary.maxSoc,
+        };
+      } catch {
+        return emptySummaryDay(date);
+      }
+    }),
+  );
+
+  return {
+    systemId: systemConfig.id,
+    days,
+    endDate: end,
+    series,
+  };
 }
 
 export async function fetchHistory(systemConfig, date) {

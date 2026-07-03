@@ -190,16 +190,47 @@ export function mergeHistoryPoints(storedPoints, vendorPoints) {
   return [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time));
 }
 
-/** Last N calendar days ending on referenceDate (YYYY-MM-DD), oldest first. */
-export function lastNDates(days, referenceDate) {
+/** Last N calendar days ending on endDate (YYYY-MM-DD), oldest first. */
+export function dateRange(endDate, days) {
+  const end = new Date(`${endDate}T00:00:00Z`);
   const dates = [];
-  const ref = new Date(`${referenceDate}T12:00:00Z`);
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(ref);
+    const d = new Date(end);
     d.setUTCDate(d.getUTCDate() - i);
     dates.push(formatDateISO(d));
   }
   return dates;
+}
+
+/** @deprecated use dateRange */
+export function lastNDates(days, referenceDate) {
+  return dateRange(referenceDate, days);
+}
+
+export function computeSocExtrema(values) {
+  let minSoc = null;
+  let maxSoc = null;
+  for (const v of values) {
+    if (!Number.isFinite(v) || v < 0) continue;
+    minSoc = minSoc == null ? v : Math.min(minSoc, v);
+    maxSoc = maxSoc == null ? v : Math.max(maxSoc, v);
+  }
+  return { minSoc, maxSoc };
+}
+
+/** Fill missing minSoc/maxSoc on summary days from vendor supplement map. */
+export function supplementSummarySoc(series, socByDate) {
+  if (!socByDate || !series?.length) return series;
+  return series.map((day) => {
+    if (day.minSoc != null && day.maxSoc != null) return day;
+    const sup = socByDate[day.date];
+    if (!sup) return day;
+    return {
+      ...day,
+      minSoc: day.minSoc ?? sup.minSoc,
+      maxSoc: day.maxSoc ?? sup.maxSoc,
+    };
+  });
 }
 
 function resolveQueryDate(systemConfig, adapter, dateParam, nowMs) {
@@ -264,53 +295,3 @@ export async function resolveDayHistory(env, systemConfig, adapter, dateParam, n
   };
 }
 
-/** Daily energy totals for bar chart; stored KV first, vendor fallback per day. */
-export async function resolveHistorySummary(env, systemConfig, adapter, days, nowMs = Date.now()) {
-  const referenceDate = formatDateISO(new Date(nowMs));
-  const dates = lastNDates(days, referenceDate);
-  const summary = [];
-
-  for (const date of dates) {
-    const stored = await getDay(env, systemConfig.id, date);
-    if (stored?.dailySummary) {
-      summary.push({
-        date,
-        solarKwh: stored.dailySummary.solarKwh,
-        loadKwh: stored.dailySummary.loadKwh,
-      });
-      continue;
-    }
-
-    if (adapter?.fetchHistory) {
-      try {
-        const vendor = await adapter.fetchHistory(systemConfig, date);
-        const daily = computeDailySummary(vendor.points ?? []);
-        summary.push({ date, solarKwh: daily.solarKwh, loadKwh: daily.loadKwh });
-        continue;
-      } catch {
-        // fall through to zero row
-      }
-    }
-
-    summary.push({ date, solarKwh: 0, loadKwh: 0 });
-  }
-
-  if (adapter?.fetchBatChartSummary) {
-    try {
-      const batByDate = await adapter.fetchBatChartSummary(systemConfig);
-      if (batByDate) {
-        for (const entry of summary) {
-          const enrich = batByDate[entry.date];
-          if (enrich) {
-            entry.batteryChargeKwh = enrich.batteryChargeKwh;
-            entry.batteryDischargeKwh = enrich.batteryDischargeKwh;
-          }
-        }
-      }
-    } catch {
-      // optional Growatt enrichment
-    }
-  }
-
-  return summary;
-}

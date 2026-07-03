@@ -367,21 +367,12 @@ describe("worker routes", () => {
       }));
     }
 
-    it("returns daily totals from stored KV with vendor fallback", async () => {
+    it("returns vendor daily totals with normalized series shape", async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-07-03T12:00:00Z"));
 
       const systems = env();
       await seedGrowatt(systems);
-      await systems.SYSTEMS.put(
-        `history:day:${SYSTEM_ID}:2026-06-29`,
-        JSON.stringify({
-          systemId: SYSTEM_ID,
-          date: "2026-06-29",
-          dailySummary: { solarKwh: 18.5, loadKwh: 11.2, peakSolarW: 3000, minSoc: 40, maxSoc: 95 },
-          points: [],
-        }),
-      );
 
       globalThis.fetch = vi.fn(async (url, init) => {
         const u = String(url);
@@ -404,8 +395,8 @@ describe("worker routes", () => {
           return Response.json({
             result: 1,
             obj: {
-              cdsTitle: ["2026-06-29", "2026-07-03"],
-              cdsData: { cd_charge: [2.2, 1.5], cd_disCharge: [0.5, 0.8] },
+              date: "2026-07-03",
+              socChart: { capacity: ["55", "60", "58"] },
             },
           });
         }
@@ -414,31 +405,99 @@ describe("worker routes", () => {
 
       try {
         const res = await call(
-          request(`/api/systems/${SYSTEM_ID}/history/summary?days=7`, { headers: AUTH }),
+          request(`/api/systems/${SYSTEM_ID}/history/summary?days=7&end=2026-07-03`, { headers: AUTH }),
           systems,
         );
 
         expect(res.status).toBe(200);
         const json = await res.json();
-        expect(Array.isArray(json)).toBe(true);
-        expect(json).toHaveLength(7);
-        expect(json[0]).toMatchObject({ date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), solarKwh: expect.any(Number), loadKwh: expect.any(Number) });
-
-        const storedDay = json.find((d) => d.date === "2026-06-29");
-        expect(storedDay).toEqual({
-          date: "2026-06-29",
-          solarKwh: 18.5,
-          loadKwh: 11.2,
-          batteryChargeKwh: 2.2,
-          batteryDischargeKwh: 0.5,
+        expect(json.systemId).toBe(SYSTEM_ID);
+        expect(json.days).toBe(7);
+        expect(json.endDate).toBe("2026-07-03");
+        expect(json.series).toHaveLength(7);
+        expect(json.series[0]).toMatchObject({
+          date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          solarKwh: expect.any(Number),
+          loadKwh: expect.any(Number),
         });
 
-        const vendorDay = json.find((d) => d.date === "2026-07-03");
+        const vendorDay = json.series.find((d) => d.date === "2026-07-03");
         expect(vendorDay.solarKwh).toBeGreaterThan(0);
-        expect(vendorDay.batteryChargeKwh).toBe(1.5);
+        expect(vendorDay.loadKwh).toBeGreaterThan(0);
+        expect(vendorDay.minSoc).toBe(55);
+        expect(vendorDay.maxSoc).toBe(60);
+
+        const emptyDay = json.series.find((d) => d.date === "2026-06-27");
+        expect(emptyDay).toMatchObject({ solarKwh: null, loadKwh: null });
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it("uses ShineMonitor fetchHistorySummary from vendor APIs", async () => {
+      const systems = env();
+      await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
+      await systems.SYSTEMS.put(
+        "system:sm1",
+        JSON.stringify({
+          id: "sm1",
+          name: "Cabin",
+          service: "shinemonitor",
+          credentials: {
+            user: "user@example.com",
+            pwdSha1: "5baa61e4c9b93f3f0682250b6cf8331b7ee68fd8",
+            plantId: "100",
+            device: { pn: "PN1", devcode: "1", sn: "SN1", devaddr: "1" },
+            timezone: 0,
+          },
+        }),
+      );
+
+      const titles = [
+        { title: "Timestamp" },
+        { title: "Battery Voltage" },
+        { title: "Batt Current" },
+        { title: "Charger Power" },
+        { title: "PLoad" },
+        { title: "BATTERY_SOC" },
+      ];
+
+      globalThis.fetch = vi.fn(async (url) => {
+        const u = String(url);
+        if (u.includes("action=auth")) {
+          return Response.json({ err: 0, dat: { secret: "s1", token: "t1" } });
+        }
+        if (u.includes("queryDeviceDataOneDayPaging")) {
+          return Response.json({
+            err: 0,
+            dat: {
+              title: titles,
+              total: 1,
+              row: [{
+                field: ["2026-07-03 10:00:00", "50.0", "0", "2400", "500", "72"],
+              }],
+            },
+          });
+        }
+        throw new Error(`Unexpected fetch: ${u}`);
+      });
+
+      const res = await call(
+        request("/api/systems/sm1/history/summary?days=1&end=2026-07-03", { headers: AUTH }),
+        systems,
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.systemId).toBe("sm1");
+      expect(json.series).toHaveLength(1);
+      expect(json.series[0]).toMatchObject({
+        date: "2026-07-03",
+        solarKwh: 0.2,
+        loadKwh: 0,
+        minSoc: 72,
+        maxSoc: 72,
+      });
     });
   });
 });

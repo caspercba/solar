@@ -1,3 +1,5 @@
+import { computeDailySummary, computeSocExtrema, dateRange, supplementSummarySoc } from "../history.js";
+
 /**
  * Growatt service adapter.
  *
@@ -225,31 +227,69 @@ export function defaultHistoryDate(_systemConfig, nowMs = Date.now()) {
   return new Date(nowMs).toISOString().slice(0, 10);
 }
 
-/** Optional 7-day battery charge/discharge totals keyed by date. */
-export async function fetchBatChartSummary(systemConfig) {
-  const sess = await getSession(systemConfig);
-  const { plantId, storageSn } = systemConfig.credentials;
-  const resp = await postJson(sess, "/panel/storage/getStorageBatChart", { plantId, storageSn });
-  if (resp.result !== 1) return null;
-
-  const obj = resp.obj || {};
-  const titles = obj.cdsTitle || [];
-  const charges = obj.cdsData?.cd_charge || [];
-  const discharges = obj.cdsData?.cd_disCharge || [];
-  const byDate = {};
-
-  for (let i = 0; i < titles.length; i++) {
-    byDate[titles[i]] = {
-      batteryChargeKwh: round1(parseFloat(charges[i]) || 0),
-      batteryDischargeKwh: round1(parseFloat(discharges[i]) || 0),
-    };
-  }
-
-  return byDate;
+function emptySummaryDay(date) {
+  return {
+    date,
+    solarKwh: null,
+    loadKwh: null,
+    minSoc: null,
+    maxSoc: null,
+  };
 }
 
-function round1(n) {
-  return Math.round(n * 10) / 10;
+/** Daily min/max SOC from today's bat chart when history points lack SOC. */
+export async function fetchSocDailySummary(systemConfig, _endDate, _days) {
+  const sess = await getSession(systemConfig);
+  const { plantId, storageSn } = systemConfig.credentials;
+
+  const resp = await postJson(sess, "/panel/storage/getStorageBatChart", { plantId, storageSn });
+  if (resp.result !== 1) return {};
+
+  const obj = resp.obj || {};
+  const capacity = (obj.socChart?.capacity || []).map((v) => parseFloat(v));
+  const { minSoc, maxSoc } = computeSocExtrema(capacity);
+  if (minSoc == null) return {};
+
+  return { [obj.date]: { minSoc, maxSoc } };
+}
+
+/** Aggregate daily solar/load kWh for the last N days via fetchHistory + SOC supplement. */
+export async function fetchHistorySummary(systemConfig, days = 7, endDate = null) {
+  const end = endDate || defaultHistoryDate(systemConfig);
+  const dates = dateRange(end, days);
+
+  let series = await Promise.all(
+    dates.map(async (date) => {
+      try {
+        const history = await fetchHistory(systemConfig, date);
+        if (!history.points?.length) return emptySummaryDay(date);
+        const summary = computeDailySummary(history.points);
+        return {
+          date,
+          solarKwh: summary.solarKwh,
+          loadKwh: summary.loadKwh,
+          minSoc: summary.minSoc,
+          maxSoc: summary.maxSoc,
+        };
+      } catch {
+        return emptySummaryDay(date);
+      }
+    }),
+  );
+
+  try {
+    const socByDate = await fetchSocDailySummary(systemConfig, end, days);
+    series = supplementSummarySoc(series, socByDate);
+  } catch {
+    // optional SOC enrichment
+  }
+
+  return {
+    systemId: systemConfig.id,
+    days,
+    endDate: end,
+    series,
+  };
 }
 
 export async function fetchHistory(systemConfig, date) {
