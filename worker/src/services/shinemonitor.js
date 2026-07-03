@@ -142,9 +142,88 @@ export function resolveBatterySoc(plantCurrent, batV) {
   return { soc: estimateSocFromVoltage(batV), socSource: "estimated" };
 }
 
-function localDate(tzOffsetSeconds) {
+export function localDate(tzOffsetSeconds) {
   const now = new Date(Date.now() + tzOffsetSeconds * 1000);
   return now.toISOString().slice(0, 10);
+}
+
+function buildFieldLookup(titles) {
+  const indexByName = new Map();
+  for (let i = 0; i < titles.length; i++) {
+    indexByName.set(titles[i].title, i);
+  }
+  return (name, fields) => {
+    const i = indexByName.get(name);
+    return i != null ? fields[i] : null;
+  };
+}
+
+/** Parse paginated device rows into normalized history points (chronological). */
+export function parseHistoryRows(titles, rows) {
+  const fieldVal = buildFieldLookup(titles);
+  const points = [];
+
+  for (const row of rows) {
+    const fields = row?.field || [];
+    const ts = fieldVal("Timestamp", fields) || "";
+    const batV = parseFloat(fieldVal("Battery Voltage", fields)) || 0;
+    const batA = parseFloat(fieldVal("Batt Current", fields)) || 0;
+    const solarW = parseFloat(fieldVal("Charger Power", fields)) || 0;
+    const loadW = parseFloat(fieldVal("PLoad", fields)) || 0;
+
+    points.push({
+      time: ts.includes(" ") ? ts.split(" ")[1].slice(0, 5) : ts.slice(0, 5),
+      solar: Math.round(solarW),
+      load: Math.round(loadW),
+      battery: Math.round(batV * batA),
+    });
+  }
+
+  return points;
+}
+
+async function fetchAllDeviceData(sess, device, date) {
+  const pageSize = 288;
+  let page = 0;
+  let allRows = [];
+  let titles = [];
+  let total = Infinity;
+
+  while (allRows.length < total) {
+    const devData = await apiGet(
+      sess,
+      `&action=queryDeviceDataOneDayPaging&pn=${device.pn}&devcode=${device.devcode}&sn=${device.sn}&devaddr=${device.devaddr}&date=${date}&page=${page}&pagesize=${pageSize}`,
+    );
+    titles = devData?.title || titles;
+    total = devData?.total ?? 0;
+    const rows = devData?.row || [];
+    if (!rows.length) break;
+    allRows.push(...rows);
+    page++;
+    if (rows.length < pageSize || allRows.length >= total) break;
+  }
+
+  return { titles, rows: allRows.reverse() };
+}
+
+export async function fetchHistory(systemConfig, date) {
+  const sess = await getSession(systemConfig);
+  const { device, timezone } = systemConfig.credentials;
+  const tzOffset = timezone ?? 0;
+  const queryDate = date || localDate(tzOffset);
+
+  const { titles, rows } = await fetchAllDeviceData(sess, device, queryDate);
+  const points = parseHistoryRows(titles, rows);
+
+  return {
+    systemId: systemConfig.id,
+    name: systemConfig.name,
+    service: "shinemonitor",
+    date: queryDate,
+    timezoneOffset: tzOffset,
+    intervalMinutes: 5,
+    points,
+  };
 }
 
 export async function fetchData(systemConfig) {

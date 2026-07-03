@@ -336,6 +336,90 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   color: var(--text);
 }
 
+/* ---------- CHART VIEW ---------- */
+
+.chart-view {
+  padding: .75rem 1.25rem;
+  max-width: 580px;
+  margin: 0 auto;
+}
+.chart-view[hidden] { display: none !important; }
+
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: .75rem;
+}
+
+.chart-date-label {
+  font-size: .85rem;
+  color: var(--text-dim);
+}
+
+.chart-date-input {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: .45rem .65rem;
+  color: var(--text);
+  font-size: .9rem;
+  outline: none;
+}
+
+.chart-date-input:focus { border-color: var(--accent-sol); }
+
+.chart-wrap {
+  position: relative;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+#power-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-empty,
+.chart-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: .9rem;
+  background: var(--card-bg);
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: .75rem;
+  font-size: .8rem;
+  color: var(--text-dim);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.legend-swatch {
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.legend-solar { background: var(--accent-sol); }
+.legend-load { background: var(--accent-load); }
+.legend-battery { background: var(--accent-bat); }
+
 /* ---------- FLOW VIEW ---------- */
 
 .flow-view {
