@@ -90,3 +90,17 @@ export function computeSocExtrema(values) {
   return { minSoc, maxSoc };
 }
 
+/** Fill missing minSoc/maxSoc on summary days from vendor supplement map. */
+export function supplementSummarySoc(series, socByDate) {
+  if (!socByDate || !series?.length) return series;
+  return series.map((day) => {
+    if (day.minSoc != null && day.maxSoc != null) return day;
+    const sup = socByDate[day.date];
+    if (!sup) return day;
+    return {
+      ...day,
+      minSoc: day.minSoc ?? sup.minSoc,
+      maxSoc: day.maxSoc ?? sup.maxSoc,
+    };
+  });
+}

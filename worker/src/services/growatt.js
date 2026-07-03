@@ -11,6 +11,7 @@ import {
   dateRange,
   mergeSocIntoPoints,
   socMapFromPoints,
+  supplementSummarySoc,
 } from "../history.js";
 
 const BASE = "https://mqtt.growatt.com";
@@ -329,7 +330,7 @@ export async function fetchHistorySummary(systemConfig, days = 7, endDate = null
   const end = endDate || new Date().toISOString().slice(0, 10);
   const dates = dateRange(end, days);
 
-  const series = await Promise.all(
+  let series = await Promise.all(
     dates.map(async (date) => {
       try {
         const history = await fetchHistory(systemConfig, date);
@@ -349,6 +350,13 @@ export async function fetchHistorySummary(systemConfig, days = 7, endDate = null
       }
     }),
   );
+
+  try {
+    const socByDate = await fetchSocDailySummary(systemConfig, end, days);
+    series = supplementSummarySoc(series, socByDate);
+  } catch {
+    // optional SOC enrichment
+  }
 
   return {
     systemId: systemConfig.id,
