@@ -1,3 +1,5 @@
+import { loadSystemConfig } from "./credentials.js";
+
 export const DEFAULT_RETENTION_DAYS = 90;
 export const INTERVAL_MINUTES = 5;
 
@@ -159,4 +161,52 @@ export async function pruneOld(
   await env.SYSTEMS.put(indexKey(systemId), JSON.stringify(remaining));
 
   return { removed: toRemove, kept: remaining.length };
+}
+
+/** Remove all stored history keys for a system (day buckets + date index). */
+export async function deleteHistory(env, systemId) {
+  const dates = await listDates(env, systemId);
+  for (const date of dates) {
+    await env.SYSTEMS.delete(dayKey(systemId, date));
+  }
+  await env.SYSTEMS.delete(indexKey(systemId));
+  return { removed: dates.length };
+}
+
+/** Cron handler: fetch realtime data for each system and append to daily history. */
+export async function runScheduledSnapshots(env, adapters, nowMs = Date.now()) {
+  const index = await env.SYSTEMS.get("_index", "json");
+  if (!index?.length) return { checked: 0, appended: 0, failed: 0 };
+
+  const results = await Promise.allSettled(
+    index.map(async (entry) => {
+      const raw = await loadSystemConfig(env, entry.id);
+      if (!raw) {
+        console.error(`History snapshot skipped for ${entry.id}: system not found`);
+        return { systemId: entry.id, ok: false, error: "Not found" };
+      }
+      const adapter = adapters[raw.service];
+      if (!adapter) {
+        console.error(`History snapshot skipped for ${entry.id}: no adapter for ${raw.service}`);
+        return { systemId: entry.id, ok: false, error: "No adapter" };
+      }
+      try {
+        const data = await adapter.fetchData(raw);
+        await appendSnapshot(env, entry.id, data, nowMs);
+        return { systemId: entry.id, ok: true };
+      } catch (err) {
+        console.error(`History snapshot failed for ${entry.id}:`, err.message);
+        return { systemId: entry.id, ok: false, error: err.message };
+      }
+    }),
+  );
+
+  let appended = 0;
+  let failed = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value.ok) appended++;
+    else failed++;
+  }
+
+  return { checked: index.length, appended, failed };
 }

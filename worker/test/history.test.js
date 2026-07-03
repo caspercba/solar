@@ -1,13 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   appendPoint,
   appendSnapshot,
   computeDailySummary,
+  deleteHistory,
   getDay,
   listDates,
   parseDataTimestamp,
   pointFromData,
   pruneOld,
+  runScheduledSnapshots,
   selectDatesToPrune,
   upsertDateIndex,
 } from "../src/history.js";
@@ -170,6 +172,90 @@ describe("history KV storage", () => {
     expect(await getDay(env, "sys-1", "2026-03-01")).toBeNull();
     expect(await getDay(env, "sys-1", "2026-07-01")).not.toBeNull();
     expect(await listDates(env, "sys-1")).toEqual(["2026-07-01"]);
+  });
+});
+
+describe("deleteHistory", () => {
+  it("removes all day keys and the date index for a system", async () => {
+    const env = { SYSTEMS: createMockKV() };
+    await appendSnapshot(env, "sys-1", SAMPLE_DATA, Date.parse("2026-07-03T14:32:00Z"));
+    await appendSnapshot(
+      env,
+      "sys-1",
+      { ...SAMPLE_DATA, timestamp: "2026-07-02 10:00:00" },
+      Date.parse("2026-07-02T10:00:00Z"),
+    );
+
+    const result = await deleteHistory(env, "sys-1");
+    expect(result.removed).toBe(2);
+    expect(await listDates(env, "sys-1")).toEqual([]);
+    expect(await getDay(env, "sys-1", "2026-07-03")).toBeNull();
+    expect(await getDay(env, "sys-1", "2026-07-02")).toBeNull();
+  });
+});
+
+describe("runScheduledSnapshots", () => {
+  it("appends a snapshot for each configured system", async () => {
+    const env = { SYSTEMS: createMockKV() };
+    await env.SYSTEMS.put("_index", JSON.stringify([
+      { id: "a", name: "Alpha", service: "growatt" },
+      { id: "b", name: "Beta", service: "shinemonitor" },
+    ]));
+    await env.SYSTEMS.put("system:a", JSON.stringify({
+      id: "a",
+      name: "Alpha",
+      service: "growatt",
+      credentials: {},
+    }));
+    await env.SYSTEMS.put("system:b", JSON.stringify({
+      id: "b",
+      name: "Beta",
+      service: "shinemonitor",
+      credentials: {},
+    }));
+
+    const adapters = {
+      growatt: {
+        fetchData: vi.fn(async () => ({ ...SAMPLE_DATA, systemId: "a", timestamp: "2026-07-03 14:32:00" })),
+      },
+      shinemonitor: {
+        fetchData: vi.fn(async () => ({ ...SAMPLE_DATA, systemId: "b", timestamp: "2026-07-03 14:33:00" })),
+      },
+    };
+
+    const result = await runScheduledSnapshots(env, adapters, Date.parse("2026-07-03T14:32:00Z"));
+    expect(result).toEqual({ checked: 2, appended: 2, failed: 0 });
+    expect(adapters.growatt.fetchData).toHaveBeenCalledOnce();
+    expect(adapters.shinemonitor.fetchData).toHaveBeenCalledOnce();
+    expect(await listDates(env, "a")).toEqual(["2026-07-03"]);
+    expect(await listDates(env, "b")).toEqual(["2026-07-03"]);
+  });
+
+  it("logs and counts failures without aborting other systems", async () => {
+    const env = { SYSTEMS: createMockKV() };
+    await env.SYSTEMS.put("_index", JSON.stringify([
+      { id: "ok", name: "OK", service: "growatt" },
+      { id: "bad", name: "Bad", service: "growatt" },
+    ]));
+    await env.SYSTEMS.put("system:ok", JSON.stringify({ id: "ok", service: "growatt", credentials: {} }));
+    await env.SYSTEMS.put("system:bad", JSON.stringify({ id: "bad", service: "growatt", credentials: {} }));
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const adapters = {
+      growatt: {
+        fetchData: vi.fn(async (cfg) => {
+          if (cfg.id === "bad") throw new Error("upstream timeout");
+          return { ...SAMPLE_DATA, systemId: cfg.id, timestamp: "2026-07-03 14:32:00" };
+        }),
+      },
+    };
+
+    const result = await runScheduledSnapshots(env, adapters, Date.parse("2026-07-03T14:32:00Z"));
+    expect(result).toEqual({ checked: 2, appended: 1, failed: 1 });
+    expect(await listDates(env, "ok")).toEqual(["2026-07-03"]);
+    expect(await listDates(env, "bad")).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledWith("History snapshot failed for bad:", "upstream timeout");
+    errorSpy.mockRestore();
   });
 });
 

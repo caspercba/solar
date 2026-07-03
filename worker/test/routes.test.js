@@ -173,6 +173,11 @@ describe("worker routes", () => {
       { id: "keep", name: "Stay", service: "growatt" },
     ]));
     await systems.SYSTEMS.put("system:del-me", JSON.stringify({ id: "del-me" }));
+    await systems.SYSTEMS.put(
+      "history:day:del-me:2026-07-03",
+      JSON.stringify({ systemId: "del-me", date: "2026-07-03", points: [] }),
+    );
+    await systems.SYSTEMS.put("history:index:del-me", JSON.stringify(["2026-07-03"]));
 
     const res = await call(
       request("/api/systems/del-me", { method: "DELETE", headers: AUTH }),
@@ -182,6 +187,8 @@ describe("worker routes", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(await systems.SYSTEMS.get("system:del-me")).toBeNull();
+    expect(await systems.SYSTEMS.get("history:day:del-me:2026-07-03")).toBeNull();
+    expect(await systems.SYSTEMS.get("history:index:del-me")).toBeNull();
     const index = await systems.SYSTEMS.get("_index", "json");
     expect(index).toEqual([{ id: "keep", name: "Stay", service: "growatt" }]);
   });
