@@ -213,3 +213,49 @@ export async function fetchData(systemConfig) {
     energyToday,
   };
 }
+
+function formatIntervalTime(index) {
+  const mins = index * 5;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+export async function fetchHistory(systemConfig, date) {
+  const sess = await getSession(systemConfig);
+  const { plantId, storageSn } = systemConfig.credentials;
+  const queryDate = date || new Date().toISOString().slice(0, 10);
+
+  const [energyResp, lineResp] = await Promise.all([
+    postJson(sess, "/panel/storage/getStorageEnergyDayChart", { plantId, storageSn, date: queryDate }),
+    postJson(sess, "/panel/storage/getStorageLineChartData", { plantId, storageSn, date: queryDate }).catch(() => null),
+  ]);
+
+  if (energyResp.result !== 1) throw new Error("Failed to fetch Growatt history");
+
+  const obj = energyResp.obj || {};
+  const ppv = obj.ppv || [];
+  const userLoad = obj.userLoad || [];
+  const batPower = lineResp?.result === 1 ? (lineResp.obj?.batPower || []) : [];
+  const count = Math.max(ppv.length, userLoad.length, batPower.length);
+
+  const points = [];
+  for (let i = 0; i < count; i++) {
+    points.push({
+      time: formatIntervalTime(i),
+      solar: Math.round(parseFloat(ppv[i]) || 0),
+      load: Math.round(parseFloat(userLoad[i]) || 0),
+      battery: Math.round(parseFloat(batPower[i]) || 0),
+    });
+  }
+
+  return {
+    systemId: systemConfig.id,
+    name: systemConfig.name,
+    service: "growatt",
+    date: queryDate,
+    timezoneOffset: 0,
+    intervalMinutes: 5,
+    points,
+  };
+}

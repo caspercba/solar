@@ -151,6 +151,31 @@ export default {
       }
     }
 
+    // GET /api/systems/:id/history?date=YYYY-MM-DD — intraday power series
+    const historyMatch = path.match(/^\/api\/systems\/([^/]+)\/history$/);
+    if (historyMatch && request.method === "GET") {
+      const id = historyMatch[1];
+      const dateParam = url.searchParams.get("date");
+      if (dateParam && !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+        return errorResponse("Invalid date (expected YYYY-MM-DD)", 400, origin);
+      }
+
+      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter?.fetchHistory) {
+        return errorResponse(`History not supported for service: ${raw.service}`, 501, origin);
+      }
+
+      try {
+        const data = await adapter.fetchHistory(raw, dateParam || null);
+        return jsonResponse(data, 200, origin);
+      } catch (err) {
+        return errorResponse(`History fetch failed: ${err.message}`, 502, origin);
+      }
+    }
+
     return errorResponse("Not found", 404, origin);
   },
 };
