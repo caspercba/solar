@@ -566,6 +566,11 @@ els.disconnectBtn.addEventListener("click", () => {
   });
 }
 
+/* ── Service worker ── */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
 /* ── Boot ── */
 setView(localStorage.getItem(VIEW_KEY) || "cards");
 
