@@ -33,7 +33,7 @@ Content-Type: application/x-www-form-urlencoded
 **Body:**
 
 ```
-account=riodelmedio&password=rio2909&validateCode=&isReadPact=0&lang=en
+account=YOUR_ACCOUNT&password=YOUR_PASSWORD&validateCode=&isReadPact=0&lang=en
 ```
 
 **Response:**
@@ -113,7 +113,7 @@ Body: currPage=1&plantId=10489936
         "deviceType": "3",
         "ptoStatus": "0",
         "timeServer": "2026-04-06 00:06:16",
-        "accountName": "riodelmedio",
+        "accountName": "YOUR_ACCOUNT",
         "timezone": "-3.0",
         "plantId": "10489936",
         "deviceTypeName": "storage",
@@ -161,7 +161,7 @@ POST /panel/getPlantData?plantId=10489936
   "result": 1,
   "obj": {
     "country": "Argentina",
-    "accountName": "riodelmedio",
+    "accountName": "YOUR_ACCOUNT",
     "city": "Comuna Los Reartes",
     "timezone": "-3",
     "co2": "691.6",
