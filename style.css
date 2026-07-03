@@ -594,14 +594,27 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 /* ---------- MANAGE LIST ---------- */
 
-.manage-list { max-height: 300px; overflow-y: auto; }
+.manage-list { max-height: 70vh; overflow-y: auto; }
+
+.modal-wide {
+  max-width: 520px;
+  width: calc(100% - 2rem);
+}
 
 .manage-row {
+  padding: .75rem 0;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.manage-row-expanded {
+  display: block;
+}
+
+.manage-row-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: .75rem 0;
-  border-bottom: 1px solid var(--card-border);
+  margin-bottom: .75rem;
 }
 
 .manage-row:last-child { border-bottom: none; }
@@ -634,6 +647,96 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   text-align: center;
   padding: 1.5rem 0;
 }
+
+.alert-badge {
+  display: inline-block;
+  margin-left: .5rem;
+  padding: .1rem .4rem;
+  border-radius: 4px;
+  font-size: .65rem;
+  font-weight: 600;
+  text-transform: none;
+  color: var(--accent-bat);
+  background: rgba(34, 197, 94, .15);
+}
+
+.manage-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  padding: .75rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--card-border);
+}
+
+.manage-alerts label {
+  font-size: .75rem;
+  color: var(--text-dim);
+}
+
+.manage-alerts input[type="url"],
+.manage-alerts input[type="number"] {
+  width: 100%;
+  padding: .5rem .65rem;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: .85rem;
+}
+
+.alert-toggle {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.alert-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .5rem;
+}
+
+.alert-checks {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.alert-checks label {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  color: var(--text);
+}
+
+.alert-save {
+  margin-top: .25rem;
+  padding: .55rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent-sol);
+  color: #111;
+  font-weight: 600;
+  font-size: .85rem;
+  cursor: pointer;
+}
+
+.alert-save:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.alert-msg {
+  font-size: .75rem;
+  margin: 0;
+}
+
+.alert-ok { color: var(--accent-bat); }
+.alert-err { color: var(--error); }
 
 /* ---------- FOOTER ---------- */
 

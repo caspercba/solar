@@ -59,7 +59,20 @@ describe("worker routes", () => {
     const res = await call(request("/api/systems", { headers: AUTH }), systems);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([
-      { id: "a", name: "Alpha", service: "shinemonitor" },
+      {
+        id: "a",
+        name: "Alpha",
+        service: "shinemonitor",
+        alerts: {
+          enabled: false,
+          webhookUrl: "",
+          lowSocThreshold: 20,
+          notifyLowSoc: true,
+          notifyGenerator: true,
+          cooldownMinutes: 60,
+          webhookConfigured: false,
+        },
+      },
     ]);
   });
 
@@ -116,6 +129,41 @@ describe("worker routes", () => {
     expect(stored.credentials.user).toBe("user@test.com");
     expect(stored.credentials.password).toBeUndefined();
     expect(stored.credentials.pwdSha1).toMatch(/^[a-f0-9]{40}$/);
+  });
+
+  it("PUT /api/systems/:id/alerts updates alert settings", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Site", service: "growatt" },
+    ]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Site",
+      service: "growatt",
+      credentials: { user: "u", password: "p" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/alerts", {
+        method: "PUT",
+        headers: AUTH,
+        body: {
+          enabled: true,
+          webhookUrl: "https://hooks.example/alert",
+          lowSocThreshold: 15,
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.enabled).toBe(true);
+    expect(json.lowSocThreshold).toBe(15);
+    expect(json.webhookConfigured).toBe(true);
+
+    const stored = await systems.SYSTEMS.get("system:s1", "json");
+    expect(stored.alerts.webhookUrl).toBe("https://hooks.example/alert");
   });
 
   it("DELETE /api/systems/:id removes the system from the index", async () => {

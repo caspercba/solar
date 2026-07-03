@@ -630,6 +630,74 @@ addForm.addEventListener("submit", async (e) => {
 $("add-cancel").addEventListener("click", closeAddModal);
 
 /* ── Manage Systems ── */
+function renderAlertForm(sys) {
+  const alerts = sys.alerts || {};
+  const form = document.createElement("div");
+  form.className = "manage-alerts";
+  form.innerHTML = `
+    <label class="alert-toggle">
+      <input type="checkbox" class="alert-enabled" ${alerts.enabled ? "checked" : ""}>
+      Enable alerts
+    </label>
+    <label>Webhook URL</label>
+    <input type="url" class="alert-webhook" placeholder="https://discord.com/api/webhooks/..." value="${escapeAttr(alerts.webhookUrl || "")}">
+    <div class="alert-grid">
+      <div>
+        <label>Low SOC %</label>
+        <input type="number" class="alert-threshold" min="0" max="100" value="${alerts.lowSocThreshold ?? 20}">
+      </div>
+      <div>
+        <label>Cooldown (min)</label>
+        <input type="number" class="alert-cooldown" min="5" max="1440" value="${alerts.cooldownMinutes ?? 60}">
+      </div>
+    </div>
+    <div class="alert-checks">
+      <label><input type="checkbox" class="alert-low-soc" ${alerts.notifyLowSoc !== false ? "checked" : ""}> Low battery</label>
+      <label><input type="checkbox" class="alert-generator" ${alerts.notifyGenerator !== false ? "checked" : ""}> Generator on</label>
+    </div>
+    <button type="button" class="alert-save">Save alerts</button>
+    <p class="alert-msg" hidden></p>
+  `;
+
+  const msg = form.querySelector(".alert-msg");
+  form.querySelector(".alert-save").addEventListener("click", async () => {
+    msg.hidden = true;
+    const btn = form.querySelector(".alert-save");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    try {
+      const body = {
+        enabled: form.querySelector(".alert-enabled").checked,
+        webhookUrl: form.querySelector(".alert-webhook").value.trim(),
+        lowSocThreshold: Number(form.querySelector(".alert-threshold").value),
+        cooldownMinutes: Number(form.querySelector(".alert-cooldown").value),
+        notifyLowSoc: form.querySelector(".alert-low-soc").checked,
+        notifyGenerator: form.querySelector(".alert-generator").checked,
+      };
+      sys.alerts = await api("PUT", `/api/systems/${sys.id}/alerts`, body);
+      msg.textContent = "Alerts saved";
+      msg.className = "alert-msg alert-ok";
+      msg.hidden = false;
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "alert-msg alert-err";
+      msg.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Save alerts";
+    }
+  });
+
+  return form;
+}
+
+function escapeAttr(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
 function openManageModal() {
   manageModal.hidden = false;
   manageList.innerHTML = "";
@@ -641,11 +709,15 @@ function openManageModal() {
 
   for (const sys of systems) {
     const row = document.createElement("div");
-    row.className = "manage-row";
+    row.className = "manage-row manage-row-expanded";
+
+    const top = document.createElement("div");
+    top.className = "manage-row-top";
 
     const info = document.createElement("div");
     info.className = "manage-info";
-    info.innerHTML = `<strong>${sys.name}</strong><span class="manage-service">${sys.service}</span>`;
+    const alertBadge = sys.alerts?.enabled ? '<span class="alert-badge">Alerts on</span>' : "";
+    info.innerHTML = `<strong>${sys.name}</strong><span class="manage-service">${sys.service}${alertBadge}</span>`;
 
     const del = document.createElement("button");
     del.className = "manage-delete";
@@ -662,8 +734,10 @@ function openManageModal() {
       }
     });
 
-    row.appendChild(info);
-    row.appendChild(del);
+    top.appendChild(info);
+    top.appendChild(del);
+    row.appendChild(top);
+    row.appendChild(renderAlertForm(sys));
     manageList.appendChild(row);
   }
 }

@@ -1,5 +1,12 @@
 import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
 import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
+import {
+  runScheduledAlerts,
+  updateSystemAlerts,
+  publicAlerts,
+  deleteAlertState,
+  DEFAULT_ALERTS,
+} from "./alerts.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -59,7 +66,15 @@ export default {
     // GET /api/systems — list all configured systems (without credentials)
     if (path === "/api/systems" && request.method === "GET") {
       const index = await listSystems(env);
-      const safe = index.map(s => ({ id: s.id, name: s.name, service: s.service }));
+      const safe = await Promise.all(index.map(async (s) => {
+        const raw = await env.SYSTEMS.get(`system:${s.id}`, "json");
+        return {
+          id: s.id,
+          name: s.name,
+          service: s.service,
+          alerts: publicAlerts(raw?.alerts || DEFAULT_ALERTS),
+        };
+      }));
       return jsonResponse(safe, 200, origin);
     }
 
@@ -111,11 +126,30 @@ export default {
       return jsonResponse({ id, name: systemName, service, discovered }, 201, origin);
     }
 
+    // PUT /api/systems/:id/alerts — update alert thresholds and webhook
+    const alertsMatch = path.match(/^\/api\/systems\/([^/]+)\/alerts$/);
+    if (alertsMatch && request.method === "PUT") {
+      const id = alertsMatch[1];
+      const body = await request.json();
+      const updated = await updateSystemAlerts(env, id, body);
+      if (!updated) return errorResponse("System not found", 404, origin);
+      return jsonResponse(publicAlerts(updated), 200, origin);
+    }
+
+    // GET /api/systems/:id/alerts — read alert settings
+    if (alertsMatch && request.method === "GET") {
+      const id = alertsMatch[1];
+      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      if (!raw) return errorResponse("System not found", 404, origin);
+      return jsonResponse(publicAlerts(raw.alerts || DEFAULT_ALERTS), 200, origin);
+    }
+
     // DELETE /api/systems/:id
     const deleteMatch = path.match(/^\/api\/systems\/([^/]+)$/);
     if (deleteMatch && request.method === "DELETE") {
       const id = deleteMatch[1];
       await env.SYSTEMS.delete(`system:${id}`);
+      await deleteAlertState(env, id);
       const index = await listSystems(env);
       const updated = index.filter(s => s.id !== id);
       await saveIndex(env, updated);
@@ -187,6 +221,10 @@ export default {
     }
 
     return errorResponse("Not found", 404, origin);
+  },
+
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(runScheduledAlerts(env, ADAPTERS));
   },
 };
 
