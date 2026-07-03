@@ -1,3 +1,14 @@
+import {
+  fmtW,
+  fmtChartDate,
+  sanitizeExportName,
+  historyToCsv,
+  escapeAttr,
+  clampPct,
+  solarPctFromPower,
+  loadPercent,
+} from "./frontend/lib.js";
+
 /* ── Config ── */
 const POLL_MS = 60_000;
 const CONN_KEY = "solar_conn";
@@ -179,15 +190,8 @@ if (fEls.energyRetryBtn) {
 }
 
 /* ── Helpers ── */
-function fmtW(w) {
-  const abs = Math.abs(w);
-  if (abs >= 10000) return (w / 1000).toFixed(0) + " kW";
-  if (abs >= 1000) return (w / 1000).toFixed(1) + " kW";
-  return Math.round(w) + " W";
-}
-
 function setBar(barEl, pct) {
-  barEl.style.width = Math.max(0, Math.min(100, pct)) + "%";
+  barEl.style.width = clampPct(pct) + "%";
 }
 
 function setInverterStatus(text) {
@@ -306,15 +310,14 @@ function renderData(d) {
   }
 
   /* Solar */
-  const nomPV = inv.nominalPV || 5000;
-  const solPct = Math.round(((sol.power ?? 0) / nomPV) * 100);
+  const solPct = solarPctFromPower(sol.power, inv.nominalPV || 5000);
   els.solPct.textContent = solPct;
   setBar(els.solBar, solPct);
   els.solWatts.textContent = Math.round(sol.power ?? 0);
   els.solPvVolts.textContent = (sol.voltage ?? 0).toFixed(0);
 
   /* Load */
-  const ldPct = load.percent ?? Math.round(((load.power ?? 0) / (inv.ratedPower || 5000)) * 100);
+  const ldPct = loadPercent(load, inv.ratedPower || 5000);
   els.loadPct.textContent = ldPct;
   setBar(els.loadBar, ldPct);
   els.loadWatts.textContent = Math.round(load.power ?? 0);
@@ -460,36 +463,6 @@ function setEnergyChartState(state, opts = {}) {
 function chartErrorMessage(err, fallback) {
   const msg = err?.message?.trim();
   return msg || fallback;
-}
-
-function sanitizeExportName(name) {
-  const safe = String(name || "system")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9._-]/g, "")
-    .slice(0, 64);
-  return safe || "system";
-}
-
-function csvCell(value) {
-  if (value == null || value === "") return "";
-  const text = String(value);
-  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
-}
-
-function historyToCsv(points) {
-  const lines = ["time,solar_w,load_w,battery_w,soc"];
-  for (const p of points) {
-    lines.push([
-      csvCell(p.time),
-      csvCell(p.solar ?? 0),
-      csvCell(p.load ?? 0),
-      csvCell(p.battery ?? 0),
-      csvCell(Number.isFinite(p.soc) ? p.soc : ""),
-    ].join(","));
-  }
-  return lines.join("\r\n");
 }
 
 function updateChartExportBtn() {
@@ -664,12 +637,6 @@ function renderChart(data) {
     ctx.setLineDash([]);
   }
   return true;
-}
-
-function fmtChartDate(dateStr) {
-  const d = new Date(`${dateStr}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return dateStr.slice(5);
-  return d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
 }
 
 function renderEnergyChart(data) {
@@ -1055,13 +1022,6 @@ function renderAlertForm(sys) {
   });
 
   return form;
-}
-
-function escapeAttr(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;");
 }
 
 function openManageModal() {
