@@ -193,6 +193,35 @@ describe("worker routes", () => {
     expect(index).toEqual([{ id: "keep", name: "Stay", service: "growatt" }]);
   });
 
+  it("GET /api/systems/:id/history/summary returns daily energy totals", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({ id: "s1", service: "growatt" }));
+    await systems.SYSTEMS.put(
+      "history:day:s1:2026-07-03",
+      JSON.stringify({
+        systemId: "s1",
+        date: "2026-07-03",
+        source: "snapshot",
+        dailySummary: { solarKwh: 12.4, loadKwh: 9.1, peakSolarW: 2800, minSoc: 55, maxSoc: 98 },
+        points: [],
+      }),
+    );
+
+    const res = await call(
+      request("/api/systems/s1/history/summary?days=2", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.systemId).toBe("s1");
+    expect(json.days).toBe(2);
+    expect(json.series).toHaveLength(2);
+    expect(json.series[1]).toMatchObject({ date: "2026-07-03", solarKwh: 12.4, loadKwh: 9.1, source: "snapshot" });
+    expect(json.series[0]).toMatchObject({ date: "2026-07-02", solarKwh: null, source: null });
+  });
+
   it("returns 404 for unknown routes", async () => {
     const res = await call(request("/api/unknown", { headers: AUTH }));
     expect(res.status).toBe(404);

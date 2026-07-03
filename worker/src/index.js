@@ -7,7 +7,7 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
-import { deleteHistory, runScheduledSnapshots } from "./history.js";
+import { deleteHistory, getHistorySummary, runScheduledSnapshots } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -195,6 +195,28 @@ export default {
       } catch (err) {
         return errorResponse(`Fetch failed: ${err.message}`, 502, origin);
       }
+    }
+
+    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from stored snapshots
+    const summaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
+    if (summaryMatch && request.method === "GET") {
+      const id = summaryMatch[1];
+      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const daysParam = url.searchParams.get("days");
+      const days = daysParam ? Number(daysParam) : 7;
+      if (!Number.isFinite(days) || days < 1 || days > 90) {
+        return errorResponse("Invalid days (expected 1–90)", 400, origin);
+      }
+
+      const endDate = url.searchParams.get("end");
+      if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        return errorResponse("Invalid end date (expected YYYY-MM-DD)", 400, origin);
+      }
+
+      const summary = await getHistorySummary(env, id, days, endDate || null);
+      return jsonResponse(summary, 200, origin);
     }
 
     // GET /api/systems/:id/history?date=YYYY-MM-DD — intraday power series

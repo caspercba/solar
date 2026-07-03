@@ -143,6 +143,47 @@ export async function listDates(env, systemId) {
   return (await env.SYSTEMS.get(indexKey(systemId), "json")) ?? [];
 }
 
+/** Build consecutive calendar dates ending on endDate (YYYY-MM-DD), oldest first. */
+export function dateRange(endDate, days) {
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const dates = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(end);
+    d.setUTCDate(d.getUTCDate() - i);
+    dates.push(formatDateISO(d));
+  }
+  return dates;
+}
+
+function summaryFromDayDoc(doc) {
+  if (!doc?.dailySummary) return null;
+  return {
+    solarKwh: doc.dailySummary.solarKwh ?? 0,
+    loadKwh: doc.dailySummary.loadKwh ?? 0,
+    peakSolarW: doc.dailySummary.peakSolarW ?? 0,
+    minSoc: doc.dailySummary.minSoc ?? null,
+    maxSoc: doc.dailySummary.maxSoc ?? null,
+    source: doc.source || "snapshot",
+  };
+}
+
+/** Daily energy totals for the last N days from stored KV snapshots. */
+export async function getHistorySummary(env, systemId, days = 7, endDate = null) {
+  const end = endDate || formatDateISO(new Date());
+  const dates = dateRange(end, days);
+  const docs = await Promise.all(dates.map((date) => getDay(env, systemId, date)));
+
+  const series = dates.map((date, i) => {
+    const summary = summaryFromDayDoc(docs[i]);
+    if (!summary) {
+      return { date, solarKwh: null, loadKwh: null, peakSolarW: null, minSoc: null, maxSoc: null, source: null };
+    }
+    return { date, ...summary };
+  });
+
+  return { systemId, days, endDate: end, series };
+}
+
 export async function pruneOld(
   env,
   systemId,

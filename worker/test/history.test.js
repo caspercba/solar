@@ -3,8 +3,10 @@ import {
   appendPoint,
   appendSnapshot,
   computeDailySummary,
+  dateRange,
   deleteHistory,
   getDay,
+  getHistorySummary,
   listDates,
   parseDataTimestamp,
   pointFromData,
@@ -120,6 +122,40 @@ describe("upsertDateIndex", () => {
       "2026-07-03",
       "2026-07-01",
     ]);
+  });
+});
+
+describe("dateRange", () => {
+  it("returns consecutive dates ending on the given day", () => {
+    expect(dateRange("2026-07-03", 3)).toEqual(["2026-07-01", "2026-07-02", "2026-07-03"]);
+    expect(dateRange("2026-07-03", 1)).toEqual(["2026-07-03"]);
+  });
+});
+
+describe("getHistorySummary", () => {
+  it("returns daily summaries from stored KV buckets", async () => {
+    const env = { SYSTEMS: createMockKV() };
+    await appendSnapshot(
+      env,
+      "sys-1",
+      { ...SAMPLE_DATA, timestamp: "2026-07-01 14:32:00" },
+      Date.parse("2026-07-01T14:32:00Z"),
+    );
+    await appendSnapshot(
+      env,
+      "sys-1",
+      { ...SAMPLE_DATA, timestamp: "2026-07-03 10:00:00", energyToday: 8.2 },
+      Date.parse("2026-07-03T10:00:00Z"),
+    );
+
+    const summary = await getHistorySummary(env, "sys-1", 3, "2026-07-03");
+    expect(summary.systemId).toBe("sys-1");
+    expect(summary.days).toBe(3);
+    expect(summary.series).toHaveLength(3);
+    expect(summary.series[0]).toMatchObject({ date: "2026-07-01", source: "snapshot" });
+    expect(summary.series[0].solarKwh).toBeGreaterThan(0);
+    expect(summary.series[1]).toMatchObject({ date: "2026-07-02", solarKwh: null, source: null });
+    expect(summary.series[2].date).toBe("2026-07-03");
   });
 });
 

@@ -186,6 +186,17 @@
         <span class="legend-item"><span class="legend-swatch legend-load"></span>Load</span>
         <span class="legend-item"><span class="legend-swatch legend-battery"></span>Battery</span>
       </div>
+
+      <h3 class="energy-summary-title">7-Day Energy</h3>
+      <div class="chart-wrap energy-chart-wrap">
+        <canvas id="energy-chart" width="500" height="180"></canvas>
+        <div id="energy-empty" class="chart-empty" hidden>No stored energy data yet</div>
+        <div id="energy-loading" class="chart-loading" hidden>Loading summary…</div>
+      </div>
+      <div class="chart-legend energy-legend">
+        <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar kWh</span>
+        <span class="legend-item"><span class="legend-swatch legend-load"></span>Load kWh</span>
+      </div>
     </section>
 
     <footer>
