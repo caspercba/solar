@@ -71,7 +71,7 @@ async function getSession(systemConfig) {
 
 /* ── Discovery: find plant + device info on first setup ── */
 
-export async function discover(credentials) {
+export async function discover(credentials, plantId = null) {
   const pwdSha1 = await sha1Hex(credentials.password);
   const sess = await apiAuth(credentials.user, pwdSha1);
 
@@ -79,12 +79,22 @@ export async function discover(credentials) {
   const plantList = plantsData?.info || [];
   if (!plantList.length) throw new Error("No plants found");
 
-  const plant = plantList[0];
-  const plantId = String(plant.pid);
+  const plants = plantList.map((p) => ({
+    id: String(p.pid),
+    name: p.pname || `Plant ${p.pid}`,
+  }));
 
-  const plantInfo = await apiGet(sess, `&action=queryPlantInfo&plantid=${plantId}`);
+  if (!plantId && plants.length > 1) {
+    return { plants, requiresPlantSelection: true, pwdSha1 };
+  }
 
-  const devData = await apiGet(sess, `&action=queryPlantDeviceStatus&plantid=${plantId}`);
+  const selectedId = plantId || plants[0].id;
+  const plant = plantList.find((p) => String(p.pid) === String(selectedId));
+  if (!plant) throw new Error(`Plant not found: ${selectedId}`);
+
+  const plantInfo = await apiGet(sess, `&action=queryPlantInfo&plantid=${selectedId}`);
+
+  const devData = await apiGet(sess, `&action=queryPlantDeviceStatus&plantid=${selectedId}`);
   const collectors = devData?.collector || [];
   if (!collectors.length || !collectors[0].device?.length) throw new Error("No devices found");
 
@@ -92,8 +102,9 @@ export async function discover(credentials) {
   const dev = collector.device[0];
 
   return {
+    plants,
     pwdSha1,
-    plantId,
+    plantId: selectedId,
     plantName: plant.pname || plantInfo.name || "Unknown",
     device: {
       pn: collector.pn,

@@ -51,7 +51,7 @@ export default {
     // POST /api/systems — add a new system
     if (path === "/api/systems" && request.method === "POST") {
       const body = await request.json();
-      const { service, name, user, password } = body;
+      const { service, name, user, password, plantId } = body;
 
       if (!service || !user || !password) {
         return errorResponse("Missing required fields: service, user, password", 400, origin);
@@ -64,9 +64,16 @@ export default {
 
       let discovered;
       try {
-        discovered = await adapter.discover({ user, password });
+        discovered = await adapter.discover({ user, password }, plantId || null);
       } catch (err) {
         return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
+      }
+
+      if (discovered.requiresPlantSelection) {
+        return jsonResponse({
+          requiresPlantSelection: true,
+          plants: discovered.plants,
+        }, 200, origin);
       }
 
       const id = generateId();

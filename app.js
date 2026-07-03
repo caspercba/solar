@@ -389,10 +389,32 @@ async function loadSystems() {
 }
 
 /* ── Add System ── */
+const addPlantGroup = $("add-plant-group");
+const addPlantSelect = $("add-plant");
+
+function hidePlantPicker() {
+  addPlantGroup.hidden = true;
+  addPlantSelect.innerHTML = "";
+  addPlantSelect.required = false;
+}
+
+function showPlantPicker(plants) {
+  addPlantSelect.innerHTML = "";
+  for (const p of plants) {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name;
+    addPlantSelect.appendChild(opt);
+  }
+  addPlantGroup.hidden = false;
+  addPlantSelect.required = true;
+}
+
 function openAddModal() {
   manageModal.hidden = true;
   addModal.hidden = false;
   addForm.reset();
+  hidePlantPicker();
   addError.hidden = true;
 }
 
@@ -406,14 +428,24 @@ addForm.addEventListener("submit", async (e) => {
   $("add-submit").disabled = true;
   $("add-submit").textContent = "Adding...";
 
+  const body = {
+    service: $("add-service").value,
+    name: $("add-name").value || undefined,
+    user: $("add-user").value,
+    password: $("add-pass").value,
+  };
+  if (!addPlantGroup.hidden && addPlantSelect.value) {
+    body.plantId = addPlantSelect.value;
+  }
+
   try {
-    await api("POST", "/api/systems", {
-      service: $("add-service").value,
-      name: $("add-name").value || undefined,
-      user: $("add-user").value,
-      password: $("add-pass").value,
-    });
+    const result = await api("POST", "/api/systems", body);
+    if (result.requiresPlantSelection) {
+      showPlantPicker(result.plants);
+      return;
+    }
     closeAddModal();
+    hidePlantPicker();
     await loadSystems();
     if (systems.length === 1) activeSystemId = systems[0].id;
     renderSystemTabs();
