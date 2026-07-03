@@ -47,59 +47,25 @@ export async function switchView(page, view) {
   await page.locator(tabId).click();
 }
 
-export async function pullToRefresh(page) {
+/** Simulate a downward pull on the dashboard (requires hasTouch / mobile project). */
+export async function pullToRefresh(page, { pullDistance = 120 } = {}) {
   await page.evaluate(() => window.scrollTo(0, 0));
   const box = await page.locator("#dashboard-screen").boundingBox();
   if (!box) throw new Error("dashboard-screen not visible");
-  const x = box.x + box.width / 2;
-  const startY = box.y + 80;
-  const endY = startY + 120;
+  const x = Math.round(box.x + box.width / 2);
+  const startY = Math.round(box.y + 80);
+  const endY = startY + pullDistance;
 
-  await page.evaluate(({ x, startY, endY }) => {
-    const dash = document.getElementById("dashboard-screen");
-    const mk = (clientY) =>
-      new Touch({
-        identifier: 0,
-        target: dash,
-        clientX: x,
-        clientY,
-        pageX: x,
-        pageY: clientY,
-        screenX: x,
-        screenY: clientY,
-        radiusX: 1,
-        radiusY: 1,
-        rotationAngle: 0,
-        force: 1,
-      });
-    const start = mk(startY);
-    const end = mk(endY);
-    dash.dispatchEvent(
-      new TouchEvent("touchstart", {
-        bubbles: true,
-        cancelable: true,
-        touches: [start],
-        targetTouches: [start],
-        changedTouches: [start],
-      }),
-    );
-    dash.dispatchEvent(
-      new TouchEvent("touchmove", {
-        bubbles: true,
-        cancelable: true,
-        touches: [end],
-        targetTouches: [end],
-        changedTouches: [end],
-      }),
-    );
-    dash.dispatchEvent(
-      new TouchEvent("touchend", {
-        bubbles: true,
-        cancelable: true,
-        touches: [],
-        targetTouches: [],
-        changedTouches: [end],
-      }),
-    );
-  }, { x, startY, endY });
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type, y) =>
+    cdp.send("Input.dispatchTouchEvent", {
+      type,
+      touchPoints: y == null ? [] : [{ x, y }],
+    });
+
+  await touch("touchStart", startY);
+  for (let y = startY + 10; y <= endY; y += 10) {
+    await touch("touchMove", y);
+  }
+  await touch("touchEnd");
 }
