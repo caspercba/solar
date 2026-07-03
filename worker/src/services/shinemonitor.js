@@ -10,21 +10,21 @@ const COMPANY_KEY = "bnrl_frRFjEz8Mkn";
 
 /* ── SHA-1 via Web Crypto (available in Workers) ── */
 
-async function sha1Hex(str) {
+export async function sha1Hex(str) {
   const data = new TextEncoder().encode(str);
   const hash = await crypto.subtle.digest("SHA-1", data);
   return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-function encodeAction(a) {
+export function encodeAction(a) {
   return a.replace(/#/g, "%23").replace(/'/g, "%27").replace(/ /g, "%20");
 }
 
-async function signAuth(salt, pwdSha1, action) {
+export async function signAuth(salt, pwdSha1, action) {
   return sha1Hex(String(salt) + pwdSha1 + action);
 }
 
-async function signPublic(salt, secret, token, action) {
+export async function signPublic(salt, secret, token, action) {
   return sha1Hex(String(salt) + secret + token + encodeAction(action));
 }
 
