@@ -13,12 +13,15 @@ import { pathToFileURL } from "node:url";
 import {
   MOCK_SYSTEM_ID,
   MOCK_TOKEN,
+  EMPTY_HISTORY_DATE,
   health,
   systems,
   realtimeData,
   historyData,
   historySummary,
 } from "./payloads.js";
+
+export { EMPTY_HISTORY_DATE };
 
 export const MOCK_PORT = Number(process.env.MOCK_WORKER_PORT) || 8790;
 

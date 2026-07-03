@@ -5,6 +5,9 @@ export const MOCK_SYSTEM_ID_2 = "e2e-mock-cabin-002";
 
 export const MOCK_TOKEN = "e2e-test-token";
 
+/** Date query param that returns empty intraday history (chart empty state). */
+export const EMPTY_HISTORY_DATE = "2026-01-01";
+
 export const health = {
   ok: true,
   version: "1.2.0-mock",
@@ -77,6 +80,18 @@ export function realtimeData(systemId) {
 export function historyData(systemId, date) {
   const sys = systems.find((s) => s.id === systemId) || systems[0];
   const queryDate = date || "2026-07-03";
+
+  if (queryDate === EMPTY_HISTORY_DATE) {
+    return {
+      systemId: sys.id,
+      name: sys.name,
+      service: sys.service,
+      date: queryDate,
+      timezoneOffset: -6,
+      intervalMinutes: 5,
+      points: [],
+    };
+  }
 
   return {
     systemId: sys.id,
