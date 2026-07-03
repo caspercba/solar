@@ -8,3 +8,8 @@ id = "3dc7a4785e91472ba8b3a59464ebc49c"
 
 # Set the shared access token as a secret:
 #   wrangler secret put API_TOKEN
+#
+# Comma-separated frontend origins allowed for CORS (production).
+# When unset, dev mode reflects the request Origin (or "*").
+#   wrangler secret put ALLOWED_ORIGINS
+# Example: https://your-app.pages.dev,https://your-domain.com

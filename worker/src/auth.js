@@ -12,12 +12,48 @@ export function checkAuth(request, env) {
   return match && match[1] === token;
 }
 
+function parseAllowedOrigins(env) {
+  const raw = env.ALLOWED_ORIGINS;
+  if (!raw || !String(raw).trim()) return null;
+  return String(raw)
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Resolve CORS for a request.
+ * When ALLOWED_ORIGINS is unset/empty (dev), reflect the request origin or "*".
+ * When set (production), only listed origins are allowed; others are rejected.
+ * Requests without an Origin header are always allowed (non-browser clients).
+ */
+export function resolveCors(request, env) {
+  const requestOrigin = request.headers.get("Origin");
+  const allowedOrigins = parseAllowedOrigins(env);
+
+  if (!allowedOrigins) {
+    return { allowed: true, origin: requestOrigin || "*" };
+  }
+
+  if (!requestOrigin) {
+    return { allowed: true, origin: null };
+  }
+
+  if (allowedOrigins.includes(requestOrigin)) {
+    return { allowed: true, origin: requestOrigin };
+  }
+
+  return { allowed: false, origin: null };
+}
+
 export function corsHeaders(origin) {
+  if (!origin) return {};
   return {
-    "Access-Control-Allow-Origin": origin || "*",
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
   };
 }
 
