@@ -138,6 +138,7 @@ Every adapter's `fetchData()` returns this shape (frontend `renderData()` expect
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/api/health` | Health check — returns `{ ok, version }` (no auth required) |
 | `GET` | `/api/services` | List supported service types and required fields |
 | `GET` | `/api/systems` | List configured systems (id, name, service only) |
 | `POST` | `/api/systems` | Add system: `{ service, name?, user, password }` → discover + store |
@@ -256,7 +257,7 @@ Every adapter's `fetchData()` returns this shape (frontend `renderData()` expect
 - [ ] GitHub Actions: lint worker, run adapter tests, deploy on tag
 - [ ] Cloudflare Pages for frontend with auto-deploy from `main`
 - [ ] Staging worker environment
-- [ ] Health check endpoint (`GET /api/health`)
+- [x] Health check endpoint (`GET /api/health`)
 - [ ] Structured logging / error reporting (e.g. Workers Analytics, Sentry)
 
 ---
@@ -323,7 +324,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [ ] Redact credentials from discovery docs
 - [ ] Always-on API_TOKEN in production
 - [ ] CORS origin allowlist
-- [ ] Health check endpoint
+- [x] Health check endpoint
 - [ ] Basic worker unit tests (Vitest + Miniflare)
 
 ### Phase 3 — Data Depth
