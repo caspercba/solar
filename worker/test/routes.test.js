@@ -173,11 +173,6 @@ describe("worker routes", () => {
       { id: "keep", name: "Stay", service: "growatt" },
     ]));
     await systems.SYSTEMS.put("system:del-me", JSON.stringify({ id: "del-me" }));
-    await systems.SYSTEMS.put(
-      "history:day:del-me:2026-07-03",
-      JSON.stringify({ systemId: "del-me", date: "2026-07-03", points: [] }),
-    );
-    await systems.SYSTEMS.put("history:index:del-me", JSON.stringify(["2026-07-03"]));
 
     const res = await call(
       request("/api/systems/del-me", { method: "DELETE", headers: AUTH }),
@@ -187,39 +182,8 @@ describe("worker routes", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(await systems.SYSTEMS.get("system:del-me")).toBeNull();
-    expect(await systems.SYSTEMS.get("history:day:del-me:2026-07-03")).toBeNull();
-    expect(await systems.SYSTEMS.get("history:index:del-me")).toBeNull();
     const index = await systems.SYSTEMS.get("_index", "json");
     expect(index).toEqual([{ id: "keep", name: "Stay", service: "growatt" }]);
-  });
-
-  it("GET /api/systems/:id/history/summary returns daily energy totals", async () => {
-    const systems = env();
-    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
-    await systems.SYSTEMS.put("system:s1", JSON.stringify({ id: "s1", service: "growatt" }));
-    await systems.SYSTEMS.put(
-      "history:day:s1:2026-07-03",
-      JSON.stringify({
-        systemId: "s1",
-        date: "2026-07-03",
-        source: "snapshot",
-        dailySummary: { solarKwh: 12.4, loadKwh: 9.1, peakSolarW: 2800, minSoc: 55, maxSoc: 98 },
-        points: [],
-      }),
-    );
-
-    const res = await call(
-      request("/api/systems/s1/history/summary?days=2", { headers: AUTH }),
-      systems,
-    );
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.systemId).toBe("s1");
-    expect(json.days).toBe(2);
-    expect(json.series).toHaveLength(2);
-    expect(json.series[1]).toMatchObject({ date: "2026-07-03", solarKwh: 12.4, loadKwh: 9.1, minSoc: 55, maxSoc: 98, source: "snapshot" });
-    expect(json.series[0]).toMatchObject({ date: "2026-07-02", solarKwh: null, source: null });
   });
 
   it("GET /api/systems/:id/history/summary uses ShineMonitor fetchHistorySummary", async () => {

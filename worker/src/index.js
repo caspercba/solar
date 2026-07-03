@@ -7,7 +7,7 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
-import { deleteHistory, getHistorySummary, resolveIntradayHistory, runScheduledSnapshots, supplementSummarySoc } from "./history.js";
+import { resolveIntradayHistory } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -151,7 +151,6 @@ export default {
       const id = deleteMatch[1];
       await env.SYSTEMS.delete(`system:${id}`);
       await deleteAlertState(env, id);
-      await deleteHistory(env, id);
       const index = await listSystems(env);
       const updated = index.filter(s => s.id !== id);
       await saveIndex(env, updated);
@@ -197,7 +196,7 @@ export default {
       }
     }
 
-    // GET /api/systems/:id/history/summary?days=7 — daily energy totals (vendor or stored snapshots)
+    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from vendor APIs
     const summaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
     if (summaryMatch && request.method === "GET") {
       const id = summaryMatch[1];
@@ -216,25 +215,16 @@ export default {
       }
 
       const adapter = ADAPTERS[raw.service];
-      let summary;
-      if (adapter?.fetchHistorySummary) {
-        try {
-          summary = await adapter.fetchHistorySummary(raw, days, endDate || null);
-        } catch (err) {
-          return errorResponse(`History summary failed: ${err.message}`, 502, origin);
-        }
-      } else {
-        summary = await getHistorySummary(env, id, days, endDate || null);
-        if (adapter?.fetchSocDailySummary) {
-          try {
-            const socByDate = await adapter.fetchSocDailySummary(raw, endDate || null, days);
-            summary.series = supplementSummarySoc(summary.series, socByDate);
-          } catch {
-            /* optional supplement */
-          }
-        }
+      if (!adapter?.fetchHistorySummary) {
+        return errorResponse(`History summary not supported for service: ${raw.service}`, 501, origin);
       }
-      return jsonResponse(summary, 200, origin);
+
+      try {
+        const summary = await adapter.fetchHistorySummary(raw, days, endDate || null);
+        return jsonResponse(summary, 200, origin);
+      } catch (err) {
+        return errorResponse(`History summary failed: ${err.message}`, 502, origin);
+      }
     }
 
     // GET /api/systems/:id/history?date=YYYY-MM-DD — intraday power series
@@ -266,10 +256,7 @@ export default {
   },
 
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(Promise.all([
-      runScheduledAlerts(env, ADAPTERS),
-      runScheduledSnapshots(env, ADAPTERS),
-    ]));
+    ctx.waitUntil(runScheduledAlerts(env, ADAPTERS));
   },
 };
 
