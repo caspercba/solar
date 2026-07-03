@@ -1,8 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   computeSocExtrema,
   mergeSocIntoPoints,
-  resolveIntradayHistory,
   socMapFromPoints,
 } from "../src/history.js";
 import { parseHistoryRows, localDate } from "../src/services/shinemonitor.js";
@@ -37,64 +36,6 @@ describe("computeSocExtrema", () => {
 
   it("returns nulls for empty input", () => {
     expect(computeSocExtrema([])).toEqual({ minSoc: null, maxSoc: null });
-  });
-});
-
-describe("resolveIntradayHistory", () => {
-  it("merges adapter SOC supplement into vendor power series", async () => {
-    const adapter = {
-      fetchHistory: vi.fn(async () => ({
-        systemId: "sys-1",
-        name: "Cabin",
-        service: "growatt",
-        date: "2026-07-03",
-        timezoneOffset: 0,
-        intervalMinutes: 5,
-        points: [{ time: "14:30", solar: 1200, load: 850, battery: -723 }],
-      })),
-      fetchSocChart: vi.fn(async () => [{ time: "14:30", soc: 72 }]),
-    };
-
-    const data = await resolveIntradayHistory(
-      {},
-      { id: "sys-1", name: "Cabin", service: "growatt" },
-      adapter,
-      "2026-07-03",
-    );
-    expect(data.points[0].soc).toBe(72);
-    expect(data.source).toBe("vendor");
-    expect(adapter.fetchSocChart).toHaveBeenCalledOnce();
-  });
-
-  it("returns vendor data when fetchHistory succeeds", async () => {
-    const adapter = {
-      fetchHistory: vi.fn(async () => ({
-        systemId: "sys-1",
-        date: "2026-07-03",
-        points: [{ time: "10:00", solar: 500, load: 200, battery: -100, soc: 80 }],
-      })),
-    };
-
-    const data = await resolveIntradayHistory(
-      {},
-      { id: "sys-1", name: "Cabin", service: "growatt" },
-      adapter,
-      "2026-07-03",
-    );
-    expect(data.points[0].soc).toBe(80);
-    expect(data.source).toBe("vendor");
-  });
-
-  it("throws when vendor fetch fails and no data returned", async () => {
-    const adapter = {
-      fetchHistory: vi.fn(async () => {
-        throw new Error("upstream timeout");
-      }),
-    };
-
-    await expect(
-      resolveIntradayHistory({}, { id: "sys-1" }, adapter, "2026-07-03"),
-    ).rejects.toThrow("upstream timeout");
   });
 });
 

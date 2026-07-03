@@ -1,7 +1,4 @@
-/**
- * History helpers for vendor intraday series (SOC merge, etc.).
- * KV snapshot storage has been removed; cron runs alerts only.
- */
+/** History helpers shared by adapters (SOC merge, extrema). */
 
 /** Build a time → SOC map from history points. */
 export function socMapFromPoints(points) {
@@ -34,35 +31,3 @@ export function computeSocExtrema(values) {
   return { minSoc, maxSoc };
 }
 
-/**
- * Resolve intraday history from vendor APIs with optional adapter SOC supplement
- * (e.g. Growatt socChart).
- */
-export async function resolveIntradayHistory(_env, systemConfig, adapter, dateParam) {
-  let vendorData = null;
-  let vendorError = null;
-
-  try {
-    vendorData = await adapter.fetchHistory(systemConfig, dateParam || null);
-  } catch (err) {
-    vendorError = err;
-  }
-
-  if (vendorData?.points?.length) {
-    let points = vendorData.points;
-    if (adapter.fetchSocChart) {
-      try {
-        const socPoints = await adapter.fetchSocChart(systemConfig, vendorData.date);
-        if (socPoints?.length) {
-          points = mergeSocIntoPoints(points, socMapFromPoints(socPoints));
-        }
-      } catch {
-        /* optional supplement */
-      }
-    }
-    return { ...vendorData, points, source: "vendor" };
-  }
-
-  if (vendorData) return vendorData;
-  throw vendorError || new Error("No history data available");
-}
