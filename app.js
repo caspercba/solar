@@ -392,6 +392,7 @@ const CHART_COLORS = {
   solar: "#f59e0b",
   load: "#3b82f6",
   battery: "#22c55e",
+  soc: "#c084fc",
   grid: "#2a2d3a",
   text: "#8b8fa3",
 };
@@ -479,9 +480,14 @@ function renderChart(data) {
   if (!canvas) return;
 
   const points = data?.points || [];
+  const socLegend = document.querySelector(".legend-soc-item");
+  const hasSoc = points.some((p) => Number.isFinite(p.soc));
+  if (socLegend) socLegend.hidden = !hasSoc;
+
   if (!points.length) {
     canvas.hidden = true;
     if (fEls.chartEmpty) fEls.chartEmpty.hidden = false;
+    if (socLegend) socLegend.hidden = true;
     return;
   }
 
@@ -500,7 +506,7 @@ function renderChart(data) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
-  const pad = { top: 16, right: 12, bottom: 28, left: 44 };
+  const pad = { top: 16, right: hasSoc ? 40 : 12, bottom: 28, left: 44 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
 
@@ -521,6 +527,9 @@ function renderChart(data) {
   function yAt(w) {
     return pad.top + plotH - ((w - yMin) / (yMax - yMin)) * plotH;
   }
+  function ySocAt(pct) {
+    return pad.top + plotH - (pct / 100) * plotH;
+  }
 
   ctx.strokeStyle = CHART_COLORS.grid;
   ctx.lineWidth = 1;
@@ -540,6 +549,15 @@ function renderChart(data) {
     const val = yMax - ((yMax - yMin) * i) / 4;
     const y = pad.top + (plotH * i) / 4;
     ctx.fillText(fmtW(val), pad.left - 6, y);
+  }
+
+  if (hasSoc) {
+    ctx.textAlign = "left";
+    for (let i = 0; i <= 4; i++) {
+      const pct = 100 - (100 * i) / 4;
+      const y = pad.top + (plotH * i) / 4;
+      ctx.fillText(`${Math.round(pct)}%`, pad.left + plotW + 6, y);
+    }
   }
 
   const labelCount = Math.min(6, points.length);
@@ -572,6 +590,28 @@ function renderChart(data) {
   drawSeries("solar", CHART_COLORS.solar);
   drawSeries("load", CHART_COLORS.load);
   drawSeries("battery", CHART_COLORS.battery);
+
+  if (hasSoc) {
+    ctx.strokeStyle = CHART_COLORS.soc;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < points.length; i++) {
+      const soc = points[i].soc;
+      if (!Number.isFinite(soc)) continue;
+      const x = xAt(i);
+      const y = ySocAt(soc);
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 }
 
 function setEnergyLoading(on) {
@@ -591,10 +631,15 @@ function renderEnergyChart(data) {
   if (!canvas) return;
 
   const series = data?.series || [];
-  const hasData = series.some((d) => (d.solarKwh ?? 0) > 0 || (d.loadKwh ?? 0) > 0);
+  const socLegend = document.querySelector(".legend-soc-range-item");
+  const hasSoc = series.some((d) => d.minSoc != null && d.maxSoc != null);
+  if (socLegend) socLegend.hidden = !hasSoc;
+
+  const hasData = series.some((d) => (d.solarKwh ?? 0) > 0 || (d.loadKwh ?? 0) > 0 || hasSoc);
   if (!series.length || !hasData) {
     canvas.hidden = true;
     if (fEls.energyEmpty) fEls.energyEmpty.hidden = false;
+    if (socLegend) socLegend.hidden = true;
     return;
   }
 
@@ -613,7 +658,7 @@ function renderEnergyChart(data) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
-  const pad = { top: 16, right: 12, bottom: 32, left: 40 };
+  const pad = { top: 16, right: hasSoc ? 36 : 12, bottom: 32, left: 40 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const n = series.length;
@@ -649,15 +694,35 @@ function renderEnergyChart(data) {
     ctx.fillText(val < 10 ? val.toFixed(1) : Math.round(val).toString(), pad.left - 6, y);
   }
 
+  if (hasSoc) {
+    ctx.textAlign = "left";
+    for (let i = 0; i <= 4; i++) {
+      const pct = 100 - (100 * i) / 4;
+      const y = pad.top + (plotH * i) / 4;
+      ctx.fillText(`${Math.round(pct)}%`, pad.left + plotW + 6, y);
+    }
+  }
+
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   for (let i = 0; i < n; i++) {
     const cx = pad.left + groupW * i + groupW / 2;
     ctx.fillText(fmtChartDate(series[i].date), cx, pad.top + plotH + 8);
+    const day = series[i];
+    if (day.minSoc != null && day.maxSoc != null) {
+      ctx.fillStyle = CHART_COLORS.soc;
+      ctx.font = "10px sans-serif";
+      ctx.fillText(`${day.minSoc}–${day.maxSoc}%`, cx, pad.top + plotH + 22);
+      ctx.fillStyle = CHART_COLORS.text;
+      ctx.font = "11px sans-serif";
+    }
   }
 
   function barHeight(kwh) {
     return ((kwh ?? 0) / yMax) * plotH;
+  }
+  function ySocAt(pct) {
+    return pad.top + plotH - (pct / 100) * plotH;
   }
 
   for (let i = 0; i < n; i++) {
@@ -671,6 +736,24 @@ function renderEnergyChart(data) {
 
     ctx.fillStyle = CHART_COLORS.load;
     ctx.fillRect(baseX + barW + barGap, yBase - loadH, barW, loadH);
+
+    const day = series[i];
+    if (day.minSoc != null && day.maxSoc != null) {
+      const cx = pad.left + groupW * i + groupW - barGap * 2;
+      const yTop = ySocAt(day.maxSoc);
+      const yBot = ySocAt(day.minSoc);
+      ctx.strokeStyle = CHART_COLORS.soc;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, yTop);
+      ctx.lineTo(cx, yBot);
+      ctx.stroke();
+      ctx.fillStyle = CHART_COLORS.soc;
+      ctx.beginPath();
+      ctx.arc(cx, yTop, 2, 0, Math.PI * 2);
+      ctx.arc(cx, yBot, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 

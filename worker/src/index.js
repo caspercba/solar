@@ -7,7 +7,7 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
-import { deleteHistory, getHistorySummary, runScheduledSnapshots } from "./history.js";
+import { deleteHistory, getHistorySummary, resolveIntradayHistory, runScheduledSnapshots, supplementSummarySoc } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -216,6 +216,15 @@ export default {
       }
 
       const summary = await getHistorySummary(env, id, days, endDate || null);
+      const adapter = ADAPTERS[raw.service];
+      if (adapter?.fetchSocDailySummary) {
+        try {
+          const socByDate = await adapter.fetchSocDailySummary(raw, endDate || null, days);
+          summary.series = supplementSummarySoc(summary.series, socByDate);
+        } catch {
+          /* optional supplement */
+        }
+      }
       return jsonResponse(summary, 200, origin);
     }
 
@@ -228,7 +237,7 @@ export default {
         return errorResponse("Invalid date (expected YYYY-MM-DD)", 400, origin);
       }
 
-      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
 
       const adapter = ADAPTERS[raw.service];
@@ -237,7 +246,7 @@ export default {
       }
 
       try {
-        const data = await adapter.fetchHistory(raw, dateParam || null);
+        const data = await resolveIntradayHistory(env, raw, adapter, dateParam || null);
         return jsonResponse(data, 200, origin);
       } catch (err) {
         return errorResponse(`History fetch failed: ${err.message}`, 502, origin);

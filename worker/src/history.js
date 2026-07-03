@@ -129,6 +129,109 @@ function round1(n) {
   return Math.round(n * 10) / 10;
 }
 
+/** Build a time → SOC map from history points. */
+export function socMapFromPoints(points) {
+  const map = new Map();
+  for (const p of points || []) {
+    if (Number.isFinite(p.soc)) map.set(p.time, p.soc);
+  }
+  return map;
+}
+
+/** Fill missing SOC on points from a time → SOC map (stored or vendor supplement). */
+export function mergeSocIntoPoints(points, socByTime) {
+  if (!points?.length || !socByTime?.size) return points;
+  return points.map((p) => {
+    if (Number.isFinite(p.soc)) return p;
+    const soc = socByTime.get(p.time);
+    return Number.isFinite(soc) ? { ...p, soc } : p;
+  });
+}
+
+/** Min/max SOC from a list of numeric samples (ignores invalid / negative). */
+export function computeSocExtrema(values) {
+  let minSoc = null;
+  let maxSoc = null;
+  for (const v of values) {
+    if (!Number.isFinite(v) || v < 0) continue;
+    minSoc = minSoc == null ? v : Math.min(minSoc, v);
+    maxSoc = maxSoc == null ? v : Math.max(maxSoc, v);
+  }
+  return { minSoc, maxSoc };
+}
+
+/** Fill missing minSoc/maxSoc on summary days from vendor supplement map. */
+export function supplementSummarySoc(series, socByDate) {
+  if (!socByDate || !series?.length) return series;
+  return series.map((day) => {
+    if (day.minSoc != null && day.maxSoc != null) return day;
+    const sup = socByDate[day.date];
+    if (!sup) return day;
+    return {
+      ...day,
+      minSoc: day.minSoc ?? sup.minSoc,
+      maxSoc: day.maxSoc ?? sup.maxSoc,
+    };
+  });
+}
+
+function storedDocToIntraday(stored, systemConfig) {
+  return {
+    systemId: systemConfig.id,
+    name: systemConfig.name,
+    service: systemConfig.service,
+    date: stored.date,
+    timezoneOffset: 0,
+    intervalMinutes: stored.intervalMinutes || INTERVAL_MINUTES,
+    points: stored.points || [],
+    source: "snapshot",
+  };
+}
+
+/**
+ * Resolve intraday history: vendor power series with SOC from stored snapshots
+ * and optional adapter SOC supplement (e.g. Growatt socChart).
+ */
+export async function resolveIntradayHistory(env, systemConfig, adapter, dateParam) {
+  let vendorData = null;
+  let vendorError = null;
+
+  try {
+    vendorData = await adapter.fetchHistory(systemConfig, dateParam || null);
+  } catch (err) {
+    vendorError = err;
+  }
+
+  const queryDate = vendorData?.date || dateParam || formatDateISO(new Date());
+  const stored = await getDay(env, systemConfig.id, queryDate);
+
+  if (vendorData?.points?.length) {
+    let points = vendorData.points;
+    if (stored?.points?.length) {
+      points = mergeSocIntoPoints(points, socMapFromPoints(stored.points));
+    }
+    if (adapter.fetchSocChart) {
+      try {
+        const socPoints = await adapter.fetchSocChart(systemConfig, vendorData.date);
+        if (socPoints?.length) {
+          points = mergeSocIntoPoints(points, socMapFromPoints(socPoints));
+        }
+      } catch {
+        /* optional supplement */
+      }
+    }
+    const source = stored?.points?.length ? "merged" : "vendor";
+    return { ...vendorData, points, source };
+  }
+
+  if (stored?.points?.length) {
+    return storedDocToIntraday(stored, systemConfig);
+  }
+
+  if (vendorData) return vendorData;
+  throw vendorError || new Error("No history data available");
+}
+
 export async function appendSnapshot(env, systemId, data, nowMs = Date.now()) {
   const { date, bucketTime } = parseDataTimestamp(data.timestamp);
   const point = pointFromData(data, bucketTime);

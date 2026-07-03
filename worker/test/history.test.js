@@ -3,16 +3,21 @@ import {
   appendPoint,
   appendSnapshot,
   computeDailySummary,
+  computeSocExtrema,
   dateRange,
   deleteHistory,
   getDay,
   getHistorySummary,
   listDates,
+  mergeSocIntoPoints,
   parseDataTimestamp,
   pointFromData,
   pruneOld,
+  resolveIntradayHistory,
   runScheduledSnapshots,
   selectDatesToPrune,
+  socMapFromPoints,
+  supplementSummarySoc,
   upsertDateIndex,
 } from "../src/history.js";
 import { parseHistoryRows, localDate } from "../src/services/shinemonitor.js";
@@ -73,6 +78,103 @@ describe("appendPoint", () => {
     expect(points).toHaveLength(1);
     expect(points[0].solar).toBe(1200);
     expect(points[0].soc).toBe(72);
+  });
+});
+
+describe("mergeSocIntoPoints", () => {
+  it("fills missing SOC from stored points by time", () => {
+    const vendor = [
+      { time: "10:00", solar: 100, load: 50, battery: 0 },
+      { time: "10:05", solar: 200, load: 60, battery: -100 },
+    ];
+    const stored = [
+      { time: "10:00", soc: 80 },
+      { time: "10:05", soc: 78 },
+    ];
+    const merged = mergeSocIntoPoints(vendor, socMapFromPoints(stored));
+    expect(merged[0].soc).toBe(80);
+    expect(merged[1].soc).toBe(78);
+  });
+
+  it("does not overwrite existing vendor SOC", () => {
+    const vendor = [{ time: "10:00", solar: 100, load: 50, battery: 0, soc: 90 }];
+    const stored = [{ time: "10:00", soc: 80 }];
+    const merged = mergeSocIntoPoints(vendor, socMapFromPoints(stored));
+    expect(merged[0].soc).toBe(90);
+  });
+});
+
+describe("computeSocExtrema", () => {
+  it("returns min and max from valid samples", () => {
+    expect(computeSocExtrema([90, 85, 80, -1, NaN])).toEqual({ minSoc: 80, maxSoc: 90 });
+  });
+
+  it("returns nulls for empty input", () => {
+    expect(computeSocExtrema([])).toEqual({ minSoc: null, maxSoc: null });
+  });
+});
+
+describe("supplementSummarySoc", () => {
+  it("fills missing minSoc/maxSoc from vendor supplement", () => {
+    const series = [
+      { date: "2026-07-01", minSoc: null, maxSoc: null },
+      { date: "2026-07-02", minSoc: 55, maxSoc: 98 },
+    ];
+    const result = supplementSummarySoc(series, {
+      "2026-07-01": { minSoc: 40, maxSoc: 95 },
+    });
+    expect(result[0]).toMatchObject({ minSoc: 40, maxSoc: 95 });
+    expect(result[1]).toMatchObject({ minSoc: 55, maxSoc: 98 });
+  });
+});
+
+describe("resolveIntradayHistory", () => {
+  it("merges stored SOC into vendor power series", async () => {
+    const env = { SYSTEMS: createMockKV() };
+    await appendSnapshot(env, "sys-1", SAMPLE_DATA, Date.parse("2026-07-03T14:32:00Z"));
+
+    const adapter = {
+      fetchHistory: vi.fn(async () => ({
+        systemId: "sys-1",
+        name: "Cabin",
+        service: "growatt",
+        date: "2026-07-03",
+        timezoneOffset: 0,
+        intervalMinutes: 5,
+        points: [{ time: "14:30", solar: 1200, load: 850, battery: -723 }],
+      })),
+    };
+
+    const data = await resolveIntradayHistory(
+      env,
+      { id: "sys-1", name: "Cabin", service: "growatt" },
+      adapter,
+      "2026-07-03",
+    );
+    expect(data.points[0].soc).toBe(72);
+    expect(data.source).toBe("merged");
+  });
+
+  it("returns stored snapshot when vendor has no points", async () => {
+    const env = { SYSTEMS: createMockKV() };
+    await appendSnapshot(env, "sys-1", SAMPLE_DATA, Date.parse("2026-07-03T14:32:00Z"));
+
+    const adapter = {
+      fetchHistory: vi.fn(async () => ({
+        systemId: "sys-1",
+        date: "2026-07-03",
+        points: [],
+      })),
+    };
+
+    const data = await resolveIntradayHistory(
+      env,
+      { id: "sys-1", name: "Cabin", service: "growatt" },
+      adapter,
+      "2026-07-03",
+    );
+    expect(data.source).toBe("snapshot");
+    expect(data.points[0].soc).toBe(72);
   });
 });
 
@@ -312,6 +414,23 @@ describe("parseHistoryRows", () => {
     expect(parseHistoryRows(titles, rows)).toEqual([
       { time: "18:19", solar: 110, load: 283, battery: -3199 },
       { time: "06:00", solar: 0, load: 120, battery: 500 },
+    ]);
+  });
+
+  it("includes BATTERY_SOC when present in titles", () => {
+    const socTitles = [
+      { title: "Timestamp" },
+      { title: "Battery Voltage" },
+      { title: "Batt Current" },
+      { title: "Charger Power" },
+      { title: "PLoad" },
+      { title: "BATTERY_SOC" },
+    ];
+    const rows = [
+      { field: ["2026-04-04 12:00:00", "51.0", "-10", "500", "200", "72"] },
+    ];
+    expect(parseHistoryRows(socTitles, rows)).toEqual([
+      { time: "12:00", solar: 500, load: 200, battery: -510, soc: 72 },
     ]);
   });
 
