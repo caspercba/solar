@@ -58,13 +58,20 @@ const els = {
   genCard: $("card-gen"),
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
+  inverterStatus: $("inverter-status"),
 };
 
 const fEls = {
   cardsView: $("cards-view"),
   flowView: $("flow-view"),
+  chartView: $("chart-view"),
   tabCards: $("tab-cards"),
   tabFlow: $("tab-flow"),
+  tabChart: $("tab-chart"),
+  chartDate: $("chart-date"),
+  powerChart: $("power-chart"),
+  chartEmpty: $("chart-empty"),
+  chartLoading: $("chart-loading"),
   fpSolar: $("fp-solar"),
   fpGen: $("fp-gen"),
   fpLoad: $("fp-load"),
@@ -96,6 +103,8 @@ let systems = [];
 let activeSystemId = null;
 let pollTimer = null;
 let hasData = false;
+let currentView = "cards";
+let historyLoading = false;
 
 /* ── Loading skeleton ── */
 const skeletonTargets = () => [
@@ -104,6 +113,7 @@ const skeletonTargets = () => [
   els.solPct, els.solWatts, els.solPvVolts,
   els.loadPct, els.loadWatts,
   els.genStatus, els.genWatts, els.genVolts,
+  els.inverterStatus,
 ];
 const skeletonBars = () => [
   els.batBar.parentElement,
@@ -132,16 +142,23 @@ function setLoading(on) {
 
 /* ── View toggle ── */
 function setView(view) {
+  currentView = view;
   localStorage.setItem(VIEW_KEY, view);
   const isFlow = view === "flow";
-  fEls.cardsView.hidden = isFlow;
+  const isChart = view === "chart";
+  fEls.cardsView.hidden = isFlow || isChart;
   fEls.flowView.hidden = !isFlow;
-  fEls.tabCards.classList.toggle("active", !isFlow);
+  fEls.chartView.hidden = !isChart;
+  fEls.tabCards.classList.toggle("active", view === "cards");
   fEls.tabFlow.classList.toggle("active", isFlow);
+  fEls.tabChart.classList.toggle("active", isChart);
+  if (isChart) loadHistory(fEls.chartDate.value || null);
 }
 
 fEls.tabCards.addEventListener("click", () => setView("cards"));
 fEls.tabFlow.addEventListener("click", () => setView("flow"));
+fEls.tabChart.addEventListener("click", () => setView("chart"));
+fEls.chartDate.addEventListener("change", () => loadHistory(fEls.chartDate.value));
 
 /* ── Helpers ── */
 function fmtW(w) {
@@ -153,6 +170,16 @@ function fmtW(w) {
 
 function setBar(barEl, pct) {
   barEl.style.width = Math.max(0, Math.min(100, pct)) + "%";
+}
+
+function setInverterStatus(text) {
+  const el = els.inverterStatus;
+  if (!el) return;
+  const value = text || "--";
+  el.textContent = value;
+  const unavailable = value === "--";
+  el.classList.toggle("status-unavailable", unavailable);
+  el.classList.toggle("status-offline", !unavailable && /offline/i.test(value));
 }
 
 function setBatRate(absAmps) {
@@ -207,7 +234,11 @@ function renderSystemTabs() {
       hasData = false;
       setLoading(true);
       renderSystemTabs();
-      pollNow();
+      if (currentView === "chart") {
+        loadHistory(fEls.chartDate.value || null);
+      } else {
+        pollNow();
+      }
     });
     els.systemTabs.appendChild(btn);
   }
@@ -216,6 +247,7 @@ function renderSystemTabs() {
 /* ── Render normalized data ── */
 function renderData(d) {
   if (!d || d.error) {
+    setInverterStatus("--");
     setStatus(false);
     return;
   }
@@ -228,6 +260,8 @@ function renderData(d) {
   const load = d.load || {};
   const grid = d.grid || {};
   const inv = d.inverter || {};
+
+  setInverterStatus(d.status);
 
   /* Battery */
   const soc = bat.soc ?? 0;
@@ -347,6 +381,140 @@ function renderFlow(d) {
   fEls.fnBatDetail.textContent = batV.toFixed(1) + "V \u00B7 " + batState;
 }
 
+/* ── Intraday chart ── */
+const CHART_COLORS = {
+  solar: "#f59e0b",
+  load: "#3b82f6",
+  battery: "#22c55e",
+  grid: "#2a2d3a",
+  text: "#8b8fa3",
+};
+
+function setChartLoading(on) {
+  historyLoading = on;
+  if (fEls.chartLoading) fEls.chartLoading.hidden = !on;
+  if (fEls.powerChart) fEls.powerChart.hidden = on;
+  if (on && fEls.chartEmpty) fEls.chartEmpty.hidden = true;
+}
+
+function renderChart(data) {
+  const canvas = fEls.powerChart;
+  if (!canvas) return;
+
+  const points = data?.points || [];
+  if (!points.length) {
+    canvas.hidden = true;
+    if (fEls.chartEmpty) fEls.chartEmpty.hidden = false;
+    return;
+  }
+
+  canvas.hidden = false;
+  if (fEls.chartEmpty) fEls.chartEmpty.hidden = true;
+
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(280, Math.round(rect.width || 500));
+  const height = 220;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.height = height + "px";
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const pad = { top: 16, right: 12, bottom: 28, left: 44 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+
+  let yMin = 0;
+  let yMax = 0;
+  for (const p of points) {
+    yMin = Math.min(yMin, p.solar ?? 0, p.load ?? 0, p.battery ?? 0);
+    yMax = Math.max(yMax, p.solar ?? 0, p.load ?? 0, p.battery ?? 0);
+  }
+  if (yMax === 0 && yMin === 0) yMax = 1000;
+  const yPad = (yMax - yMin) * 0.08 || 100;
+  yMin -= yPad;
+  yMax += yPad;
+
+  function xAt(i) {
+    return pad.left + (points.length <= 1 ? plotW / 2 : (i / (points.length - 1)) * plotW);
+  }
+  function yAt(w) {
+    return pad.top + plotH - ((w - yMin) / (yMax - yMin)) * plotH;
+  }
+
+  ctx.strokeStyle = CHART_COLORS.grid;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (plotH * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = CHART_COLORS.text;
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++) {
+    const val = yMax - ((yMax - yMin) * i) / 4;
+    const y = pad.top + (plotH * i) / 4;
+    ctx.fillText(fmtW(val), pad.left - 6, y);
+  }
+
+  const labelCount = Math.min(6, points.length);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (let i = 0; i < labelCount; i++) {
+    const idx = labelCount <= 1 ? 0 : Math.round((i / (labelCount - 1)) * (points.length - 1));
+    ctx.fillText(points[idx].time || "", xAt(idx), pad.top + plotH + 8);
+  }
+
+  function drawSeries(key, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < points.length; i++) {
+      const val = points[i][key] ?? 0;
+      const x = xAt(i);
+      const y = yAt(val);
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+  }
+
+  drawSeries("solar", CHART_COLORS.solar);
+  drawSeries("load", CHART_COLORS.load);
+  drawSeries("battery", CHART_COLORS.battery);
+}
+
+async function loadHistory(date) {
+  if (!activeSystemId || currentView !== "chart") return;
+  setChartLoading(true);
+  try {
+    const qs = date ? `?date=${encodeURIComponent(date)}` : "";
+    const data = await api("GET", `/api/systems/${activeSystemId}/history${qs}`);
+    if (data.date && fEls.chartDate) fEls.chartDate.value = data.date;
+    renderChart(data);
+    setStatus(true);
+  } catch (err) {
+    console.error("history error:", err);
+    renderChart({ points: [] });
+    setStatus(false);
+  } finally {
+    setChartLoading(false);
+  }
+}
+
 /* ── Polling ── */
 async function pollNow() {
   if (!activeSystemId) return;
@@ -389,10 +557,32 @@ async function loadSystems() {
 }
 
 /* ── Add System ── */
+const addPlantGroup = $("add-plant-group");
+const addPlantSelect = $("add-plant");
+
+function hidePlantPicker() {
+  addPlantGroup.hidden = true;
+  addPlantSelect.innerHTML = "";
+  addPlantSelect.required = false;
+}
+
+function showPlantPicker(plants) {
+  addPlantSelect.innerHTML = "";
+  for (const p of plants) {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name;
+    addPlantSelect.appendChild(opt);
+  }
+  addPlantGroup.hidden = false;
+  addPlantSelect.required = true;
+}
+
 function openAddModal() {
   manageModal.hidden = true;
   addModal.hidden = false;
   addForm.reset();
+  hidePlantPicker();
   addError.hidden = true;
 }
 
@@ -406,14 +596,24 @@ addForm.addEventListener("submit", async (e) => {
   $("add-submit").disabled = true;
   $("add-submit").textContent = "Adding...";
 
+  const body = {
+    service: $("add-service").value,
+    name: $("add-name").value || undefined,
+    user: $("add-user").value,
+    password: $("add-pass").value,
+  };
+  if (!addPlantGroup.hidden && addPlantSelect.value) {
+    body.plantId = addPlantSelect.value;
+  }
+
   try {
-    await api("POST", "/api/systems", {
-      service: $("add-service").value,
-      name: $("add-name").value || undefined,
-      user: $("add-user").value,
-      password: $("add-pass").value,
-    });
+    const result = await api("POST", "/api/systems", body);
+    if (result.requiresPlantSelection) {
+      showPlantPicker(result.plants);
+      return;
+    }
     closeAddModal();
+    hidePlantPicker();
     await loadSystems();
     if (systems.length === 1) activeSystemId = systems[0].id;
     renderSystemTabs();
@@ -552,8 +752,11 @@ els.disconnectBtn.addEventListener("click", () => {
       ptr.className = "ptr refreshing";
       ptr.style.height = "36px";
       if (pollTimer) clearTimeout(pollTimer);
-      pollNow().then(() => {
-        pollTimer = setTimeout(() => startPolling(), POLL_MS);
+      const refresh = currentView === "chart"
+        ? loadHistory(fEls.chartDate.value || null)
+        : pollNow();
+      refresh.then(() => {
+        if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), POLL_MS);
       }).finally(() => {
         refreshing = false;
         ptr.className = "ptr";

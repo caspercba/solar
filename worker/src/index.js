@@ -1,4 +1,4 @@
-import { checkAuth, corsHeaders, jsonResponse, errorResponse } from "./auth.js";
+import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -20,11 +20,20 @@ async function saveIndex(env, index) {
 
 export default {
   async fetch(request, env) {
-    const origin = request.headers.get("Origin") || "*";
+    const cors = resolveCors(request, env);
 
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      if (!cors.allowed) {
+        return new Response(null, { status: 403 });
+      }
+      return new Response(null, { status: 204, headers: corsHeaders(cors.origin) });
     }
+
+    if (!cors.allowed) {
+      return new Response(null, { status: 403 });
+    }
+
+    const origin = cors.origin;
 
     const url = new URL(request.url);
     const path = url.pathname;
@@ -56,7 +65,7 @@ export default {
     // POST /api/systems — add a new system
     if (path === "/api/systems" && request.method === "POST") {
       const body = await request.json();
-      const { service, name, user, password } = body;
+      const { service, name, user, password, plantId } = body;
 
       if (!service || !user || !password) {
         return errorResponse("Missing required fields: service, user, password", 400, origin);
@@ -69,9 +78,16 @@ export default {
 
       let discovered;
       try {
-        discovered = await adapter.discover({ user, password });
+        discovered = await adapter.discover({ user, password }, plantId || null);
       } catch (err) {
         return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
+      }
+
+      if (discovered.requiresPlantSelection) {
+        return jsonResponse({
+          requiresPlantSelection: true,
+          plants: discovered.plants,
+        }, 200, origin);
       }
 
       const id = generateId();
@@ -141,6 +157,31 @@ export default {
         return jsonResponse(data, 200, origin);
       } catch (err) {
         return errorResponse(`Fetch failed: ${err.message}`, 502, origin);
+      }
+    }
+
+    // GET /api/systems/:id/history?date=YYYY-MM-DD — intraday power series
+    const historyMatch = path.match(/^\/api\/systems\/([^/]+)\/history$/);
+    if (historyMatch && request.method === "GET") {
+      const id = historyMatch[1];
+      const dateParam = url.searchParams.get("date");
+      if (dateParam && !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+        return errorResponse("Invalid date (expected YYYY-MM-DD)", 400, origin);
+      }
+
+      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter?.fetchHistory) {
+        return errorResponse(`History not supported for service: ${raw.service}`, 501, origin);
+      }
+
+      try {
+        const data = await adapter.fetchHistory(raw, dateParam || null);
+        return jsonResponse(data, 200, origin);
+      } catch (err) {
+        return errorResponse(`History fetch failed: ${err.message}`, 502, origin);
       }
     }
 

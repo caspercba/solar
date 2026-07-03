@@ -117,17 +117,27 @@ async function getSession(systemConfig) {
 
 /* ── Discovery ── */
 
-export async function discover(credentials) {
+export async function discover(credentials, plantId = null) {
   const sess = await login(credentials.user, credentials.password);
 
   const plantsResp = await postJson(sess, "/index/getPlantListTitle");
-  const plants = Array.isArray(plantsResp) ? plantsResp : [];
-  if (!plants.length) throw new Error("No plants found on Growatt account");
+  const plantList = Array.isArray(plantsResp) ? plantsResp : [];
+  if (!plantList.length) throw new Error("No plants found on Growatt account");
 
-  const plantId = plants[0].id;
-  const plantName = plants[0].plantName || "Growatt Plant";
+  const plants = plantList.map((p) => ({
+    id: String(p.id),
+    name: p.plantName || `Plant ${p.id}`,
+  }));
 
-  const devicesResp = await postJson(sess, "/panel/getDevicesByPlantList", { currPage: "1", plantId });
+  if (!plantId && plants.length > 1) {
+    return { plants, requiresPlantSelection: true };
+  }
+
+  const selectedId = plantId || plants[0].id;
+  const plant = plantList.find((p) => String(p.id) === String(selectedId));
+  if (!plant) throw new Error(`Plant not found: ${selectedId}`);
+
+  const devicesResp = await postJson(sess, "/panel/getDevicesByPlantList", { currPage: "1", plantId: selectedId });
 
   let storageSn, nominalPower, deviceModel;
 
@@ -140,13 +150,14 @@ export async function discover(credentials) {
     throw new Error("No devices found on Growatt account");
   }
 
-  const plantResp = await postJson(sess, `/panel/getPlantData?plantId=${plantId}`);
+  const plantResp = await postJson(sess, `/panel/getPlantData?plantId=${selectedId}`);
   const nominalPV = plantResp.result === 1 ? parseFloat(plantResp.obj?.nominalPower) || nominalPower : nominalPower;
 
   return {
-    plantId,
+    plants,
+    plantId: selectedId,
     storageSn,
-    plantName,
+    plantName: plant.plantName || "Growatt Plant",
     nominalPower,
     nominalPV,
     deviceModel,
@@ -200,5 +211,51 @@ export async function fetchData(systemConfig) {
     inverter: { ratedPower, nominalPV: nominalPV || ratedPower },
     status: statusText,
     energyToday,
+  };
+}
+
+function formatIntervalTime(index) {
+  const mins = index * 5;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+export async function fetchHistory(systemConfig, date) {
+  const sess = await getSession(systemConfig);
+  const { plantId, storageSn } = systemConfig.credentials;
+  const queryDate = date || new Date().toISOString().slice(0, 10);
+
+  const [energyResp, lineResp] = await Promise.all([
+    postJson(sess, "/panel/storage/getStorageEnergyDayChart", { plantId, storageSn, date: queryDate }),
+    postJson(sess, "/panel/storage/getStorageLineChartData", { plantId, storageSn, date: queryDate }).catch(() => null),
+  ]);
+
+  if (energyResp.result !== 1) throw new Error("Failed to fetch Growatt history");
+
+  const obj = energyResp.obj || {};
+  const ppv = obj.ppv || [];
+  const userLoad = obj.userLoad || [];
+  const batPower = lineResp?.result === 1 ? (lineResp.obj?.batPower || []) : [];
+  const count = Math.max(ppv.length, userLoad.length, batPower.length);
+
+  const points = [];
+  for (let i = 0; i < count; i++) {
+    points.push({
+      time: formatIntervalTime(i),
+      solar: Math.round(parseFloat(ppv[i]) || 0),
+      load: Math.round(parseFloat(userLoad[i]) || 0),
+      battery: Math.round(parseFloat(batPower[i]) || 0),
+    });
+  }
+
+  return {
+    systemId: systemConfig.id,
+    name: systemConfig.name,
+    service: "growatt",
+    date: queryDate,
+    timezoneOffset: 0,
+    intervalMinutes: 5,
+    points,
   };
 }

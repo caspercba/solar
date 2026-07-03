@@ -10,21 +10,21 @@ const COMPANY_KEY = "bnrl_frRFjEz8Mkn";
 
 /* ── SHA-1 via Web Crypto (available in Workers) ── */
 
-async function sha1Hex(str) {
+export async function sha1Hex(str) {
   const data = new TextEncoder().encode(str);
   const hash = await crypto.subtle.digest("SHA-1", data);
   return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-function encodeAction(a) {
+export function encodeAction(a) {
   return a.replace(/#/g, "%23").replace(/'/g, "%27").replace(/ /g, "%20");
 }
 
-async function signAuth(salt, pwdSha1, action) {
+export async function signAuth(salt, pwdSha1, action) {
   return sha1Hex(String(salt) + pwdSha1 + action);
 }
 
-async function signPublic(salt, secret, token, action) {
+export async function signPublic(salt, secret, token, action) {
   return sha1Hex(String(salt) + secret + token + encodeAction(action));
 }
 
@@ -71,7 +71,7 @@ async function getSession(systemConfig) {
 
 /* ── Discovery: find plant + device info on first setup ── */
 
-export async function discover(credentials) {
+export async function discover(credentials, plantId = null) {
   const pwdSha1 = await sha1Hex(credentials.password);
   const sess = await apiAuth(credentials.user, pwdSha1);
 
@@ -79,12 +79,22 @@ export async function discover(credentials) {
   const plantList = plantsData?.info || [];
   if (!plantList.length) throw new Error("No plants found");
 
-  const plant = plantList[0];
-  const plantId = String(plant.pid);
+  const plants = plantList.map((p) => ({
+    id: String(p.pid),
+    name: p.pname || `Plant ${p.pid}`,
+  }));
 
-  const plantInfo = await apiGet(sess, `&action=queryPlantInfo&plantid=${plantId}`);
+  if (!plantId && plants.length > 1) {
+    return { plants, requiresPlantSelection: true, pwdSha1 };
+  }
 
-  const devData = await apiGet(sess, `&action=queryPlantDeviceStatus&plantid=${plantId}`);
+  const selectedId = plantId || plants[0].id;
+  const plant = plantList.find((p) => String(p.pid) === String(selectedId));
+  if (!plant) throw new Error(`Plant not found: ${selectedId}`);
+
+  const plantInfo = await apiGet(sess, `&action=queryPlantInfo&plantid=${selectedId}`);
+
+  const devData = await apiGet(sess, `&action=queryPlantDeviceStatus&plantid=${selectedId}`);
   const collectors = devData?.collector || [];
   if (!collectors.length || !collectors[0].device?.length) throw new Error("No devices found");
 
@@ -92,8 +102,9 @@ export async function discover(credentials) {
   const dev = collector.device[0];
 
   return {
+    plants,
     pwdSha1,
-    plantId,
+    plantId: selectedId,
     plantName: plant.pname || plantInfo.name || "Unknown",
     device: {
       pn: collector.pn,
@@ -108,9 +119,111 @@ export async function discover(credentials) {
 
 /* ── Data fetch + normalize ── */
 
-function localDate(tzOffsetSeconds) {
+const BAT_LOW_V = 42.0;
+const BAT_HIGH_V = 53.5;
+
+function estimateSocFromVoltage(batV) {
+  if (batV >= BAT_HIGH_V) return 100;
+  if (batV <= BAT_LOW_V) return 0;
+  return Math.round(((batV - BAT_LOW_V) / (BAT_HIGH_V - BAT_LOW_V)) * 100);
+}
+
+/** @returns {{ soc: number, socSource: 'api' | 'estimated' }} */
+export function resolveBatterySoc(plantCurrent, batV) {
+  if (Array.isArray(plantCurrent)) {
+    const item = plantCurrent.find(i => i.key === "BATTERY_SOC");
+    if (item?.val != null && item.val !== "") {
+      const apiSoc = parseFloat(item.val);
+      if (!Number.isNaN(apiSoc) && apiSoc >= 0 && apiSoc !== -1) {
+        return { soc: Math.round(apiSoc), socSource: "api" };
+      }
+    }
+  }
+  return { soc: estimateSocFromVoltage(batV), socSource: "estimated" };
+}
+
+export function localDate(tzOffsetSeconds) {
   const now = new Date(Date.now() + tzOffsetSeconds * 1000);
   return now.toISOString().slice(0, 10);
+}
+
+function buildFieldLookup(titles) {
+  const indexByName = new Map();
+  for (let i = 0; i < titles.length; i++) {
+    indexByName.set(titles[i].title, i);
+  }
+  return (name, fields) => {
+    const i = indexByName.get(name);
+    return i != null ? fields[i] : null;
+  };
+}
+
+/** Parse paginated device rows into normalized history points (chronological). */
+export function parseHistoryRows(titles, rows) {
+  const fieldVal = buildFieldLookup(titles);
+  const points = [];
+
+  for (const row of rows) {
+    const fields = row?.field || [];
+    const ts = fieldVal("Timestamp", fields) || "";
+    const batV = parseFloat(fieldVal("Battery Voltage", fields)) || 0;
+    const batA = parseFloat(fieldVal("Batt Current", fields)) || 0;
+    const solarW = parseFloat(fieldVal("Charger Power", fields)) || 0;
+    const loadW = parseFloat(fieldVal("PLoad", fields)) || 0;
+
+    points.push({
+      time: ts.includes(" ") ? ts.split(" ")[1].slice(0, 5) : ts.slice(0, 5),
+      solar: Math.round(solarW),
+      load: Math.round(loadW),
+      battery: Math.round(batV * batA),
+    });
+  }
+
+  return points;
+}
+
+async function fetchAllDeviceData(sess, device, date) {
+  const pageSize = 288;
+  let page = 0;
+  let allRows = [];
+  let titles = [];
+  let total = Infinity;
+
+  while (allRows.length < total) {
+    const devData = await apiGet(
+      sess,
+      `&action=queryDeviceDataOneDayPaging&pn=${device.pn}&devcode=${device.devcode}&sn=${device.sn}&devaddr=${device.devaddr}&date=${date}&page=${page}&pagesize=${pageSize}`,
+    );
+    titles = devData?.title || titles;
+    total = devData?.total ?? 0;
+    const rows = devData?.row || [];
+    if (!rows.length) break;
+    allRows.push(...rows);
+    page++;
+    if (rows.length < pageSize || allRows.length >= total) break;
+  }
+
+  return { titles, rows: allRows.reverse() };
+}
+
+export async function fetchHistory(systemConfig, date) {
+  const sess = await getSession(systemConfig);
+  const { device, timezone } = systemConfig.credentials;
+  const tzOffset = timezone ?? 0;
+  const queryDate = date || localDate(tzOffset);
+
+  const { titles, rows } = await fetchAllDeviceData(sess, device, queryDate);
+  const points = parseHistoryRows(titles, rows);
+
+  return {
+    systemId: systemConfig.id,
+    name: systemConfig.name,
+    service: "shinemonitor",
+    date: queryDate,
+    timezoneOffset: tzOffset,
+    intervalMinutes: 5,
+    points,
+  };
 }
 
 export async function fetchData(systemConfig) {
@@ -157,12 +270,7 @@ export async function fetchData(systemConfig) {
   const nominalPV = systemConfig.credentials.nominalPower || 5000;
   const ratedPower = ratedW || 5000;
 
-  const batLowV = 42.0;
-  const batHighV = 53.5;
-  let soc;
-  if (batV >= batHighV) soc = 100;
-  else if (batV <= batLowV) soc = 0;
-  else soc = Math.round(((batV - batLowV) / (batHighV - batLowV)) * 100);
+  const { soc, socSource } = resolveBatterySoc(plantCurrent, batV);
 
   const genOn = gridV > 30 && Math.abs(gridW) > 5;
 
@@ -177,7 +285,7 @@ export async function fetchData(systemConfig) {
     name: systemConfig.name,
     service: "shinemonitor",
     timestamp: ts,
-    battery: { voltage: batV, soc, current: batA, power: Math.round(batV * batA) },
+    battery: { voltage: batV, soc, socSource, current: batA, power: Math.round(batV * batA) },
     solar: { power: solarW, voltage: pvV },
     load: { power: loadW, percent: Math.round((loadW / ratedPower) * 100) },
     grid: { power: gridW, voltage: gridV, active: genOn },

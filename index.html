@@ -9,7 +9,7 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
@@ -47,9 +47,14 @@
     <nav class="view-toggle">
       <button class="vtab active" id="tab-cards">Cards</button>
       <button class="vtab" id="tab-flow">Flow</button>
+      <button class="vtab" id="tab-chart">Chart</button>
     </nav>
 
     <main id="cards-view" class="cards">
+      <div class="inverter-status-row">
+        <span id="inverter-status" class="inverter-status status-unavailable">--</span>
+      </div>
+
       <!-- Battery card -->
       <div class="card card-battery">
         <div class="card-header">
@@ -165,6 +170,23 @@
       </svg>
     </section>
 
+    <section id="chart-view" class="chart-view" hidden>
+      <div class="chart-controls">
+        <label for="chart-date" class="chart-date-label">Date</label>
+        <input type="date" id="chart-date" class="chart-date-input">
+      </div>
+      <div class="chart-wrap">
+        <canvas id="power-chart" width="500" height="220"></canvas>
+        <div id="chart-empty" class="chart-empty" hidden>No power data for this date</div>
+        <div id="chart-loading" class="chart-loading" hidden>Loading chart…</div>
+      </div>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar</span>
+        <span class="legend-item"><span class="legend-swatch legend-load"></span>Load</span>
+        <span class="legend-item"><span class="legend-swatch legend-battery"></span>Battery</span>
+      </div>
+    </section>
+
     <footer>
       <span id="last-update">Last update: --</span>
       <span id="energy-today"></span>
@@ -188,6 +210,10 @@
         <input type="text" id="add-user" required>
         <label>Password</label>
         <input type="password" id="add-pass" required>
+        <div id="add-plant-group" hidden>
+          <label for="add-plant">Plant</label>
+          <select id="add-plant"></select>
+        </div>
         <div class="modal-actions">
           <button type="button" id="add-cancel" class="btn-secondary">Cancel</button>
           <button type="submit" id="add-submit">Add System</button>
@@ -209,6 +235,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
