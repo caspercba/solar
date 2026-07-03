@@ -10,7 +10,8 @@ import {
 test.describe("Pull-to-refresh", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile-chrome", "pull-to-refresh is mobile-only");
     await disableServiceWorker(page);
     await page.goto("/");
     await clearAppStorage(page);
@@ -22,12 +23,13 @@ test.describe("Pull-to-refresh", () => {
     let dataRequestCount = 0;
     await page.route("**/api/systems/*/data", async (route) => {
       dataRequestCount += 1;
+      await new Promise((r) => setTimeout(r, 500));
       await route.continue();
     });
 
     await pullToRefresh(page);
 
-    await expect(page.locator("#ptr.refreshing, #ptr.armed, #ptr.pulling")).toBeVisible({
+    await expect(page.locator("#ptr")).toHaveClass(/refreshing|armed|pulling/, {
       timeout: 5000,
     });
 
