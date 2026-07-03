@@ -1,0 +1,146 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import worker from "../src/index.js";
+import { createMockKV } from "./helpers.js";
+
+const AUTH = { Authorization: "Bearer test-token" };
+
+function request(path, { method = "GET", headers = {}, body } = {}) {
+  const init = { method, headers: { ...headers } };
+  if (body != null) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  return new Request(`https://proxy.example${path}`, init);
+}
+
+function env(overrides = {}) {
+  return {
+    SYSTEMS: createMockKV(),
+    API_TOKEN: "test-token",
+    ...overrides,
+  };
+}
+
+async function call(request, envOverrides = {}) {
+  return worker.fetch(request, env(envOverrides));
+}
+
+describe("worker routes", () => {
+  let originalFetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("GET /api/health does not require auth", async () => {
+    const res = await call(request("/api/health"));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ ok: true, version: "1.1.0" });
+  });
+
+  it("returns 401 when auth token is missing on protected routes", async () => {
+    const res = await call(request("/api/systems"));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("GET /api/systems lists configured systems without credentials", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "a", name: "Alpha", service: "shinemonitor" },
+    ]));
+
+    const res = await call(request("/api/systems", { headers: AUTH }), systems);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([
+      { id: "a", name: "Alpha", service: "shinemonitor" },
+    ]);
+  });
+
+  it("POST /api/systems discovers and stores a new system", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 1, pname: "Solar Farm" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Solar Farm", nominalPower: "5", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: { collector: [{ pn: "P1", device: [{ devcode: 2, sn: "SN", devaddr: 3 }] }] },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "shinemonitor",
+          name: "My Plant",
+          user: "user@test.com",
+          password: "password",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.name).toBe("My Plant");
+    expect(json.service).toBe("shinemonitor");
+    expect(json.id).toBeTruthy();
+
+    const index = await systems.SYSTEMS.get("_index", "json");
+    expect(index).toHaveLength(1);
+    expect(index[0].id).toBe(json.id);
+
+    const stored = await systems.SYSTEMS.get(`system:${json.id}`, "json");
+    expect(stored.credentials.user).toBe("user@test.com");
+    expect(stored.credentials.password).toBeUndefined();
+    expect(stored.credentials.pwdSha1).toMatch(/^[a-f0-9]{40}$/);
+  });
+
+  it("DELETE /api/systems/:id removes the system from the index", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "del-me", name: "Gone", service: "growatt" },
+      { id: "keep", name: "Stay", service: "growatt" },
+    ]));
+    await systems.SYSTEMS.put("system:del-me", JSON.stringify({ id: "del-me" }));
+
+    const res = await call(
+      request("/api/systems/del-me", { method: "DELETE", headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(await systems.SYSTEMS.get("system:del-me")).toBeNull();
+    const index = await systems.SYSTEMS.get("_index", "json");
+    expect(index).toEqual([{ id: "keep", name: "Stay", service: "growatt" }]);
+  });
+
+  it("returns 404 for unknown routes", async () => {
+    const res = await call(request("/api/unknown", { headers: AUTH }));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+  });
+});

@@ -9,7 +9,8 @@ export function checkAuth(request, env) {
 
   const header = request.headers.get("Authorization") || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
-  return match && match[1] === token;
+  if (!match) return false;
+  return match[1] === token;
 }
 
 export function corsHeaders(origin) {
