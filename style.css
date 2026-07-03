@@ -350,6 +350,33 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   align-items: center;
   gap: .75rem;
   margin-bottom: .75rem;
+  flex-wrap: wrap;
+}
+
+.chart-export-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  padding: .45rem .85rem;
+  font-size: .85rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background .2s, color .2s, border-color .2s, opacity .2s;
+}
+
+.chart-export-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent-sol);
+}
+
+.chart-export-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
 
 .chart-date-label {

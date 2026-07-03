@@ -69,6 +69,7 @@ const fEls = {
   tabFlow: $("tab-flow"),
   tabChart: $("tab-chart"),
   chartDate: $("chart-date"),
+  chartExportBtn: $("chart-export-btn"),
   powerChart: $("power-chart"),
   chartEmpty: $("chart-empty"),
   chartLoading: $("chart-loading"),
@@ -105,6 +106,7 @@ let pollTimer = null;
 let hasData = false;
 let currentView = "cards";
 let historyLoading = false;
+let chartHistory = null;
 
 /* ── Loading skeleton ── */
 const skeletonTargets = () => [
@@ -159,6 +161,7 @@ fEls.tabCards.addEventListener("click", () => setView("cards"));
 fEls.tabFlow.addEventListener("click", () => setView("flow"));
 fEls.tabChart.addEventListener("click", () => setView("chart"));
 fEls.chartDate.addEventListener("change", () => loadHistory(fEls.chartDate.value));
+if (fEls.chartExportBtn) fEls.chartExportBtn.addEventListener("click", exportChartCsv);
 
 /* ── Helpers ── */
 function fmtW(w) {
@@ -395,6 +398,77 @@ function setChartLoading(on) {
   if (fEls.chartLoading) fEls.chartLoading.hidden = !on;
   if (fEls.powerChart) fEls.powerChart.hidden = on;
   if (on && fEls.chartEmpty) fEls.chartEmpty.hidden = true;
+  if (on) updateChartExportBtn();
+}
+
+function sanitizeExportName(name) {
+  const safe = String(name || "system")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9._-]/g, "")
+    .slice(0, 64);
+  return safe || "system";
+}
+
+function csvCell(value) {
+  if (value == null || value === "") return "";
+  const text = String(value);
+  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function historyToCsv(points) {
+  const lines = ["time,solar_w,load_w,battery_w,soc"];
+  for (const p of points) {
+    lines.push([
+      csvCell(p.time),
+      csvCell(p.solar ?? 0),
+      csvCell(p.load ?? 0),
+      csvCell(p.battery ?? 0),
+      csvCell(Number.isFinite(p.soc) ? p.soc : ""),
+    ].join(","));
+  }
+  return lines.join("\r\n");
+}
+
+function updateChartExportBtn() {
+  const btn = fEls.chartExportBtn;
+  if (!btn) return;
+  const points = chartHistory?.points;
+  btn.disabled = historyLoading || !points?.length;
+}
+
+async function downloadCsvFile(filename, csv) {
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const file = new File([blob], filename, { type: "text/csv" });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 250);
+}
+
+function exportChartCsv() {
+  const points = chartHistory?.points;
+  if (!points?.length) return;
+  const name = chartHistory.name
+    || systems.find((s) => s.id === activeSystemId)?.name
+    || "system";
+  const date = chartHistory.date || fEls.chartDate?.value || "unknown-date";
+  const filename = `${sanitizeExportName(name)}-${date}.csv`;
+  downloadCsvFile(filename, historyToCsv(points));
 }
 
 function renderChart(data) {
@@ -503,15 +577,18 @@ async function loadHistory(date) {
   try {
     const qs = date ? `?date=${encodeURIComponent(date)}` : "";
     const data = await api("GET", `/api/systems/${activeSystemId}/history${qs}`);
+    chartHistory = data;
     if (data.date && fEls.chartDate) fEls.chartDate.value = data.date;
     renderChart(data);
     setStatus(true);
   } catch (err) {
     console.error("history error:", err);
+    chartHistory = { points: [] };
     renderChart({ points: [] });
     setStatus(false);
   } finally {
     setChartLoading(false);
+    updateChartExportBtn();
   }
 }
 
