@@ -5,7 +5,13 @@
  * Cookie-based session for all subsequent requests.
  */
 
-import { computeSocExtrema, mergeSocIntoPoints, socMapFromPoints } from "../history.js";
+import {
+  computeDailySummary,
+  computeSocExtrema,
+  dateRange,
+  mergeSocIntoPoints,
+  socMapFromPoints,
+} from "../history.js";
 
 const BASE = "https://mqtt.growatt.com";
 
@@ -292,6 +298,52 @@ export async function fetchSocChart(systemConfig, date) {
     points.push({ time: formatIntervalTime(i), soc });
   }
   return points;
+}
+
+function emptySummaryDay(date) {
+  return {
+    date,
+    solarKwh: null,
+    loadKwh: null,
+    peakSolarW: null,
+    minSoc: null,
+    maxSoc: null,
+    source: null,
+  };
+}
+
+/** Aggregate daily solar/load kWh for the last N days via fetchHistory. */
+export async function fetchHistorySummary(systemConfig, days = 7, endDate = null) {
+  const end = endDate || new Date().toISOString().slice(0, 10);
+  const dates = dateRange(end, days);
+
+  const series = await Promise.all(
+    dates.map(async (date) => {
+      try {
+        const history = await fetchHistory(systemConfig, date);
+        if (!history.points?.length) return emptySummaryDay(date);
+        const summary = computeDailySummary(history.points);
+        return {
+          date,
+          solarKwh: summary.solarKwh,
+          loadKwh: summary.loadKwh,
+          peakSolarW: summary.peakSolarW,
+          minSoc: summary.minSoc,
+          maxSoc: summary.maxSoc,
+          source: "vendor",
+        };
+      } catch {
+        return emptySummaryDay(date);
+      }
+    }),
+  );
+
+  return {
+    systemId: systemConfig.id,
+    days,
+    endDate: end,
+    series,
+  };
 }
 
 /** Daily min/max SOC for the chart day when stored snapshots lack SOC. */

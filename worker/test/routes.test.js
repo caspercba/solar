@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import worker from "../src/index.js";
-import { createMockKV } from "./helpers.js";
+import { createMockKV, expectHistorySummaryShape } from "./helpers.js";
+import smAuth from "./fixtures/shinemonitor/auth-success.json";
+import smDay0703 from "./fixtures/shinemonitor/device-day-2026-07-03.json";
+import growattEnergy0703 from "./fixtures/growatt/energy-day-2026-07-03.json";
+import growattLineChart from "./fixtures/growatt/line-chart.json";
+import growattBatChart0703 from "./fixtures/growatt/bat-chart-2026-07-03.json";
 
 const AUTH = { Authorization: "Bearer test-token" };
 
@@ -205,24 +210,22 @@ describe("worker routes", () => {
       }),
     );
 
-    const titles = [
-      { title: "Timestamp" },
-      { title: "Battery Voltage" },
-      { title: "Batt Current" },
-      { title: "Charger Power" },
-      { title: "PLoad" },
-    ];
-
     globalThis.fetch = vi.fn(async (url) => {
       const u = String(url);
       if (u.includes("action=auth")) {
-        return Response.json({ err: 0, dat: { secret: "s1", token: "t1" } });
+        return Response.json(smAuth);
       }
       if (u.includes("queryDeviceDataOneDayPaging")) {
         return Response.json({
           err: 0,
           dat: {
-            title: titles,
+            title: [
+              { title: "Timestamp" },
+              { title: "Battery Voltage" },
+              { title: "Batt Current" },
+              { title: "Charger Power" },
+              { title: "PLoad" },
+            ],
             total: 1,
             row: [{
               field: ["2026-07-03 10:00:00", "50.0", "0", "2400", "500"],
@@ -249,6 +252,121 @@ describe("worker routes", () => {
       peakSolarW: 2400,
       source: "vendor",
     });
+  });
+
+  it("GET /api/systems/:id/history/summary uses Growatt fetchHistorySummary", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "gw1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put(
+      "system:gw1",
+      JSON.stringify({
+        id: "gw1",
+        name: "Home",
+        service: "growatt",
+        credentials: {
+          user: "u",
+          password: "p",
+          plantId: "42",
+          storageSn: "SN1",
+        },
+      }),
+    );
+
+    globalThis.fetch = vi.fn(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith("/login") && init?.method === "POST") {
+        return new Response(JSON.stringify({ result: 1 }), {
+          headers: { "set-cookie": "JSESSIONID=abc123; Path=/" },
+        });
+      }
+      if (u.includes("getStorageEnergyDayChart")) {
+        return Response.json(growattEnergy0703);
+      }
+      if (u.includes("getStorageLineChartData")) {
+        return Response.json(growattLineChart);
+      }
+      if (u.includes("getStorageBatChart")) {
+        return Response.json(growattBatChart0703);
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const res = await call(
+      request("/api/systems/gw1/history/summary?days=1&end=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expectHistorySummaryShape(json);
+    expect(json.systemId).toBe("gw1");
+    expect(json.series).toHaveLength(1);
+    expect(json.series[0]).toMatchObject({
+      date: "2026-07-03",
+      solarKwh: 0.5,
+      loadKwh: 0.1,
+      peakSolarW: 3000,
+      source: "vendor",
+    });
+  });
+
+  it("GET /api/systems/:id/history/summary rejects invalid days param", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
+    await systems.SYSTEMS.put(
+      "system:sm1",
+      JSON.stringify({ id: "sm1", name: "Cabin", service: "shinemonitor", credentials: {} }),
+    );
+
+    for (const query of ["days=0", "days=91", "days=abc"]) {
+      const res = await call(
+        request(`/api/systems/sm1/history/summary?${query}`, { headers: AUTH }),
+        systems,
+      );
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "Invalid days (expected 1–90)" });
+    }
+  });
+
+  it("GET /api/systems/:id/history/summary accepts days at clamp boundaries", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
+    await systems.SYSTEMS.put(
+      "system:sm1",
+      JSON.stringify({
+        id: "sm1",
+        name: "Cabin",
+        service: "shinemonitor",
+        credentials: {
+          user: "user@example.com",
+          pwdSha1: "5baa61e4c9b93f3f0682250b6cf8331b7ee68fd8",
+          plantId: "100",
+          device: { pn: "PN1", devcode: "1", sn: "SN1", devaddr: "1" },
+          timezone: 0,
+        },
+      }),
+    );
+
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json(smAuth);
+      }
+      if (u.includes("queryDeviceDataOneDayPaging")) {
+        return Response.json(smDay0703);
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const res = await call(
+      request("/api/systems/sm1/history/summary?days=90&end=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.days).toBe(90);
+    expect(json.series).toHaveLength(90);
   });
 
   it("returns 404 for unknown routes", async () => {

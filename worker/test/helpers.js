@@ -20,6 +20,25 @@ export function createMockKV(initial = {}) {
   };
 }
 
+/** Assert the normalized multi-day history summary shape (PLAN §3.3). */
+export function expectHistorySummaryShape(summary) {
+  expect(summary).toMatchObject({
+    systemId: expect.any(String),
+    days: expect.any(Number),
+    endDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    series: expect.any(Array),
+  });
+  for (const day of summary.series) {
+    expect(day).toMatchObject({
+      date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
+    expect(day).toHaveProperty("solarKwh");
+    expect(day).toHaveProperty("loadKwh");
+    expect(day).toHaveProperty("minSoc");
+    expect(day).toHaveProperty("maxSoc");
+  }
+}
+
 /** Assert the canonical normalized system data shape shared by adapters. */
 export function expectNormalizedShape(data) {
   expect(data).toMatchObject({
