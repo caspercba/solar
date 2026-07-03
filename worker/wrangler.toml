@@ -17,5 +17,8 @@ id = "3dc7a4785e91472ba8b3a59464ebc49c"
 #   wrangler secret put ALLOWED_ORIGINS
 # Example: https://your-app.pages.dev,https://your-domain.com
 
+# Cron triggers (run locally with `wrangler dev --test-scheduled` or deploy to Cloudflare).
+# */5 aligns with history INTERVAL_MINUTES (5-minute buckets).
+# Each tick: append history snapshots for all systems + evaluate alert thresholds.
 [triggers]
 crons = ["*/5 * * * *"]

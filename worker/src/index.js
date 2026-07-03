@@ -7,6 +7,7 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
+import { deleteHistory, runScheduledSnapshots } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -150,6 +151,7 @@ export default {
       const id = deleteMatch[1];
       await env.SYSTEMS.delete(`system:${id}`);
       await deleteAlertState(env, id);
+      await deleteHistory(env, id);
       const index = await listSystems(env);
       const updated = index.filter(s => s.id !== id);
       await saveIndex(env, updated);
@@ -224,7 +226,10 @@ export default {
   },
 
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(runScheduledAlerts(env, ADAPTERS));
+    ctx.waitUntil(Promise.all([
+      runScheduledAlerts(env, ADAPTERS),
+      runScheduledSnapshots(env, ADAPTERS),
+    ]));
   },
 };
 
