@@ -144,14 +144,21 @@ Vendor-only fetches remain available immediately after setup; stored series buil
 
 ### Run tests locally
 
-From the `worker` directory:
+**Worker** (Vitest + Miniflare):
 
 ```bash
+cd worker
 npm install
 npm test
 ```
 
-Tests use Node’s built-in test runner (`node --test`).
+**Frontend helpers** (Vitest + happy-dom, pure functions in `frontend/lib.js`):
+
+```bash
+cd frontend
+npm install
+npm test
+```
 
 ## CI/CD
 
