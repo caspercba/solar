@@ -9,6 +9,9 @@ id = "3dc7a4785e91472ba8b3a59464ebc49c"
 # Set the shared access token as a secret:
 #   wrangler secret put API_TOKEN
 #
+# AES-256-GCM key for encrypting inverter credentials in KV (32 bytes, base64):
+#   openssl rand -base64 32 | wrangler secret put CREDENTIALS_KEY
+#
 # Comma-separated frontend origins allowed for CORS (production).
 # When unset, dev mode reflects the request Origin (or "*").
 #   wrangler secret put ALLOWED_ORIGINS

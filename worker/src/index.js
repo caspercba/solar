@@ -1,4 +1,5 @@
 import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
+import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -101,7 +102,7 @@ export default {
         createdAt: new Date().toISOString(),
       };
 
-      await env.SYSTEMS.put(`system:${id}`, JSON.stringify(systemConfig));
+      await saveSystemConfig(env, systemConfig);
 
       const index = await listSystems(env);
       index.push({ id, name: systemName, service });
@@ -126,7 +127,7 @@ export default {
       const index = await listSystems(env);
       const results = await Promise.allSettled(
         index.map(async (entry) => {
-          const raw = await env.SYSTEMS.get(`system:${entry.id}`, "json");
+          const raw = await loadSystemConfig(env, entry.id);
           if (!raw) return { systemId: entry.id, error: "Not found" };
           const adapter = ADAPTERS[raw.service];
           if (!adapter) return { systemId: entry.id, error: "No adapter" };
@@ -146,7 +147,7 @@ export default {
     const dataMatch = path.match(/^\/api\/systems\/([^/]+)\/data$/);
     if (dataMatch && request.method === "GET") {
       const id = dataMatch[1];
-      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
 
       const adapter = ADAPTERS[raw.service];
