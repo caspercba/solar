@@ -1,4 +1,4 @@
-import { checkAuth, corsHeaders, jsonResponse, errorResponse } from "./auth.js";
+import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -20,11 +20,20 @@ async function saveIndex(env, index) {
 
 export default {
   async fetch(request, env) {
-    const origin = request.headers.get("Origin") || "*";
+    const cors = resolveCors(request, env);
 
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      if (!cors.allowed) {
+        return new Response(null, { status: 403 });
+      }
+      return new Response(null, { status: 204, headers: corsHeaders(cors.origin) });
     }
+
+    if (!cors.allowed) {
+      return new Response(null, { status: 403 });
+    }
+
+    const origin = cors.origin;
 
     if (!checkAuth(request, env)) {
       return errorResponse("Unauthorized", 401, origin);
