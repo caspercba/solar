@@ -1,5 +1,16 @@
 import { loadSystemConfig } from "./credentials.js";
 
+/**
+ * Worker-owned history snapshots in KV (same SYSTEMS namespace as system configs).
+ *
+ * Keys:
+ *   history:day:<systemId>:<YYYY-MM-DD>  — daily document (points + dailySummary)
+ *   history:index:<systemId>             — date list, newest first (for listing/prune)
+ *
+ * Cron (see wrangler.toml [triggers]) calls appendSnapshot per system each tick;
+ * pruneOld removes days older than DEFAULT_RETENTION_DAYS. History API routes serve
+ * stored documents first, then fall back to vendor fetchHistory for backfill.
+ */
 export const DEFAULT_RETENTION_DAYS = 90;
 export const INTERVAL_MINUTES = 5;
 

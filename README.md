@@ -20,9 +20,9 @@ flowchart LR
 
 | Layer | Role |
 |-------|------|
-| **Frontend** | Dashboard UI — cards and energy-flow views, 60 s polling, multi-system tabs. Stores proxy URL + access token in `localStorage`. |
-| **Worker** | Token-gated REST API. Discovers plants/devices on setup, caches vendor sessions, returns normalized JSON. |
-| **KV** | Persists per-system credentials and metadata (inverter usernames/passwords, plant IDs, device identifiers). |
+| **Frontend** | Dashboard UI — cards, energy-flow, and chart views; 60 s polling; multi-system tabs. Stores proxy URL + access token in `localStorage`. |
+| **Worker** | Token-gated REST API. Discovers plants/devices on setup, caches vendor sessions, returns normalized JSON. Cron job snapshots realtime data into KV history keys. |
+| **KV** | System configs (`system:<id>`), credentials index (`_index`), and **history snapshots** (`history:day:*`, `history:index:*`). |
 | **Vendor APIs** | ShineMonitor (signed GET) and Growatt (cookie session POST). Neither is callable directly from the browser due to CORS and auth complexity. |
 
 ## Prerequisites
@@ -77,6 +77,70 @@ flowchart LR
    ```
 
    If `API_TOKEN` is not set, the Worker runs in open mode (no auth) — useful for local testing only.
+
+### Historical data (cron snapshots)
+
+The Worker stores normalized realtime readings in KV on a schedule so charts and summaries survive vendor API gaps or account outages. Implementation lives in `worker/src/history.js`; the cron trigger is configured in `wrangler.toml`.
+
+**Cron trigger** — enabled by default in `worker/wrangler.toml`:
+
+```toml
+[triggers]
+crons = ["*/5 * * * *"]   # every 5 minutes (matches snapshot interval)
+```
+
+Each cron tick fetches realtime data for every configured system, appends a 5-minute bucket to that day's KV document, and prunes keys older than the retention window. **Charts backed by stored history only populate after the first cron cycles run** — allow up to one interval (5 minutes) after deploy before expecting intraday points from KV. Multi-day summaries need a full day of snapshots.
+
+To change the schedule, edit `crons` in `wrangler.toml` and redeploy. Keep the interval aligned with `INTERVAL_MINUTES` (5) in `history.js`, or update both together.
+
+**KV key layout** (same `SYSTEMS` namespace as system configs):
+
+| Key | Value |
+|-----|--------|
+| `history:day:<systemId>:<YYYY-MM-DD>` | Daily snapshot JSON (see below) |
+| `history:index:<systemId>` | JSON array of dates with stored data, newest first |
+
+Example day document (no credentials — only normalized power/SOC fields):
+
+```json
+{
+  "systemId": "550e8400-e29b-41d4-a716-446655440000",
+  "date": "2026-07-03",
+  "source": "snapshot",
+  "intervalMinutes": 5,
+  "points": [
+    {
+      "time": "14:30",
+      "solar": 1200,
+      "load": 850,
+      "battery": -723,
+      "soc": 72,
+      "energyToday": 12.4
+    }
+  ],
+  "dailySummary": {
+    "solarKwh": 18.2,
+    "loadKwh": 14.1,
+    "peakSolarW": 3200,
+    "minSoc": 45,
+    "maxSoc": 98
+  },
+  "updatedAt": "2026-07-03T20:32:00.000Z"
+}
+```
+
+Points are deduplicated by 5-minute time bucket (`14:32` → `14:30`). `dailySummary` is recomputed on each append from integrated power and SOC extrema.
+
+**Retention** — default **90 days** per system (`DEFAULT_RETENTION_DAYS` in `history.js`). On each cron run, `pruneOld()` deletes `history:day:*` keys and index entries older than the cutoff. At ~15 KB/day, 90 days ≈ 1.4 MB per system — well within KV limits.
+
+**Stored vs vendor history** — history API routes prefer KV snapshots when a day document exists, then fall back to vendor adapters (`fetchHistory`) for backfill or dates outside retention:
+
+| Route | Behavior |
+|-------|----------|
+| `GET /api/systems/:id/history?date=` | Intraday power series. **Stored-first:** serve `history:day:*` points when present; otherwise call ShineMonitor/Growatt for that date. |
+| `GET /api/systems/:id/history/summary?days=7` | Daily totals from stored `dailySummary` fields (solar/load kWh, peak solar, min/max SOC). Missing days omitted until snapshots exist. |
+
+Vendor-only fetches remain available immediately after setup; stored series build up cron cycle by cron cycle. The chart view may show an empty or partial day until enough snapshots accumulate.
 
 ### Run tests locally
 
@@ -169,6 +233,8 @@ Use only on trusted devices — the token appears in the URL and browser history
 | `DELETE` | `/api/systems/:id` | Remove a system |
 | `GET` | `/api/systems/:id/data` | Normalized real-time data for one system |
 | `GET` | `/api/systems/all/data` | Data for all systems |
+| `GET` | `/api/systems/:id/history?date=` | Intraday power series (stored KV first, vendor fallback) |
+| `GET` | `/api/systems/:id/history/summary?days=7` | Daily energy/SOC summary from stored snapshots (default 7 days) |
 
 All routes require `Authorization: Bearer <API_TOKEN>` when the secret is configured.
 
@@ -222,7 +288,7 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 ## Security
 
 - **`API_TOKEN`** — Set only via `wrangler secret put`. Do not commit tokens, inverter passwords, or `.env` files. The repo `.gitignore` excludes `.env`.
-- **Inverter credentials** — Stored in Workers KV when you add a system. Restrict Cloudflare account access; treat KV as sensitive.
+- **Inverter credentials** — Stored encrypted in Workers KV when `CREDENTIALS_KEY` is set (`wrangler secret put CREDENTIALS_KEY`). History snapshot keys contain only normalized power/SOC — never credentials. Restrict Cloudflare account access; treat KV as sensitive.
 - **Frontend token storage** — The access token is kept in `localStorage` (and optionally URL params for bookmarks). Anyone with the token can call your Worker API. Rotate the token if it is exposed.
 - **HTTPS only** — Use HTTPS for both the Worker and frontend in production.
 - **Dev mode** — If `API_TOKEN` is unset, the Worker accepts unauthenticated requests. Never deploy to production without the secret.
@@ -243,9 +309,10 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 ```
 ├── index.html, app.js, style.css   # Static frontend
 ├── worker/
-│   ├── src/index.js                # Worker entry + REST routes
+│   ├── src/index.js                # Worker entry + REST routes + cron handler
+│   ├── src/history.js              # KV snapshot storage, retention, daily summaries
 │   ├── src/services/               # ShineMonitor & Growatt adapters
-│   └── wrangler.toml               # Worker + KV binding
+│   └── wrangler.toml               # Worker + KV binding + cron triggers
 └── discovery/                      # Reverse-engineered vendor API docs
 ```
 
