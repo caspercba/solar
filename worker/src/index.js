@@ -26,12 +26,17 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    // GET /api/health — lightweight uptime check (no auth required)
+    if (path === "/api/health" && request.method === "GET") {
+      return jsonResponse({ ok: true, version: "1.1.0" }, 200, origin);
+    }
+
     if (!checkAuth(request, env)) {
       return errorResponse("Unauthorized", 401, origin);
     }
-
-    const url = new URL(request.url);
-    const path = url.pathname;
 
     // GET /api/services — list supported service types
     if (path === "/api/services" && request.method === "GET") {
