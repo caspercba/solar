@@ -3,8 +3,11 @@ import {
   appendPoint,
   appendSnapshot,
   computeDailySummary,
+  expectedBuckets,
   getDay,
+  isSparse,
   listDates,
+  mergeHistoryPoints,
   parseDataTimestamp,
   pointFromData,
   pruneOld,
@@ -117,6 +120,29 @@ describe("upsertDateIndex", () => {
     expect(upsertDateIndex(["2026-07-03", "2026-07-01"], "2026-07-03")).toEqual([
       "2026-07-03",
       "2026-07-01",
+    ]);
+  });
+});
+
+describe("isSparse and mergeHistoryPoints", () => {
+  it("detects sparse coverage for a past date", () => {
+    const date = "2026-06-01";
+    const nowMs = Date.parse("2026-07-03T12:00:00Z");
+    expect(expectedBuckets(date, nowMs)).toBe(288);
+    expect(isSparse([], date, nowMs)).toBe(true);
+    expect(isSparse(new Array(200).fill({ time: "00:00" }), date, nowMs)).toBe(false);
+    expect(isSparse(new Array(10).fill({ time: "00:00" }), date, nowMs)).toBe(true);
+  });
+
+  it("merges vendor gaps while preferring stored values", () => {
+    const stored = [{ time: "10:00", solar: 900, load: 400, battery: -100 }];
+    const vendor = [
+      { time: "10:00", solar: 100, load: 50, battery: 0 },
+      { time: "11:00", solar: 800, load: 300, battery: -50 },
+    ];
+    expect(mergeHistoryPoints(stored, vendor)).toEqual([
+      { time: "10:00", solar: 900, load: 400, battery: -100 },
+      { time: "11:00", solar: 800, load: 300, battery: -50 },
     ]);
   });
 });

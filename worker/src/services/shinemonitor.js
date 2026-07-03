@@ -142,9 +142,13 @@ export function resolveBatterySoc(plantCurrent, batV) {
   return { soc: estimateSocFromVoltage(batV), socSource: "estimated" };
 }
 
-export function localDate(tzOffsetSeconds) {
-  const now = new Date(Date.now() + tzOffsetSeconds * 1000);
+export function localDate(tzOffsetSeconds, nowMs = Date.now()) {
+  const now = new Date(nowMs + tzOffsetSeconds * 1000);
   return now.toISOString().slice(0, 10);
+}
+
+export function defaultHistoryDate(systemConfig, nowMs = Date.now()) {
+  return localDate(systemConfig.credentials?.timezone ?? 0, nowMs);
 }
 
 function buildFieldLookup(titles) {

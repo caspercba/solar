@@ -7,6 +7,7 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
+import { resolveDayHistory, resolveHistorySummary } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -195,6 +196,35 @@ export default {
       }
     }
 
+    // GET /api/systems/:id/history/summary?days=7 — daily energy totals
+    const historySummaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
+    if (historySummaryMatch && request.method === "GET") {
+      const id = historySummaryMatch[1];
+      const daysParam = url.searchParams.get("days");
+      let days = 7;
+      if (daysParam != null) {
+        days = parseInt(daysParam, 10);
+        if (!Number.isFinite(days) || days < 1 || days > 90) {
+          return errorResponse("Invalid days (expected 1–90)", 400, origin);
+        }
+      }
+
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter?.fetchHistory) {
+        return errorResponse(`History not supported for service: ${raw.service}`, 501, origin);
+      }
+
+      try {
+        const summary = await resolveHistorySummary(env, raw, adapter, days);
+        return jsonResponse(summary, 200, origin);
+      } catch (err) {
+        return errorResponse(`History summary failed: ${err.message}`, 502, origin);
+      }
+    }
+
     // GET /api/systems/:id/history?date=YYYY-MM-DD — intraday power series
     const historyMatch = path.match(/^\/api\/systems\/([^/]+)\/history$/);
     if (historyMatch && request.method === "GET") {
@@ -204,7 +234,7 @@ export default {
         return errorResponse("Invalid date (expected YYYY-MM-DD)", 400, origin);
       }
 
-      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
 
       const adapter = ADAPTERS[raw.service];
@@ -213,7 +243,7 @@ export default {
       }
 
       try {
-        const data = await adapter.fetchHistory(raw, dateParam || null);
+        const data = await resolveDayHistory(env, raw, adapter, dateParam || null);
         return jsonResponse(data, 200, origin);
       } catch (err) {
         return errorResponse(`History fetch failed: ${err.message}`, 502, origin);

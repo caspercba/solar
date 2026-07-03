@@ -221,6 +221,37 @@ function formatIntervalTime(index) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+export function defaultHistoryDate(_systemConfig, nowMs = Date.now()) {
+  return new Date(nowMs).toISOString().slice(0, 10);
+}
+
+/** Optional 7-day battery charge/discharge totals keyed by date. */
+export async function fetchBatChartSummary(systemConfig) {
+  const sess = await getSession(systemConfig);
+  const { plantId, storageSn } = systemConfig.credentials;
+  const resp = await postJson(sess, "/panel/storage/getStorageBatChart", { plantId, storageSn });
+  if (resp.result !== 1) return null;
+
+  const obj = resp.obj || {};
+  const titles = obj.cdsTitle || [];
+  const charges = obj.cdsData?.cd_charge || [];
+  const discharges = obj.cdsData?.cd_disCharge || [];
+  const byDate = {};
+
+  for (let i = 0; i < titles.length; i++) {
+    byDate[titles[i]] = {
+      batteryChargeKwh: round1(parseFloat(charges[i]) || 0),
+      batteryDischargeKwh: round1(parseFloat(discharges[i]) || 0),
+    };
+  }
+
+  return byDate;
+}
+
+function round1(n) {
+  return Math.round(n * 10) / 10;
+}
+
 export async function fetchHistory(systemConfig, date) {
   const sess = await getSession(systemConfig);
   const { plantId, storageSn } = systemConfig.credentials;
