@@ -218,7 +218,7 @@ describe("worker routes", () => {
     expect(json.systemId).toBe("s1");
     expect(json.days).toBe(2);
     expect(json.series).toHaveLength(2);
-    expect(json.series[1]).toMatchObject({ date: "2026-07-03", solarKwh: 12.4, loadKwh: 9.1, source: "snapshot" });
+    expect(json.series[1]).toMatchObject({ date: "2026-07-03", solarKwh: 12.4, loadKwh: 9.1, minSoc: 55, maxSoc: 98, source: "snapshot" });
     expect(json.series[0]).toMatchObject({ date: "2026-07-02", solarKwh: null, source: null });
   });
 

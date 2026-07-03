@@ -5,6 +5,8 @@
  * Cookie-based session for all subsequent requests.
  */
 
+import { computeSocExtrema } from "../history.js";
+
 const BASE = "https://mqtt.growatt.com";
 
 const STATUS_MAP = {
@@ -258,4 +260,42 @@ export async function fetchHistory(systemConfig, date) {
     intervalMinutes: 5,
     points,
   };
+}
+
+/** Intraday SOC series from getStorageBatChart (valid only for obj.date). */
+export async function fetchSocChart(systemConfig, date) {
+  const sess = await getSession(systemConfig);
+  const { plantId, storageSn } = systemConfig.credentials;
+  const queryDate = date || new Date().toISOString().slice(0, 10);
+
+  const resp = await postJson(sess, "/panel/storage/getStorageBatChart", { plantId, storageSn });
+  if (resp.result !== 1) return [];
+
+  const obj = resp.obj || {};
+  if (obj.date !== queryDate) return [];
+
+  const capacity = obj.socChart?.capacity || [];
+  const points = [];
+  for (let i = 0; i < capacity.length; i++) {
+    const soc = Math.round(parseFloat(capacity[i]));
+    if (!Number.isFinite(soc) || soc < 0) continue;
+    points.push({ time: formatIntervalTime(i), soc });
+  }
+  return points;
+}
+
+/** Daily min/max SOC for the chart day when stored snapshots lack SOC. */
+export async function fetchSocDailySummary(_systemConfig, _endDate, _days) {
+  const sess = await getSession(_systemConfig);
+  const { plantId, storageSn } = _systemConfig.credentials;
+
+  const resp = await postJson(sess, "/panel/storage/getStorageBatChart", { plantId, storageSn });
+  if (resp.result !== 1) return {};
+
+  const obj = resp.obj || {};
+  const capacity = (obj.socChart?.capacity || []).map((v) => parseFloat(v));
+  const { minSoc, maxSoc } = computeSocExtrema(capacity);
+  if (minSoc == null) return {};
+
+  return { [obj.date]: { minSoc, maxSoc } };
 }

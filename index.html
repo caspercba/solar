@@ -9,7 +9,7 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 
@@ -182,9 +182,10 @@
         <div id="chart-loading" class="chart-loading" hidden>Loading chart…</div>
       </div>
       <div class="chart-legend">
-        <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar</span>
-        <span class="legend-item"><span class="legend-swatch legend-load"></span>Load</span>
-        <span class="legend-item"><span class="legend-swatch legend-battery"></span>Battery</span>
+        <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar (W)</span>
+        <span class="legend-item"><span class="legend-swatch legend-load"></span>Load (W)</span>
+        <span class="legend-item"><span class="legend-swatch legend-battery"></span>Battery (W)</span>
+        <span class="legend-item legend-soc-item" hidden><span class="legend-swatch legend-soc"></span>SOC (%)</span>
       </div>
 
       <h3 class="energy-summary-title">7-Day Energy</h3>
@@ -196,6 +197,7 @@
       <div class="chart-legend energy-legend">
         <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar kWh</span>
         <span class="legend-item"><span class="legend-swatch legend-load"></span>Load kWh</span>
+        <span class="legend-item legend-soc-range-item" hidden><span class="legend-swatch legend-soc legend-soc-range"></span>SOC min–max</span>
       </div>
     </section>
 
@@ -247,6 +249,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

@@ -9,6 +9,7 @@
   --accent-bat: #22c55e;
   --accent-sol: #f59e0b;
   --accent-load: #3b82f6;
+  --accent-soc: #c084fc;
   --error: #ef4444;
   --radius: 16px;
 }
@@ -446,6 +447,12 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .legend-solar { background: var(--accent-sol); }
 .legend-load { background: var(--accent-load); }
 .legend-battery { background: var(--accent-bat); }
+.legend-soc { background: var(--accent-soc); }
+.legend-soc-range {
+  width: 3px;
+  height: 12px;
+  border-radius: 1px;
+}
 
 .energy-summary-title {
   margin: 1.25rem 0 .65rem;

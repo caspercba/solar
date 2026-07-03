@@ -170,13 +170,21 @@ export function parseHistoryRows(titles, rows) {
     const batA = parseFloat(fieldVal("Batt Current", fields)) || 0;
     const solarW = parseFloat(fieldVal("Charger Power", fields)) || 0;
     const loadW = parseFloat(fieldVal("PLoad", fields)) || 0;
+    const socRaw = fieldVal("BATTERY_SOC", fields);
+    let soc;
+    if (socRaw != null && socRaw !== "" && socRaw !== "-1") {
+      const parsed = parseFloat(socRaw);
+      if (Number.isFinite(parsed) && parsed >= 0) soc = Math.round(parsed);
+    }
 
-    points.push({
+    const point = {
       time: ts.includes(" ") ? ts.split(" ")[1].slice(0, 5) : ts.slice(0, 5),
       solar: Math.round(solarW),
       load: Math.round(loadW),
       battery: Math.round(batV * batA),
-    });
+    };
+    if (soc != null) point.soc = soc;
+    points.push(point);
   }
 
   return points;
