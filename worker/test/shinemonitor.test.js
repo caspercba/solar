@@ -6,6 +6,7 @@ import {
   signPublic,
   resolveBatterySoc,
   fetchData,
+  fetchHistorySummary,
 } from "../src/services/shinemonitor.js";
 import { expectNormalizedShape } from "./helpers.js";
 
@@ -127,5 +128,135 @@ describe("shinemonitor fetchData normalization", () => {
     expect(data.solar.power).toBe(1200);
     expect(data.energyToday).toBe(12.5);
     expect(data.grid.active).toBe(false);
+  });
+});
+
+describe("shinemonitor fetchHistorySummary", () => {
+  let originalFetch;
+
+  const systemConfig = {
+    id: "sys-1",
+    name: "Home",
+    credentials: {
+      user: "user@example.com",
+      pwdSha1: "5baa61e4c9b93f3f0682250b6cf8331b7ee68fd8",
+      plantId: "100",
+      device: { pn: "PN1", devcode: "1", sn: "SN1", devaddr: "1" },
+      nominalPower: 5000,
+      timezone: 0,
+    },
+  };
+
+  const titles = [
+    { title: "Timestamp" },
+    { title: "Battery Voltage" },
+    { title: "Batt Current" },
+    { title: "Charger Power" },
+    { title: "PLoad" },
+    { title: "BATTERY_SOC" },
+  ];
+
+  function deviceRow(time, solarW, loadW, soc) {
+    return {
+      field: [`2026-07-03 ${time}:00`, "50.0", "0", String(solarW), String(loadW), String(soc)],
+    };
+  }
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("aggregates solarKwh and loadKwh across multiple days from mocked vendor history", async () => {
+    const dayData = {
+      "2026-07-02": [
+        deviceRow("10:00", 2000, 400, 90),
+        deviceRow("10:05", 2000, 400, 88),
+      ],
+      "2026-07-03": [
+        deviceRow("12:00", 3000, 600, 85),
+        deviceRow("12:05", 3000, 600, 84),
+      ],
+    };
+
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s1", token: "t1" } });
+      }
+      if (u.includes("queryDeviceDataOneDayPaging")) {
+        const dateMatch = u.match(/date=(\d{4}-\d{2}-\d{2})/);
+        const date = dateMatch?.[1] || "2026-07-03";
+        const rows = dayData[date] || [];
+        return Response.json({
+          err: 0,
+          dat: {
+            title: titles,
+            total: rows.length,
+            row: rows,
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const summary = await fetchHistorySummary(systemConfig, 2, "2026-07-03");
+
+    expect(summary.systemId).toBe("sys-1");
+    expect(summary.days).toBe(2);
+    expect(summary.endDate).toBe("2026-07-03");
+    expect(summary.series).toHaveLength(2);
+
+    expect(summary.series[0]).toMatchObject({
+      date: "2026-07-02",
+      solarKwh: 0.3,
+      loadKwh: 0.1,
+      peakSolarW: 2000,
+      minSoc: 88,
+      maxSoc: 90,
+      source: "vendor",
+    });
+    expect(summary.series[1]).toMatchObject({
+      date: "2026-07-03",
+      solarKwh: 0.5,
+      loadKwh: 0.1,
+      peakSolarW: 3000,
+      minSoc: 84,
+      maxSoc: 85,
+      source: "vendor",
+    });
+  });
+
+  it("returns null totals for days with no vendor rows", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s1", token: "t1" } });
+      }
+      if (u.includes("queryDeviceDataOneDayPaging")) {
+        return Response.json({
+          err: 0,
+          dat: { title: titles, total: 0, row: [] },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const summary = await fetchHistorySummary(systemConfig, 1, "2026-07-01");
+    expect(summary.series).toEqual([
+      {
+        date: "2026-07-01",
+        solarKwh: null,
+        loadKwh: null,
+        peakSolarW: null,
+        minSoc: null,
+        maxSoc: null,
+        source: null,
+      },
+    ]);
   });
 });

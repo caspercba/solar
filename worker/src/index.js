@@ -197,11 +197,11 @@ export default {
       }
     }
 
-    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from stored snapshots
+    // GET /api/systems/:id/history/summary?days=7 — daily energy totals (vendor or stored snapshots)
     const summaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
     if (summaryMatch && request.method === "GET") {
       const id = summaryMatch[1];
-      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
 
       const daysParam = url.searchParams.get("days");
@@ -215,14 +215,23 @@ export default {
         return errorResponse("Invalid end date (expected YYYY-MM-DD)", 400, origin);
       }
 
-      const summary = await getHistorySummary(env, id, days, endDate || null);
       const adapter = ADAPTERS[raw.service];
-      if (adapter?.fetchSocDailySummary) {
+      let summary;
+      if (adapter?.fetchHistorySummary) {
         try {
-          const socByDate = await adapter.fetchSocDailySummary(raw, endDate || null, days);
-          summary.series = supplementSummarySoc(summary.series, socByDate);
-        } catch {
-          /* optional supplement */
+          summary = await adapter.fetchHistorySummary(raw, days, endDate || null);
+        } catch (err) {
+          return errorResponse(`History summary failed: ${err.message}`, 502, origin);
+        }
+      } else {
+        summary = await getHistorySummary(env, id, days, endDate || null);
+        if (adapter?.fetchSocDailySummary) {
+          try {
+            const socByDate = await adapter.fetchSocDailySummary(raw, endDate || null, days);
+            summary.series = supplementSummarySoc(summary.series, socByDate);
+          } catch {
+            /* optional supplement */
+          }
         }
       }
       return jsonResponse(summary, 200, origin);

@@ -222,6 +222,71 @@ describe("worker routes", () => {
     expect(json.series[0]).toMatchObject({ date: "2026-07-02", solarKwh: null, source: null });
   });
 
+  it("GET /api/systems/:id/history/summary uses ShineMonitor fetchHistorySummary", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
+    await systems.SYSTEMS.put(
+      "system:sm1",
+      JSON.stringify({
+        id: "sm1",
+        name: "Cabin",
+        service: "shinemonitor",
+        credentials: {
+          user: "user@example.com",
+          pwdSha1: "5baa61e4c9b93f3f0682250b6cf8331b7ee68fd8",
+          plantId: "100",
+          device: { pn: "PN1", devcode: "1", sn: "SN1", devaddr: "1" },
+          timezone: 0,
+        },
+      }),
+    );
+
+    const titles = [
+      { title: "Timestamp" },
+      { title: "Battery Voltage" },
+      { title: "Batt Current" },
+      { title: "Charger Power" },
+      { title: "PLoad" },
+    ];
+
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s1", token: "t1" } });
+      }
+      if (u.includes("queryDeviceDataOneDayPaging")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            title: titles,
+            total: 1,
+            row: [{
+              field: ["2026-07-03 10:00:00", "50.0", "0", "2400", "500"],
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const res = await call(
+      request("/api/systems/sm1/history/summary?days=1&end=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.systemId).toBe("sm1");
+    expect(json.series).toHaveLength(1);
+    expect(json.series[0]).toMatchObject({
+      date: "2026-07-03",
+      solarKwh: 0.2,
+      loadKwh: 0,
+      peakSolarW: 2400,
+      source: "vendor",
+    });
+  });
+
   it("returns 404 for unknown routes", async () => {
     const res = await call(request("/api/unknown", { headers: AUTH }));
     expect(res.status).toBe(404);
