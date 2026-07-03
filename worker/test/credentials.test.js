@@ -59,7 +59,9 @@ describe("credentials encryption", () => {
 
   it("rejects decrypt without CREDENTIALS_KEY", async () => {
     const encrypted = await encryptCredentials({ user: "u", password: "p" }, env);
-    await expect(decryptCredentials(encrypted, {})).rejects.toThrow(/CREDENTIALS_KEY required/);
+    await expect(decryptCredentials(encrypted, {})).rejects.toThrow(
+      /CREDENTIALS_KEY required/,
+    );
   });
 
   it("produces unique ciphertext for the same input", async () => {

@@ -7,7 +7,6 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
-import { resolveDayHistory } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -196,26 +195,23 @@ export default {
       }
     }
 
-    // GET /api/systems/:id/history/summary?days=7&end=YYYY-MM-DD — daily energy totals (vendor)
-    const historySummaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
-    if (historySummaryMatch && request.method === "GET") {
-      const id = historySummaryMatch[1];
+    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from vendor APIs
+    const summaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
+    if (summaryMatch && request.method === "GET") {
+      const id = summaryMatch[1];
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+
       const daysParam = url.searchParams.get("days");
-      let days = 7;
-      if (daysParam != null) {
-        days = parseInt(daysParam, 10);
-        if (!Number.isFinite(days) || days < 1 || days > 90) {
-          return errorResponse("Invalid days (expected 1–90)", 400, origin);
-        }
+      const days = daysParam ? Number(daysParam) : 7;
+      if (!Number.isFinite(days) || days < 1 || days > 90) {
+        return errorResponse("Invalid days (expected 1–90)", 400, origin);
       }
 
       const endDate = url.searchParams.get("end");
       if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
         return errorResponse("Invalid end date (expected YYYY-MM-DD)", 400, origin);
       }
-
-      const raw = await loadSystemConfig(env, id);
-      if (!raw) return errorResponse("System not found", 404, origin);
 
       const adapter = ADAPTERS[raw.service];
       if (!adapter?.fetchHistorySummary) {
@@ -248,7 +244,7 @@ export default {
       }
 
       try {
-        const data = await resolveDayHistory(env, raw, adapter, dateParam || null);
+        const data = await adapter.fetchHistory(raw, dateParam || null);
         return jsonResponse(data, 200, origin);
       } catch (err) {
         return errorResponse(`History fetch failed: ${err.message}`, 502, origin);

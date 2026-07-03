@@ -9,7 +9,7 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
@@ -174,16 +174,36 @@
       <div class="chart-controls">
         <label for="chart-date" class="chart-date-label">Date</label>
         <input type="date" id="chart-date" class="chart-date-input">
+        <button type="button" id="chart-export-btn" class="chart-export-btn" disabled>Export CSV</button>
       </div>
       <div class="chart-wrap">
         <canvas id="power-chart" width="500" height="220"></canvas>
-        <div id="chart-empty" class="chart-empty" hidden>No power data for this date</div>
+        <div id="chart-empty" class="chart-empty" hidden>
+          <p id="chart-empty-msg" class="chart-empty-msg">No power data for this date</p>
+          <button type="button" id="chart-retry-btn" class="chart-retry-btn" hidden>Retry</button>
+        </div>
         <div id="chart-loading" class="chart-loading" hidden>Loading chart…</div>
       </div>
       <div class="chart-legend">
-        <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar</span>
-        <span class="legend-item"><span class="legend-swatch legend-load"></span>Load</span>
-        <span class="legend-item"><span class="legend-swatch legend-battery"></span>Battery</span>
+        <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar (W)</span>
+        <span class="legend-item"><span class="legend-swatch legend-load"></span>Load (W)</span>
+        <span class="legend-item"><span class="legend-swatch legend-battery"></span>Battery (W)</span>
+        <span class="legend-item legend-soc-item" hidden><span class="legend-swatch legend-soc"></span>SOC (%)</span>
+      </div>
+
+      <h3 class="energy-summary-title">7-Day Energy</h3>
+      <div class="chart-wrap energy-chart-wrap">
+        <canvas id="energy-chart" width="500" height="180"></canvas>
+        <div id="energy-empty" class="chart-empty" hidden>
+          <p id="energy-empty-msg" class="chart-empty-msg">No energy data for the last 7 days</p>
+          <button type="button" id="energy-retry-btn" class="chart-retry-btn" hidden>Retry</button>
+        </div>
+        <div id="energy-loading" class="chart-loading" hidden>Loading summary…</div>
+      </div>
+      <div class="chart-legend energy-legend">
+        <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar kWh</span>
+        <span class="legend-item"><span class="legend-swatch legend-load"></span>Load kWh</span>
+        <span class="legend-item legend-soc-range-item" hidden><span class="legend-swatch legend-soc legend-soc-range"></span>SOC min–max</span>
       </div>
     </section>
 
@@ -235,6 +255,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=9"></script>
+  <script type="module" src="app.js?v=13"></script>
 </body>
 </html>

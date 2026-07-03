@@ -9,6 +9,7 @@
   --accent-bat: #22c55e;
   --accent-sol: #f59e0b;
   --accent-load: #3b82f6;
+  --accent-soc: #c084fc;
   --error: #ef4444;
   --radius: 16px;
 }
@@ -350,6 +351,33 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   align-items: center;
   gap: .75rem;
   margin-bottom: .75rem;
+  flex-wrap: wrap;
+}
+
+.chart-export-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  padding: .45rem .85rem;
+  font-size: .85rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background .2s, color .2s, border-color .2s, opacity .2s;
+}
+
+.chart-export-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent-sol);
+}
+
+.chart-export-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
 
 .chart-date-label {
@@ -395,6 +423,38 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   background: var(--card-bg);
 }
 
+.chart-empty {
+  flex-direction: column;
+  gap: .75rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.chart-empty-msg {
+  margin: 0;
+  max-width: 22rem;
+  line-height: 1.45;
+}
+
+.chart-empty-error .chart-empty-msg {
+  color: var(--accent-load);
+}
+
+.chart-retry-btn {
+  padding: .45rem 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: .85rem;
+  cursor: pointer;
+}
+
+.chart-retry-btn:hover {
+  border-color: var(--accent-sol);
+  color: var(--accent-sol);
+}
+
 .chart-legend {
   display: flex;
   flex-wrap: wrap;
@@ -419,6 +479,33 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .legend-solar { background: var(--accent-sol); }
 .legend-load { background: var(--accent-load); }
 .legend-battery { background: var(--accent-bat); }
+.legend-soc { background: var(--accent-soc); }
+.legend-soc-range {
+  width: 3px;
+  height: 12px;
+  border-radius: 1px;
+}
+
+.energy-summary-title {
+  margin: 1.25rem 0 .65rem;
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.energy-chart-wrap {
+  min-height: 180px;
+}
+
+#energy-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.energy-legend {
+  margin-top: .65rem;
+}
 
 /* ---------- FLOW VIEW ---------- */
 

@@ -144,13 +144,9 @@ export function resolveBatterySoc(plantCurrent, batV) {
   return { soc: estimateSocFromVoltage(batV), socSource: "estimated" };
 }
 
-export function localDate(tzOffsetSeconds, nowMs = Date.now()) {
-  const now = new Date(nowMs + tzOffsetSeconds * 1000);
+export function localDate(tzOffsetSeconds) {
+  const now = new Date(Date.now() + tzOffsetSeconds * 1000);
   return now.toISOString().slice(0, 10);
-}
-
-export function defaultHistoryDate(systemConfig, nowMs = Date.now()) {
-  return localDate(systemConfig.credentials?.timezone ?? 0, nowMs);
 }
 
 function buildFieldLookup(titles) {
@@ -220,13 +216,43 @@ async function fetchAllDeviceData(sess, device, date) {
   return { titles, rows: allRows.reverse() };
 }
 
+export async function fetchHistory(systemConfig, date) {
+  const sess = await getSession(systemConfig);
+  const { device, timezone } = systemConfig.credentials;
+  const tzOffset = timezone ?? 0;
+  const today = localDate(tzOffset);
+  let queryDate = date || today;
+
+  let { titles, rows } = await fetchAllDeviceData(sess, device, queryDate);
+
+  // When no explicit date, fall back to yesterday if today's series is not ready yet.
+  if (!rows.length && !date && queryDate === today) {
+    queryDate = localDate(tzOffset - 86400);
+    ({ titles, rows } = await fetchAllDeviceData(sess, device, queryDate));
+  }
+
+  const points = parseHistoryRows(titles, rows);
+
+  return {
+    systemId: systemConfig.id,
+    name: systemConfig.name,
+    service: "shinemonitor",
+    date: queryDate,
+    timezoneOffset: tzOffset,
+    intervalMinutes: 5,
+    points,
+  };
+}
+
 function emptySummaryDay(date) {
   return {
     date,
     solarKwh: null,
     loadKwh: null,
+    peakSolarW: null,
     minSoc: null,
     maxSoc: null,
+    source: null,
   };
 }
 
@@ -246,8 +272,10 @@ export async function fetchHistorySummary(systemConfig, days = 7, endDate = null
           date,
           solarKwh: summary.solarKwh,
           loadKwh: summary.loadKwh,
+          peakSolarW: summary.peakSolarW,
           minSoc: summary.minSoc,
           maxSoc: summary.maxSoc,
+          source: "vendor",
         };
       } catch {
         return emptySummaryDay(date);
@@ -260,26 +288,6 @@ export async function fetchHistorySummary(systemConfig, days = 7, endDate = null
     days,
     endDate: end,
     series,
-  };
-}
-
-export async function fetchHistory(systemConfig, date) {
-  const sess = await getSession(systemConfig);
-  const { device, timezone } = systemConfig.credentials;
-  const tzOffset = timezone ?? 0;
-  const queryDate = date || localDate(tzOffset);
-
-  const { titles, rows } = await fetchAllDeviceData(sess, device, queryDate);
-  const points = parseHistoryRows(titles, rows);
-
-  return {
-    systemId: systemConfig.id,
-    name: systemConfig.name,
-    service: "shinemonitor",
-    date: queryDate,
-    timezoneOffset: tzOffset,
-    intervalMinutes: 5,
-    points,
   };
 }
 

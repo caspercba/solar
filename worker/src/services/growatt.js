@@ -1,4 +1,11 @@
-import { computeDailySummary, computeSocExtrema, dateRange, supplementSummarySoc } from "../history.js";
+import {
+  computeDailySummary,
+  computeSocExtrema,
+  dateRange,
+  mergeSocIntoPoints,
+  socMapFromPoints,
+  supplementSummarySoc,
+} from "../history.js";
 
 /**
  * Growatt service adapter.
@@ -320,6 +327,16 @@ export async function fetchHistory(systemConfig, date) {
     });
   }
 
+  let mergedPoints = points;
+  try {
+    const socPoints = await fetchSocChart(systemConfig, queryDate);
+    if (socPoints.length) {
+      mergedPoints = mergeSocIntoPoints(points, socMapFromPoints(socPoints));
+    }
+  } catch {
+    /* optional SOC supplement */
+  }
+
   return {
     systemId: systemConfig.id,
     name: systemConfig.name,
@@ -327,6 +344,29 @@ export async function fetchHistory(systemConfig, date) {
     date: queryDate,
     timezoneOffset: 0,
     intervalMinutes: 5,
-    points,
+    points: mergedPoints,
   };
 }
+
+/** Intraday SOC series from getStorageBatChart (valid only for obj.date). */
+export async function fetchSocChart(systemConfig, date) {
+  const sess = await getSession(systemConfig);
+  const { plantId, storageSn } = systemConfig.credentials;
+  const queryDate = date || new Date().toISOString().slice(0, 10);
+
+  const resp = await postJson(sess, "/panel/storage/getStorageBatChart", { plantId, storageSn });
+  if (resp.result !== 1) return [];
+
+  const obj = resp.obj || {};
+  if (obj.date !== queryDate) return [];
+
+  const capacity = obj.socChart?.capacity || [];
+  const points = [];
+  for (let i = 0; i < capacity.length; i++) {
+    const soc = Math.round(parseFloat(capacity[i]));
+    if (!Number.isFinite(soc) || soc < 0) continue;
+    points.push({ time: formatIntervalTime(i), soc });
+  }
+  return points;
+}
+

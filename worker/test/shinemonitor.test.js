@@ -215,15 +215,19 @@ describe("shinemonitor fetchHistorySummary", () => {
       date: "2026-07-02",
       solarKwh: 0.3,
       loadKwh: 0.1,
+      peakSolarW: 2000,
       minSoc: 88,
       maxSoc: 90,
+      source: "vendor",
     });
     expect(summary.series[1]).toMatchObject({
       date: "2026-07-03",
       solarKwh: 0.5,
       loadKwh: 0.1,
+      peakSolarW: 3000,
       minSoc: 84,
       maxSoc: 85,
+      source: "vendor",
     });
   });
 
@@ -248,8 +252,10 @@ describe("shinemonitor fetchHistorySummary", () => {
         date: "2026-07-01",
         solarKwh: null,
         loadKwh: null,
+        peakSolarW: null,
         minSoc: null,
         maxSoc: null,
+        source: null,
       },
     ]);
   });
