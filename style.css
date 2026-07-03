@@ -162,6 +162,36 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   font-weight: 600;
 }
 
+/* ---------- INVERTER STATUS ---------- */
+
+.inverter-status-row {
+  text-align: center;
+  margin-bottom: -.25rem;
+}
+
+.inverter-status {
+  display: inline-block;
+  font-size: .85rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  padding: .4rem .85rem;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, .12);
+  color: var(--accent-load);
+  max-width: 100%;
+  line-height: 1.35;
+}
+
+.inverter-status.status-unavailable {
+  background: rgba(139, 143, 163, .1);
+  color: var(--text-dim);
+}
+
+.inverter-status.status-offline {
+  background: rgba(239, 68, 68, .12);
+  color: var(--error);
+}
+
 /* ---------- CARDS ---------- */
 
 .cards {
