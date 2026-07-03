@@ -95,14 +95,23 @@ Multi-day summaries may require one vendor round-trip per day (e.g. ShineMonitor
 
 ### Run tests locally
 
-From the `worker` directory:
+**Worker** (Vitest + Miniflare):
 
 ```bash
+cd worker
 npm install
 npm test
 ```
 
 Tests use [Vitest](https://vitest.dev/) with `@cloudflare/vitest-pool-workers`.
+
+**Frontend helpers** (Vitest + happy-dom, pure functions in `frontend/lib.js`):
+
+```bash
+cd frontend
+npm install
+npm test
+```
 
 ## CI/CD
 

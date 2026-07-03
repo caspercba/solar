@@ -1,10 +1,52 @@
 import { describe, it, expect } from "vitest";
 import {
+  computeDailySummary,
   computeSocExtrema,
+  dateRange,
   mergeSocIntoPoints,
   socMapFromPoints,
 } from "../src/history.js";
 import { parseHistoryRows, localDate } from "../src/services/shinemonitor.js";
+
+describe("computeDailySummary", () => {
+  it("integrates power samples over 5-minute intervals", () => {
+    const points = [
+      { time: "10:00", solar: 2400, load: 500, soc: 85 },
+      { time: "10:05", solar: 2400, load: 500, soc: 84 },
+    ];
+    expect(computeDailySummary(points)).toEqual({
+      solarKwh: 0.4,
+      loadKwh: 0.1,
+      peakSolarW: 2400,
+      minSoc: 84,
+      maxSoc: 85,
+    });
+  });
+
+  it("returns zero totals and null SOC for empty points", () => {
+    expect(computeDailySummary([])).toEqual({
+      solarKwh: 0,
+      loadKwh: 0,
+      peakSolarW: 0,
+      minSoc: null,
+      maxSoc: null,
+    });
+  });
+});
+
+describe("dateRange", () => {
+  it("returns inclusive dates ending on endDate, oldest first", () => {
+    expect(dateRange("2026-07-03", 3)).toEqual([
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+    ]);
+  });
+
+  it("returns a single date when days is 1", () => {
+    expect(dateRange("2026-07-03", 1)).toEqual(["2026-07-03"]);
+  });
+});
 
 describe("mergeSocIntoPoints", () => {
   it("fills missing SOC from supplement points by time", () => {

@@ -1,0 +1,15 @@
+{
+  "err": 0,
+  "dat": {
+    "title": [
+      { "title": "Timestamp" },
+      { "title": "Battery Voltage" },
+      { "title": "Batt Current" },
+      { "title": "Charger Power" },
+      { "title": "PLoad" },
+      { "title": "BATTERY_SOC" }
+    ],
+    "total": 0,
+    "row": []
+  }
+}
