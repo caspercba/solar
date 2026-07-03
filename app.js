@@ -58,6 +58,7 @@ const els = {
   genCard: $("card-gen"),
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
+  inverterStatus: $("inverter-status"),
 };
 
 const fEls = {
@@ -104,6 +105,7 @@ const skeletonTargets = () => [
   els.solPct, els.solWatts, els.solPvVolts,
   els.loadPct, els.loadWatts,
   els.genStatus, els.genWatts, els.genVolts,
+  els.inverterStatus,
 ];
 const skeletonBars = () => [
   els.batBar.parentElement,
@@ -153,6 +155,16 @@ function fmtW(w) {
 
 function setBar(barEl, pct) {
   barEl.style.width = Math.max(0, Math.min(100, pct)) + "%";
+}
+
+function setInverterStatus(text) {
+  const el = els.inverterStatus;
+  if (!el) return;
+  const value = text || "--";
+  el.textContent = value;
+  const unavailable = value === "--";
+  el.classList.toggle("status-unavailable", unavailable);
+  el.classList.toggle("status-offline", !unavailable && /offline/i.test(value));
 }
 
 function setBatRate(absAmps) {
@@ -216,6 +228,7 @@ function renderSystemTabs() {
 /* ── Render normalized data ── */
 function renderData(d) {
   if (!d || d.error) {
+    setInverterStatus("--");
     setStatus(false);
     return;
   }
@@ -228,6 +241,8 @@ function renderData(d) {
   const load = d.load || {};
   const grid = d.grid || {};
   const inv = d.inverter || {};
+
+  setInverterStatus(d.status);
 
   /* Battery */
   const soc = bat.soc ?? 0;
