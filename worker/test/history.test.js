@@ -1,6 +1,177 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, it, expect } from "vitest";
+import {
+  appendPoint,
+  appendSnapshot,
+  computeDailySummary,
+  getDay,
+  listDates,
+  parseDataTimestamp,
+  pointFromData,
+  pruneOld,
+  selectDatesToPrune,
+  upsertDateIndex,
+} from "../src/history.js";
 import { parseHistoryRows, localDate } from "../src/services/shinemonitor.js";
+import { createMockKV } from "./helpers.js";
+
+const SAMPLE_DATA = {
+  systemId: "sys-1",
+  name: "Cabin",
+  service: "growatt",
+  timestamp: "2026-07-03 14:32:00",
+  credentials: { user: "secret", password: "hidden" },
+  battery: { voltage: 48.2, soc: 72, current: -15, power: -723 },
+  solar: { power: 1200, voltage: 95 },
+  load: { power: 850, percent: 24 },
+  grid: { power: 0, voltage: 0, active: false },
+  inverter: { ratedPower: 3500, nominalPV: 5000 },
+  status: "PV Charging",
+  energyToday: 12.4,
+};
+
+describe("parseDataTimestamp", () => {
+  it("floors minutes to 5-minute bucket", () => {
+    expect(parseDataTimestamp("2026-07-03 14:32:00")).toEqual({
+      date: "2026-07-03",
+      bucketTime: "14:30",
+    });
+    expect(parseDataTimestamp("2026-07-03 14:37:59").bucketTime).toBe("14:35");
+  });
+});
+
+describe("pointFromData", () => {
+  it("extracts only history fields without credentials", () => {
+    const point = pointFromData(SAMPLE_DATA, "14:30");
+    expect(point).toEqual({
+      time: "14:30",
+      solar: 1200,
+      load: 850,
+      battery: -723,
+      soc: 72,
+      energyToday: 12.4,
+    });
+    expect(point).not.toHaveProperty("credentials");
+    expect(point).not.toHaveProperty("password");
+  });
+});
+
+describe("appendPoint", () => {
+  it("appends points in chronological order", () => {
+    const points = appendPoint([], { time: "12:00", solar: 100, load: 50, battery: 0, soc: 80, energyToday: 5 });
+    const next = appendPoint(points, { time: "10:00", solar: 0, load: 40, battery: -100, soc: 75, energyToday: 2 });
+    expect(next.map((p) => p.time)).toEqual(["10:00", "12:00"]);
+  });
+
+  it("deduplicates by replacing the same 5-minute bucket", () => {
+    const first = { time: "14:30", solar: 1000, load: 500, battery: -200, soc: 70, energyToday: 10 };
+    const updated = { time: "14:30", solar: 1200, load: 850, battery: -723, soc: 72, energyToday: 12.4 };
+    const points = appendPoint([first], updated);
+    expect(points).toHaveLength(1);
+    expect(points[0].solar).toBe(1200);
+    expect(points[0].soc).toBe(72);
+  });
+});
+
+describe("computeDailySummary", () => {
+  it("integrates power over 5-minute intervals and tracks SOC extrema", () => {
+    const points = [
+      { time: "10:00", solar: 2000, load: 400, battery: 0, soc: 90, energyToday: 1 },
+      { time: "10:05", solar: 3000, load: 600, battery: -500, soc: 85, energyToday: 2 },
+      { time: "10:10", solar: 1000, load: 800, battery: 200, soc: 80, energyToday: 3 },
+    ];
+    expect(computeDailySummary(points)).toEqual({
+      solarKwh: 0.5,
+      loadKwh: 0.1,
+      peakSolarW: 3000,
+      minSoc: 80,
+      maxSoc: 90,
+    });
+  });
+
+  it("returns zeros for empty day", () => {
+    expect(computeDailySummary([])).toEqual({
+      solarKwh: 0,
+      loadKwh: 0,
+      peakSolarW: 0,
+      minSoc: null,
+      maxSoc: null,
+    });
+  });
+});
+
+describe("selectDatesToPrune", () => {
+  it("selects dates older than retention window", () => {
+    const dates = ["2026-07-01", "2026-06-01", "2026-04-01", "2026-03-01"];
+    // 90 days before 2026-07-03 is 2026-04-04
+    expect(selectDatesToPrune(dates, 90, "2026-07-03")).toEqual(["2026-04-01", "2026-03-01"]);
+  });
+});
+
+describe("upsertDateIndex", () => {
+  it("keeps newest dates first without duplicates", () => {
+    expect(upsertDateIndex(["2026-07-02", "2026-07-01"], "2026-07-03")).toEqual([
+      "2026-07-03",
+      "2026-07-02",
+      "2026-07-01",
+    ]);
+    expect(upsertDateIndex(["2026-07-03", "2026-07-01"], "2026-07-03")).toEqual([
+      "2026-07-03",
+      "2026-07-01",
+    ]);
+  });
+});
+
+describe("history KV storage", () => {
+  it("appendSnapshot stores day bucket and updates index", async () => {
+    const env = { SYSTEMS: createMockKV() };
+    const doc = await appendSnapshot(env, "sys-1", SAMPLE_DATA, Date.parse("2026-07-03T14:32:00Z"));
+
+    expect(doc.date).toBe("2026-07-03");
+    expect(doc.points).toHaveLength(1);
+    expect(doc.points[0].time).toBe("14:30");
+    expect(doc.dailySummary.peakSolarW).toBe(1200);
+
+    const stored = await getDay(env, "sys-1", "2026-07-03");
+    expect(stored.points[0]).not.toHaveProperty("credentials");
+    expect(await listDates(env, "sys-1")).toEqual(["2026-07-03"]);
+  });
+
+  it("appendSnapshot deduplicates within the same 5-minute bucket", async () => {
+    const env = { SYSTEMS: createMockKV() };
+    await appendSnapshot(env, "sys-1", SAMPLE_DATA, Date.parse("2026-07-03T14:32:00Z"));
+    await appendSnapshot(
+      env,
+      "sys-1",
+      { ...SAMPLE_DATA, timestamp: "2026-07-03 14:33:00", solar: { power: 1500, voltage: 96 }, battery: { ...SAMPLE_DATA.battery, soc: 75 } },
+      Date.parse("2026-07-03T14:33:00Z"),
+    );
+
+    const day = await getDay(env, "sys-1", "2026-07-03");
+    expect(day.points).toHaveLength(1);
+    expect(day.points[0].solar).toBe(1500);
+    expect(day.points[0].soc).toBe(75);
+  });
+
+  it("pruneOld removes expired day keys and index entries", async () => {
+    const env = { SYSTEMS: createMockKV() };
+    await env.SYSTEMS.put(
+      "history:day:sys-1:2026-03-01",
+      JSON.stringify({ systemId: "sys-1", date: "2026-03-01", points: [] }),
+    );
+    await env.SYSTEMS.put(
+      "history:day:sys-1:2026-07-01",
+      JSON.stringify({ systemId: "sys-1", date: "2026-07-01", points: [] }),
+    );
+    await env.SYSTEMS.put("history:index:sys-1", JSON.stringify(["2026-07-01", "2026-03-01"]));
+
+    const result = await pruneOld(env, "sys-1", 90, Date.parse("2026-07-03T00:00:00Z"));
+    expect(result.removed).toEqual(["2026-03-01"]);
+    expect(result.kept).toBe(1);
+    expect(await getDay(env, "sys-1", "2026-03-01")).toBeNull();
+    expect(await getDay(env, "sys-1", "2026-07-01")).not.toBeNull();
+    expect(await listDates(env, "sys-1")).toEqual(["2026-07-01"]);
+  });
+});
 
 describe("parseHistoryRows", () => {
   const titles = [
@@ -16,14 +187,14 @@ describe("parseHistoryRows", () => {
       { field: ["2026-04-04 18:19:48", "51.6", "-62", "110", "283"] },
       { field: ["2026-04-04 06:00:00", "50.0", "10", "0", "120"] },
     ];
-    assert.deepEqual(parseHistoryRows(titles, rows), [
+    expect(parseHistoryRows(titles, rows)).toEqual([
       { time: "18:19", solar: 110, load: 283, battery: -3199 },
       { time: "06:00", solar: 0, load: 120, battery: 500 },
     ]);
   });
 
   it("returns empty array for no rows", () => {
-    assert.deepEqual(parseHistoryRows(titles, []), []);
+    expect(parseHistoryRows(titles, [])).toEqual([]);
   });
 });
 
@@ -33,8 +204,8 @@ describe("localDate", () => {
     const originalNow = Date.now;
     Date.now = () => utcMidnight;
     try {
-      assert.equal(localDate(-10800), "2026-04-03");
-      assert.equal(localDate(0), "2026-04-04");
+      expect(localDate(-10800)).toBe("2026-04-03");
+      expect(localDate(0)).toBe("2026-04-04");
     } finally {
       Date.now = originalNow;
     }
