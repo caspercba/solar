@@ -78,6 +78,41 @@ flowchart LR
 
    If `API_TOKEN` is not set, the Worker runs in open mode (no auth) — useful for local testing only.
 
+### Run tests locally
+
+From the `worker` directory:
+
+```bash
+npm install
+npm test
+```
+
+Tests use Node’s built-in test runner (`node --test`).
+
+## CI/CD
+
+GitHub Actions runs on every push to `main` and on pull requests (`.github/workflows/ci.yml`):
+
+1. **Test** — `npm ci` and `npm test` in `worker/`.
+2. **Deploy** — when you push a version tag matching `v*` (e.g. `v1.2.0`), the workflow deploys the Worker with `wrangler deploy` after tests pass.
+
+### Required GitHub secret
+
+| Secret | Purpose |
+|--------|---------|
+| `CLOUDFLARE_API_TOKEN` | Authenticates `wrangler deploy` in CI. Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for the `SYSTEMS` namespace). |
+
+Add it under **Repository → Settings → Secrets and variables → Actions → New repository secret**.
+
+Deploy is skipped on PRs and non-tag pushes. To release:
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+Runtime secrets (`API_TOKEN`, `ALLOWED_ORIGINS`) are **not** set by CI — configure those once with `wrangler secret put` on your Cloudflare account.
+
 ## Host the Frontend
 
 The frontend is static — no build step. Serve `index.html`, `app.js`, and `style.css` from the repository root.
