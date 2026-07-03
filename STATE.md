@@ -14,12 +14,12 @@ _Last updated: 2026-07-03_
 - URL deep-link auto-login (`?proxy=...&token=...`)
 - Timezone-aware date queries and yesterday fallback (ShineMonitor)
 - RELEASE_NOTES.md changelog (v1.0.0, v1.1.0)
-- **PLAN.md** — project definition and roadmap (vendor-only history policy)
+- **PLAN.md** — project definition, vendor-only history policy, testing strategy (§7.3)
 - Root README with architecture and deployment guide
 - Credentials redacted from `discovery/growatt/README.md`
 - Health check endpoint (`GET /api/health`)
 - CORS origin allowlist via `ALLOWED_ORIGINS`
-- Vitest unit tests for Worker adapters and routes
+- Vitest unit tests for Worker adapters, routes, alerts, and history module
 - Credential encryption at rest in KV (`CREDENTIALS_KEY`)
 - Multi-plant picker during system setup
 - Inverter status badge on dashboard cards view
@@ -34,21 +34,32 @@ _Last updated: 2026-07-03_
 
 ## In Progress
 
+- (developer) Remove KV history storage and cron snapshots
+- (developer) Add ShineMonitor `fetchHistorySummary` adapter
 - (developer) Add SOC threshold alerts via Worker cron
-- (planner) update PLAN.md — vendor-only history policy
 
 ## Up Next
 
-_Priority order from PLAN.md Phase 3b — vendor-only history refactor._
+_Priority order — vendor-only history refactor first, then test coverage expansion (PLAN.md Phase 3b → 3c)._
 
-1. Remove KV history storage module and cron snapshots from Worker
-2. Refactor `/api/systems/:id/history` to call `adapter.fetchHistory` directly
-3. Refactor `/api/systems/:id/history/summary` to aggregate from vendor APIs
-4. Add ShineMonitor `fetchHistorySummary` adapter method
-5. Update README to remove KV snapshot documentation
-6. Update history unit tests for vendor-only paths
-7. Chart empty states for vendor API gaps
-8. Always-on `API_TOKEN` in production (ops/config)
+**Vendor-only history (Phase 3b):**
+
+1. Refactor `/api/systems/:id/history` to call `adapter.fetchHistory` directly
+2. Refactor `/api/systems/:id/history/summary` to aggregate from vendor APIs
+3. Add chart empty states for vendor API gaps
+4. Update README to remove KV snapshot documentation
+5. Update history unit tests for vendor-only paths
+
+**Test coverage (Phase 3c):**
+
+6. Fix `credentials.test.js` Vitest compatibility (full worker suite green in CI)
+7. Extract frontend pure helpers from `app.js` into testable module
+8. Add Vitest frontend unit tests (formatting, CSV export, escaping)
+9. Add mock Worker fixture for integration and E2E
+10. Add Playwright E2E tests (setup, cards, flow, chart, system modal)
+11. Extend CI with frontend unit + Playwright jobs
+12. Add worker tests for `fetchHistorySummary` adapters and alert cron handler
+13. Always-on `API_TOKEN` in production (ops/config)
 
 ## Blocked
 
@@ -64,6 +75,7 @@ _None._
 - **ShineMonitor SOC** — prefer API `BATTERY_SOC` when valid; voltage interpolation (42.0 V → 0%, 53.5 V → 100%) as fallback.
 - **Generator label for grid input** — `grid.active` drives the "Generator" card; suitable for off-grid setups with gen input.
 - **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV. _(Reverses earlier stored-snapshot plan.)_
+- **Test strategy** — maximize coverage with Worker Vitest (existing), extracted frontend unit tests (Vitest + jsdom), and Playwright E2E against a mock Worker; no real inverter credentials in CI.
 
 ## Blocked / Open Questions
 
@@ -79,4 +91,5 @@ _None._
 - **Session cache per isolate** — cold Worker starts re-authenticate; acceptable today, may need KV-backed sessions at scale.
 - **Vendor history gaps** — chart view depends on vendor API availability; no local backfill; clear empty states needed.
 - **Vendor rate limits** — multi-day summary may require N vendor round-trips; in-memory cache and `days` cap mitigate.
-- **No E2E tests** — adapter/route regressions covered by Vitest; full browser flow untested.
+- **No frontend or E2E tests** — adapter/route regressions covered by Worker Vitest; browser flows and DOM rendering untested until Phase 3c.
+- **`credentials.test.js` Vitest mismatch** — file uses `node:test`; fails under Vitest pool; CI may report partial failure until fixed.
