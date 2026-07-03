@@ -1,3 +1,14 @@
+import {
+  fmtW,
+  fmtChartDate,
+  sanitizeExportName,
+  historyToCsv,
+  escapeAttr,
+  clampPct,
+  solarPctFromPower,
+  loadPercent,
+} from "./frontend/lib.js";
+
 /* ── Config ── */
 const POLL_MS = 60_000;
 const CONN_KEY = "solar_conn";
@@ -72,9 +83,13 @@ const fEls = {
   chartExportBtn: $("chart-export-btn"),
   powerChart: $("power-chart"),
   chartEmpty: $("chart-empty"),
+  chartEmptyMsg: $("chart-empty-msg"),
+  chartRetryBtn: $("chart-retry-btn"),
   chartLoading: $("chart-loading"),
   energyChart: $("energy-chart"),
   energyEmpty: $("energy-empty"),
+  energyEmptyMsg: $("energy-empty-msg"),
+  energyRetryBtn: $("energy-retry-btn"),
   energyLoading: $("energy-loading"),
   fpSolar: $("fp-solar"),
   fpGen: $("fp-gen"),
@@ -165,17 +180,18 @@ fEls.tabFlow.addEventListener("click", () => setView("flow"));
 fEls.tabChart.addEventListener("click", () => setView("chart"));
 fEls.chartDate.addEventListener("change", () => loadHistory(fEls.chartDate.value));
 if (fEls.chartExportBtn) fEls.chartExportBtn.addEventListener("click", exportChartCsv);
-
-/* ── Helpers ── */
-function fmtW(w) {
-  const abs = Math.abs(w);
-  if (abs >= 10000) return (w / 1000).toFixed(0) + " kW";
-  if (abs >= 1000) return (w / 1000).toFixed(1) + " kW";
-  return Math.round(w) + " W";
+if (fEls.chartRetryBtn) {
+  fEls.chartRetryBtn.addEventListener("click", () => {
+    loadHistory(fEls.chartDate?.value || null);
+  });
+}
+if (fEls.energyRetryBtn) {
+  fEls.energyRetryBtn.addEventListener("click", () => loadEnergySummary());
 }
 
+/* ── Helpers ── */
 function setBar(barEl, pct) {
-  barEl.style.width = Math.max(0, Math.min(100, pct)) + "%";
+  barEl.style.width = clampPct(pct) + "%";
 }
 
 function setInverterStatus(text) {
@@ -294,15 +310,14 @@ function renderData(d) {
   }
 
   /* Solar */
-  const nomPV = inv.nominalPV || 5000;
-  const solPct = Math.round(((sol.power ?? 0) / nomPV) * 100);
+  const solPct = solarPctFromPower(sol.power, inv.nominalPV || 5000);
   els.solPct.textContent = solPct;
   setBar(els.solBar, solPct);
   els.solWatts.textContent = Math.round(sol.power ?? 0);
   els.solPvVolts.textContent = (sol.voltage ?? 0).toFixed(0);
 
   /* Load */
-  const ldPct = load.percent ?? Math.round(((load.power ?? 0) / (inv.ratedPower || 5000)) * 100);
+  const ldPct = loadPercent(load, inv.ratedPower || 5000);
   els.loadPct.textContent = ldPct;
   setBar(els.loadBar, ldPct);
   els.loadWatts.textContent = Math.round(load.power ?? 0);
@@ -397,42 +412,57 @@ const CHART_COLORS = {
   text: "#8b8fa3",
 };
 
-function setChartLoading(on) {
-  historyLoading = on;
-  if (fEls.chartLoading) fEls.chartLoading.hidden = !on;
-  if (fEls.powerChart) fEls.powerChart.hidden = on;
-  if (on && fEls.chartEmpty) fEls.chartEmpty.hidden = true;
-  if (on) updateChartExportBtn();
-}
-
-function sanitizeExportName(name) {
-  const safe = String(name || "system")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9._-]/g, "")
-    .slice(0, 64);
-  return safe || "system";
-}
-
-function csvCell(value) {
-  if (value == null || value === "") return "";
-  const text = String(value);
-  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
-}
-
-function historyToCsv(points) {
-  const lines = ["time,solar_w,load_w,battery_w,soc"];
-  for (const p of points) {
-    lines.push([
-      csvCell(p.time),
-      csvCell(p.solar ?? 0),
-      csvCell(p.load ?? 0),
-      csvCell(p.battery ?? 0),
-      csvCell(Number.isFinite(p.soc) ? p.soc : ""),
-    ].join(","));
+function setIntradayChartState(state, opts = {}) {
+  historyLoading = state === "loading";
+  const showPanel = state === "empty" || state === "error";
+  if (fEls.chartLoading) fEls.chartLoading.hidden = state !== "loading";
+  if (fEls.powerChart) fEls.powerChart.hidden = state !== "ready";
+  if (fEls.chartEmpty) {
+    fEls.chartEmpty.hidden = !showPanel;
+    fEls.chartEmpty.classList.toggle("chart-empty-error", state === "error");
   }
-  return lines.join("\r\n");
+  if (fEls.chartEmptyMsg) {
+    if (state === "error") {
+      fEls.chartEmptyMsg.textContent = opts.message || "Could not load power history.";
+    } else if (state === "empty") {
+      fEls.chartEmptyMsg.textContent = opts.message
+        || "No power data for this date. The inverter may not have reported readings yet.";
+    }
+  }
+  if (fEls.chartRetryBtn) fEls.chartRetryBtn.hidden = state !== "error";
+  if (state !== "ready") {
+    const socLegend = document.querySelector(".legend-soc-item");
+    if (socLegend) socLegend.hidden = true;
+  }
+  updateChartExportBtn();
+}
+
+function setEnergyChartState(state, opts = {}) {
+  const showPanel = state === "empty" || state === "error";
+  if (fEls.energyLoading) fEls.energyLoading.hidden = state !== "loading";
+  if (fEls.energyChart) fEls.energyChart.hidden = state !== "ready";
+  if (fEls.energyEmpty) {
+    fEls.energyEmpty.hidden = !showPanel;
+    fEls.energyEmpty.classList.toggle("chart-empty-error", state === "error");
+  }
+  if (fEls.energyEmptyMsg) {
+    if (state === "error") {
+      fEls.energyEmptyMsg.textContent = opts.message || "Could not load energy summary.";
+    } else if (state === "empty") {
+      fEls.energyEmptyMsg.textContent = opts.message
+        || "No energy data for the last 7 days from the inverter.";
+    }
+  }
+  if (fEls.energyRetryBtn) fEls.energyRetryBtn.hidden = state !== "error";
+  if (state !== "ready") {
+    const socLegend = document.querySelector(".legend-soc-range-item");
+    if (socLegend) socLegend.hidden = true;
+  }
+}
+
+function chartErrorMessage(err, fallback) {
+  const msg = err?.message?.trim();
+  return msg || fallback;
 }
 
 function updateChartExportBtn() {
@@ -477,22 +507,16 @@ function exportChartCsv() {
 
 function renderChart(data) {
   const canvas = fEls.powerChart;
-  if (!canvas) return;
+  if (!canvas) return false;
 
   const points = data?.points || [];
   const socLegend = document.querySelector(".legend-soc-item");
   const hasSoc = points.some((p) => Number.isFinite(p.soc));
   if (socLegend) socLegend.hidden = !hasSoc;
 
-  if (!points.length) {
-    canvas.hidden = true;
-    if (fEls.chartEmpty) fEls.chartEmpty.hidden = false;
-    if (socLegend) socLegend.hidden = true;
-    return;
-  }
+  if (!points.length) return false;
 
-  canvas.hidden = false;
-  if (fEls.chartEmpty) fEls.chartEmpty.hidden = true;
+  setIntradayChartState("ready");
 
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -612,23 +636,12 @@ function renderChart(data) {
     ctx.stroke();
     ctx.setLineDash([]);
   }
-}
-
-function setEnergyLoading(on) {
-  if (fEls.energyLoading) fEls.energyLoading.hidden = !on;
-  if (fEls.energyChart) fEls.energyChart.hidden = on;
-  if (on && fEls.energyEmpty) fEls.energyEmpty.hidden = true;
-}
-
-function fmtChartDate(dateStr) {
-  const d = new Date(`${dateStr}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return dateStr.slice(5);
-  return d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+  return true;
 }
 
 function renderEnergyChart(data) {
   const canvas = fEls.energyChart;
-  if (!canvas) return;
+  if (!canvas) return false;
 
   const series = data?.series || [];
   const socLegend = document.querySelector(".legend-soc-range-item");
@@ -636,15 +649,9 @@ function renderEnergyChart(data) {
   if (socLegend) socLegend.hidden = !hasSoc;
 
   const hasData = series.some((d) => (d.solarKwh ?? 0) > 0 || (d.loadKwh ?? 0) > 0 || hasSoc);
-  if (!series.length || !hasData) {
-    canvas.hidden = true;
-    if (fEls.energyEmpty) fEls.energyEmpty.hidden = false;
-    if (socLegend) socLegend.hidden = true;
-    return;
-  }
+  if (!series.length || !hasData) return false;
 
-  canvas.hidden = false;
-  if (fEls.energyEmpty) fEls.energyEmpty.hidden = true;
+  setEnergyChartState("ready");
 
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -755,67 +762,90 @@ function renderEnergyChart(data) {
       ctx.fill();
     }
   }
+  return true;
 }
 
 async function loadHistory(date) {
   if (!activeSystemId || currentView !== "chart") return;
-  setChartLoading(true);
+  setIntradayChartState("loading");
   try {
     const qs = date ? `?date=${encodeURIComponent(date)}` : "";
     const data = await api("GET", `/api/systems/${activeSystemId}/history${qs}`);
     chartHistory = data;
     if (data.date && fEls.chartDate) fEls.chartDate.value = data.date;
-    renderChart(data);
-    setStatus(true);
+    if (renderChart(data)) {
+      setStatus(true);
+    } else {
+      setIntradayChartState("empty");
+      setStatus(true);
+    }
   } catch (err) {
     console.error("history error:", err);
-    chartHistory = { points: [] };
-    renderChart({ points: [] });
+    chartHistory = null;
+    setIntradayChartState("error", {
+      message: chartErrorMessage(err, "Could not load power history."),
+    });
     setStatus(false);
-  } finally {
-    setChartLoading(false);
-    updateChartExportBtn();
   }
 }
 
 async function loadEnergySummary() {
   if (!activeSystemId || currentView !== "chart") return;
-  setEnergyLoading(true);
+  setEnergyChartState("loading");
   try {
     const data = await api("GET", `/api/systems/${activeSystemId}/history/summary?days=7`);
-    renderEnergyChart(data);
+    if (renderEnergyChart(data)) return;
+    setEnergyChartState("empty");
   } catch (err) {
     console.error("energy summary error:", err);
-    renderEnergyChart({ series: [] });
-  } finally {
-    setEnergyLoading(false);
+    setEnergyChartState("error", {
+      message: chartErrorMessage(err, "Could not load energy summary."),
+    });
   }
 }
 
 async function loadChartView() {
   if (!activeSystemId || currentView !== "chart") return;
-  setChartLoading(true);
-  setEnergyLoading(true);
+  setIntradayChartState("loading");
+  setEnergyChartState("loading");
   const date = fEls.chartDate.value || null;
   const qs = date ? `?date=${encodeURIComponent(date)}` : "";
-  try {
-    const [history, summary] = await Promise.all([
-      api("GET", `/api/systems/${activeSystemId}/history${qs}`),
-      api("GET", `/api/systems/${activeSystemId}/history/summary?days=7`),
-    ]);
+  const [historyResult, summaryResult] = await Promise.allSettled([
+    api("GET", `/api/systems/${activeSystemId}/history${qs}`),
+    api("GET", `/api/systems/${activeSystemId}/history/summary?days=7`),
+  ]);
+
+  let historyOk = false;
+  if (historyResult.status === "fulfilled") {
+    const history = historyResult.value;
+    chartHistory = history;
     if (history.date && fEls.chartDate) fEls.chartDate.value = history.date;
-    renderChart(history);
-    renderEnergyChart(summary);
-    setStatus(true);
-  } catch (err) {
-    console.error("chart view error:", err);
-    renderChart({ points: [] });
-    renderEnergyChart({ series: [] });
-    setStatus(false);
-  } finally {
-    setChartLoading(false);
-    setEnergyLoading(false);
+    if (renderChart(history)) {
+      historyOk = true;
+    } else {
+      setIntradayChartState("empty");
+      historyOk = true;
+    }
+  } else {
+    console.error("chart view history error:", historyResult.reason);
+    chartHistory = null;
+    setIntradayChartState("error", {
+      message: chartErrorMessage(historyResult.reason, "Could not load power history."),
+    });
   }
+
+  if (summaryResult.status === "fulfilled") {
+    if (!renderEnergyChart(summaryResult.value)) {
+      setEnergyChartState("empty");
+    }
+  } else {
+    console.error("chart view summary error:", summaryResult.reason);
+    setEnergyChartState("error", {
+      message: chartErrorMessage(summaryResult.reason, "Could not load energy summary."),
+    });
+  }
+
+  setStatus(historyOk);
 }
 
 /* ── Polling ── */
@@ -992,13 +1022,6 @@ function renderAlertForm(sys) {
   });
 
   return form;
-}
-
-function escapeAttr(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;");
 }
 
 function openManageModal() {

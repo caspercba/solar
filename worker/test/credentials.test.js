@@ -1,5 +1,4 @@
-import { describe, it } from "vitest";
-import assert from "node:assert/strict";
+import { describe, it, expect } from "vitest";
 import {
   encryptCredentials,
   decryptCredentials,
@@ -28,11 +27,11 @@ describe("credentials encryption", () => {
     };
 
     const encrypted = await encryptCredentials(plain, env);
-    assert.equal(isEncryptedCredentials(encrypted), true);
-    assert.equal(encrypted.password, undefined);
+    expect(isEncryptedCredentials(encrypted)).toBe(true);
+    expect(encrypted.password).toBeUndefined();
 
     const decrypted = await decryptCredentials(encrypted, env);
-    assert.deepEqual(decrypted, plain);
+    expect(decrypted).toEqual(plain);
   });
 
   it("round-trips ShineMonitor credentials", async () => {
@@ -47,21 +46,20 @@ describe("credentials encryption", () => {
 
     const encrypted = await encryptCredentials(plain, env);
     const decrypted = await decryptCredentials(encrypted, env);
-    assert.deepEqual(decrypted, plain);
+    expect(decrypted).toEqual(plain);
   });
 
   it("passes through plaintext when CREDENTIALS_KEY is unset", async () => {
     const plain = { user: "u", password: "p" };
     const stored = await encryptCredentials(plain, {});
-    assert.deepEqual(stored, plain);
+    expect(stored).toEqual(plain);
     const out = await decryptCredentials(stored, {});
-    assert.deepEqual(out, plain);
+    expect(out).toEqual(plain);
   });
 
   it("rejects decrypt without CREDENTIALS_KEY", async () => {
     const encrypted = await encryptCredentials({ user: "u", password: "p" }, env);
-    await assert.rejects(
-      () => decryptCredentials(encrypted, {}),
+    await expect(decryptCredentials(encrypted, {})).rejects.toThrow(
       /CREDENTIALS_KEY required/,
     );
   });
@@ -70,7 +68,7 @@ describe("credentials encryption", () => {
     const plain = { user: "u", password: "p" };
     const a = await encryptCredentials(plain, env);
     const b = await encryptCredentials(plain, env);
-    assert.notEqual(a.data, b.data);
-    assert.notEqual(a.iv, b.iv);
+    expect(a.data).not.toBe(b.data);
+    expect(a.iv).not.toBe(b.iv);
   });
 });

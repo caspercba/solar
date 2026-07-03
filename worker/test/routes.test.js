@@ -173,11 +173,6 @@ describe("worker routes", () => {
       { id: "keep", name: "Stay", service: "growatt" },
     ]));
     await systems.SYSTEMS.put("system:del-me", JSON.stringify({ id: "del-me" }));
-    await systems.SYSTEMS.put(
-      "history:day:del-me:2026-07-03",
-      JSON.stringify({ systemId: "del-me", date: "2026-07-03", points: [] }),
-    );
-    await systems.SYSTEMS.put("history:index:del-me", JSON.stringify(["2026-07-03"]));
 
     const res = await call(
       request("/api/systems/del-me", { method: "DELETE", headers: AUTH }),
@@ -187,44 +182,165 @@ describe("worker routes", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(await systems.SYSTEMS.get("system:del-me")).toBeNull();
-    expect(await systems.SYSTEMS.get("history:day:del-me:2026-07-03")).toBeNull();
-    expect(await systems.SYSTEMS.get("history:index:del-me")).toBeNull();
     const index = await systems.SYSTEMS.get("_index", "json");
     expect(index).toEqual([{ id: "keep", name: "Stay", service: "growatt" }]);
   });
 
-  it("GET /api/systems/:id/history/summary returns daily energy totals", async () => {
+  it("GET /api/systems/:id/history/summary uses ShineMonitor fetchHistorySummary", async () => {
     const systems = env();
-    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
-    await systems.SYSTEMS.put("system:s1", JSON.stringify({ id: "s1", service: "growatt" }));
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
     await systems.SYSTEMS.put(
-      "history:day:s1:2026-07-03",
+      "system:sm1",
       JSON.stringify({
-        systemId: "s1",
-        date: "2026-07-03",
-        source: "snapshot",
-        dailySummary: { solarKwh: 12.4, loadKwh: 9.1, peakSolarW: 2800, minSoc: 55, maxSoc: 98 },
-        points: [],
+        id: "sm1",
+        name: "Cabin",
+        service: "shinemonitor",
+        credentials: {
+          user: "user@example.com",
+          pwdSha1: "5baa61e4c9b93f3f0682250b6cf8331b7ee68fd8",
+          plantId: "100",
+          device: { pn: "PN1", devcode: "1", sn: "SN1", devaddr: "1" },
+          timezone: 0,
+        },
       }),
     );
 
+    const titles = [
+      { title: "Timestamp" },
+      { title: "Battery Voltage" },
+      { title: "Batt Current" },
+      { title: "Charger Power" },
+      { title: "PLoad" },
+    ];
+
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s1", token: "t1" } });
+      }
+      if (u.includes("queryDeviceDataOneDayPaging")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            title: titles,
+            total: 1,
+            row: [{
+              field: ["2026-07-03 10:00:00", "50.0", "0", "2400", "500"],
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
     const res = await call(
-      request("/api/systems/s1/history/summary?days=2", { headers: AUTH }),
+      request("/api/systems/sm1/history/summary?days=1&end=2026-07-03", { headers: AUTH }),
       systems,
     );
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.systemId).toBe("s1");
-    expect(json.days).toBe(2);
-    expect(json.series).toHaveLength(2);
-    expect(json.series[1]).toMatchObject({ date: "2026-07-03", solarKwh: 12.4, loadKwh: 9.1, minSoc: 55, maxSoc: 98, source: "snapshot" });
-    expect(json.series[0]).toMatchObject({ date: "2026-07-02", solarKwh: null, source: null });
+    expect(json.systemId).toBe("sm1");
+    expect(json.series).toHaveLength(1);
+    expect(json.series[0]).toMatchObject({
+      date: "2026-07-03",
+      solarKwh: 0.2,
+      loadKwh: 0,
+      peakSolarW: 2400,
+      source: "vendor",
+    });
   });
 
   it("returns 404 for unknown routes", async () => {
     const res = await call(request("/api/unknown", { headers: AUTH }));
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
+  it("GET /api/systems/:id/history returns vendor intraday data", async () => {
+    globalThis.fetch = vi.fn(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith("/login") && init?.method === "POST") {
+        return new Response(JSON.stringify({ result: 1 }), {
+          headers: { "set-cookie": "JSESSIONID=abc123; Path=/" },
+        });
+      }
+      if (u.includes("getStorageEnergyDayChart")) {
+        return Response.json({
+          result: 1,
+          obj: { ppv: ["1200"], userLoad: ["850"] },
+        });
+      }
+      if (u.includes("getStorageLineChartData")) {
+        return Response.json({
+          result: 1,
+          obj: { batPower: ["-723"] },
+        });
+      }
+      if (u.includes("getStorageBatChart")) {
+        return Response.json({
+          result: 1,
+          obj: { date: "2026-07-03", socChart: { capacity: ["72"] } },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: {
+        user: "u",
+        password: "p",
+        plantId: "42",
+        storageSn: "SN1",
+      },
+    }));
+    await systems.SYSTEMS.put(
+      "history:day:s1:2026-07-03",
+      JSON.stringify({
+        systemId: "s1",
+        date: "2026-07-03",
+        source: "snapshot",
+        points: [{ time: "00:00", solar: 9999, load: 9999, battery: 0 }],
+      }),
+    );
+
+    const res = await call(
+      request("/api/systems/s1/history?date=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.systemId).toBe("s1");
+    expect(json.date).toBe("2026-07-03");
+    expect(json.points[0]).toMatchObject({ time: "00:00", solar: 1200, load: 850, battery: -723, soc: 72 });
+    expect(json.source).toBeUndefined();
+  });
+
+  it("GET /api/systems/:id/history rejects invalid date", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({ id: "s1", service: "growatt", credentials: {} }));
+
+    const res = await call(
+      request("/api/systems/s1/history?date=not-a-date", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid date (expected YYYY-MM-DD)" });
+  });
+
+  it("GET /api/systems/:id/history returns 404 for unknown system", async () => {
+    const res = await call(
+      request("/api/systems/missing/history", { headers: AUTH }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "System not found" });
   });
 });

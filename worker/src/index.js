@@ -7,7 +7,6 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
-import { deleteHistory, getHistorySummary, resolveIntradayHistory, runScheduledSnapshots, supplementSummarySoc } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -151,7 +150,6 @@ export default {
       const id = deleteMatch[1];
       await env.SYSTEMS.delete(`system:${id}`);
       await deleteAlertState(env, id);
-      await deleteHistory(env, id);
       const index = await listSystems(env);
       const updated = index.filter(s => s.id !== id);
       await saveIndex(env, updated);
@@ -197,11 +195,11 @@ export default {
       }
     }
 
-    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from stored snapshots
+    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from vendor APIs
     const summaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
     if (summaryMatch && request.method === "GET") {
       const id = summaryMatch[1];
-      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
 
       const daysParam = url.searchParams.get("days");
@@ -215,17 +213,17 @@ export default {
         return errorResponse("Invalid end date (expected YYYY-MM-DD)", 400, origin);
       }
 
-      const summary = await getHistorySummary(env, id, days, endDate || null);
       const adapter = ADAPTERS[raw.service];
-      if (adapter?.fetchSocDailySummary) {
-        try {
-          const socByDate = await adapter.fetchSocDailySummary(raw, endDate || null, days);
-          summary.series = supplementSummarySoc(summary.series, socByDate);
-        } catch {
-          /* optional supplement */
-        }
+      if (!adapter?.fetchHistorySummary) {
+        return errorResponse(`History summary not supported for service: ${raw.service}`, 501, origin);
       }
-      return jsonResponse(summary, 200, origin);
+
+      try {
+        const summary = await adapter.fetchHistorySummary(raw, days, endDate || null);
+        return jsonResponse(summary, 200, origin);
+      } catch (err) {
+        return errorResponse(`History summary failed: ${err.message}`, 502, origin);
+      }
     }
 
     // GET /api/systems/:id/history?date=YYYY-MM-DD — intraday power series
@@ -246,7 +244,7 @@ export default {
       }
 
       try {
-        const data = await resolveIntradayHistory(env, raw, adapter, dateParam || null);
+        const data = await adapter.fetchHistory(raw, dateParam || null);
         return jsonResponse(data, 200, origin);
       } catch (err) {
         return errorResponse(`History fetch failed: ${err.message}`, 502, origin);
@@ -257,10 +255,7 @@ export default {
   },
 
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(Promise.all([
-      runScheduledAlerts(env, ADAPTERS),
-      runScheduledSnapshots(env, ADAPTERS),
-    ]));
+    ctx.waitUntil(runScheduledAlerts(env, ADAPTERS));
   },
 };
 

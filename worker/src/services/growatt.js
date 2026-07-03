@@ -5,7 +5,7 @@
  * Cookie-based session for all subsequent requests.
  */
 
-import { computeSocExtrema } from "../history.js";
+import { computeSocExtrema, mergeSocIntoPoints, socMapFromPoints } from "../history.js";
 
 const BASE = "https://mqtt.growatt.com";
 
@@ -251,6 +251,16 @@ export async function fetchHistory(systemConfig, date) {
     });
   }
 
+  let mergedPoints = points;
+  try {
+    const socPoints = await fetchSocChart(systemConfig, queryDate);
+    if (socPoints.length) {
+      mergedPoints = mergeSocIntoPoints(points, socMapFromPoints(socPoints));
+    }
+  } catch {
+    /* optional SOC supplement */
+  }
+
   return {
     systemId: systemConfig.id,
     name: systemConfig.name,
@@ -258,7 +268,7 @@ export async function fetchHistory(systemConfig, date) {
     date: queryDate,
     timezoneOffset: 0,
     intervalMinutes: 5,
-    points,
+    points: mergedPoints,
   };
 }
 
