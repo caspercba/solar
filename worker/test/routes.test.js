@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import worker from "../src/index.js";
+import * as growatt from "../src/services/growatt.js";
+import * as shinemonitor from "../src/services/shinemonitor.js";
 import { createMockKV, expectHistorySummaryShape } from "./helpers.js";
 import smAuth from "./fixtures/shinemonitor/auth-success.json";
 import smDay0703 from "./fixtures/shinemonitor/device-day-2026-07-03.json";
@@ -191,6 +193,57 @@ describe("worker routes", () => {
     expect(index).toEqual([{ id: "keep", name: "Stay", service: "growatt" }]);
   });
 
+  it("GET /api/systems/:id/history/summary calls adapter.fetchHistorySummary directly", async () => {
+    const summarySpy = vi.spyOn(shinemonitor, "fetchHistorySummary");
+    summarySpy.mockResolvedValue({
+      systemId: "sm1",
+      name: "Cabin",
+      service: "shinemonitor",
+      days: 7,
+      endDate: "2026-07-03",
+      series: [
+        {
+          date: "2026-07-03",
+          solarKwh: 18.2,
+          loadKwh: 14.1,
+          peakSolarW: 3000,
+          minSoc: 45,
+          maxSoc: 98,
+          source: "vendor",
+        },
+      ],
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
+    await systems.SYSTEMS.put(
+      "system:sm1",
+      JSON.stringify({
+        id: "sm1",
+        name: "Cabin",
+        service: "shinemonitor",
+        credentials: { user: "u", pwdSha1: "abc", plantId: "100" },
+      }),
+    );
+
+    const res = await call(
+      request("/api/systems/sm1/history/summary?days=7&end=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    expect(summarySpy).toHaveBeenCalledOnce();
+    expect(summarySpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "sm1", service: "shinemonitor" }),
+      7,
+      "2026-07-03",
+    );
+    const json = await res.json();
+    expectHistorySummaryShape(json);
+    expect(json.systemId).toBe("sm1");
+    expect(json.series[0].source).toBe("vendor");
+  });
+
   it("GET /api/systems/:id/history/summary uses ShineMonitor fetchHistorySummary", async () => {
     const systems = env();
     await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
@@ -375,7 +428,51 @@ describe("worker routes", () => {
     expect(await res.json()).toEqual({ error: "Not found" });
   });
 
-  it("GET /api/systems/:id/history returns vendor intraday data", async () => {
+  it("GET /api/systems/:id/history calls adapter.fetchHistory directly", async () => {
+    const fetchHistorySpy = vi.spyOn(growatt, "fetchHistory");
+    fetchHistorySpy.mockResolvedValue({
+      systemId: "s1",
+      name: "Home",
+      service: "growatt",
+      date: "2026-07-03",
+      timezoneOffset: -6,
+      intervalMinutes: 5,
+      points: [{ time: "00:00", solar: 1200, load: 850, battery: -723, soc: 72 }],
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: {
+        user: "u",
+        password: "p",
+        plantId: "42",
+        storageSn: "SN1",
+      },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/history?date=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    expect(fetchHistorySpy).toHaveBeenCalledOnce();
+    expect(fetchHistorySpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "s1", service: "growatt" }),
+      "2026-07-03",
+    );
+    const json = await res.json();
+    expect(json.systemId).toBe("s1");
+    expect(json.date).toBe("2026-07-03");
+    expect(json.points[0]).toMatchObject({ time: "00:00", solar: 1200, load: 850, battery: -723, soc: 72 });
+    expect(json.source).toBeUndefined();
+  });
+
+  it("GET /api/systems/:id/history returns vendor intraday data via Growatt adapter", async () => {
     globalThis.fetch = vi.fn(async (url, init) => {
       const u = String(url);
       if (u.endsWith("/login") && init?.method === "POST") {
@@ -417,15 +514,6 @@ describe("worker routes", () => {
         storageSn: "SN1",
       },
     }));
-    await systems.SYSTEMS.put(
-      "history:day:s1:2026-07-03",
-      JSON.stringify({
-        systemId: "s1",
-        date: "2026-07-03",
-        source: "snapshot",
-        points: [{ time: "00:00", solar: 9999, load: 9999, battery: 0 }],
-      }),
-    );
 
     const res = await call(
       request("/api/systems/s1/history?date=2026-07-03", { headers: AUTH }),
