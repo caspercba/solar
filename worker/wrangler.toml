@@ -17,5 +17,7 @@ id = "3dc7a4785e91472ba8b3a59464ebc49c"
 #   wrangler secret put ALLOWED_ORIGINS
 # Example: https://your-app.pages.dev,https://your-domain.com
 
+# Cron: snapshot normalized realtime into KV history keys (see src/history.js).
+# Charts populate after the first cycles; retention default 90 days (pruneOld).
 [triggers]
 crons = ["*/5 * * * *"]
