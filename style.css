@@ -350,6 +350,33 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   align-items: center;
   gap: .75rem;
   margin-bottom: .75rem;
+  flex-wrap: wrap;
+}
+
+.chart-export-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  padding: .45rem .85rem;
+  font-size: .85rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background .2s, color .2s, border-color .2s, opacity .2s;
+}
+
+.chart-export-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent-sol);
+}
+
+.chart-export-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
 
 .chart-date-label {
@@ -419,6 +446,27 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .legend-solar { background: var(--accent-sol); }
 .legend-load { background: var(--accent-load); }
 .legend-battery { background: var(--accent-bat); }
+
+.energy-summary-title {
+  margin: 1.25rem 0 .65rem;
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.energy-chart-wrap {
+  min-height: 180px;
+}
+
+#energy-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.energy-legend {
+  margin-top: .65rem;
+}
 
 /* ---------- FLOW VIEW ---------- */
 

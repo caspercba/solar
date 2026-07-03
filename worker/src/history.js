@@ -1,3 +1,5 @@
+import { loadSystemConfig } from "./credentials.js";
+
 /**
  * Worker-owned history snapshots in KV (same SYSTEMS namespace as system configs).
  *
@@ -152,6 +154,47 @@ export async function listDates(env, systemId) {
   return (await env.SYSTEMS.get(indexKey(systemId), "json")) ?? [];
 }
 
+/** Build consecutive calendar dates ending on endDate (YYYY-MM-DD), oldest first. */
+export function dateRange(endDate, days) {
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const dates = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(end);
+    d.setUTCDate(d.getUTCDate() - i);
+    dates.push(formatDateISO(d));
+  }
+  return dates;
+}
+
+function summaryFromDayDoc(doc) {
+  if (!doc?.dailySummary) return null;
+  return {
+    solarKwh: doc.dailySummary.solarKwh ?? 0,
+    loadKwh: doc.dailySummary.loadKwh ?? 0,
+    peakSolarW: doc.dailySummary.peakSolarW ?? 0,
+    minSoc: doc.dailySummary.minSoc ?? null,
+    maxSoc: doc.dailySummary.maxSoc ?? null,
+    source: doc.source || "snapshot",
+  };
+}
+
+/** Daily energy totals for the last N days from stored KV snapshots. */
+export async function getHistorySummary(env, systemId, days = 7, endDate = null) {
+  const end = endDate || formatDateISO(new Date());
+  const dates = dateRange(end, days);
+  const docs = await Promise.all(dates.map((date) => getDay(env, systemId, date)));
+
+  const series = dates.map((date, i) => {
+    const summary = summaryFromDayDoc(docs[i]);
+    if (!summary) {
+      return { date, solarKwh: null, loadKwh: null, peakSolarW: null, minSoc: null, maxSoc: null, source: null };
+    }
+    return { date, ...summary };
+  });
+
+  return { systemId, days, endDate: end, series };
+}
+
 export async function pruneOld(
   env,
   systemId,
@@ -170,4 +213,52 @@ export async function pruneOld(
   await env.SYSTEMS.put(indexKey(systemId), JSON.stringify(remaining));
 
   return { removed: toRemove, kept: remaining.length };
+}
+
+/** Remove all stored history keys for a system (day buckets + date index). */
+export async function deleteHistory(env, systemId) {
+  const dates = await listDates(env, systemId);
+  for (const date of dates) {
+    await env.SYSTEMS.delete(dayKey(systemId, date));
+  }
+  await env.SYSTEMS.delete(indexKey(systemId));
+  return { removed: dates.length };
+}
+
+/** Cron handler: fetch realtime data for each system and append to daily history. */
+export async function runScheduledSnapshots(env, adapters, nowMs = Date.now()) {
+  const index = await env.SYSTEMS.get("_index", "json");
+  if (!index?.length) return { checked: 0, appended: 0, failed: 0 };
+
+  const results = await Promise.allSettled(
+    index.map(async (entry) => {
+      const raw = await loadSystemConfig(env, entry.id);
+      if (!raw) {
+        console.error(`History snapshot skipped for ${entry.id}: system not found`);
+        return { systemId: entry.id, ok: false, error: "Not found" };
+      }
+      const adapter = adapters[raw.service];
+      if (!adapter) {
+        console.error(`History snapshot skipped for ${entry.id}: no adapter for ${raw.service}`);
+        return { systemId: entry.id, ok: false, error: "No adapter" };
+      }
+      try {
+        const data = await adapter.fetchData(raw);
+        await appendSnapshot(env, entry.id, data, nowMs);
+        return { systemId: entry.id, ok: true };
+      } catch (err) {
+        console.error(`History snapshot failed for ${entry.id}:`, err.message);
+        return { systemId: entry.id, ok: false, error: err.message };
+      }
+    }),
+  );
+
+  let appended = 0;
+  let failed = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value.ok) appended++;
+    else failed++;
+  }
+
+  return { checked: index.length, appended, failed };
 }

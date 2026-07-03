@@ -69,9 +69,13 @@ const fEls = {
   tabFlow: $("tab-flow"),
   tabChart: $("tab-chart"),
   chartDate: $("chart-date"),
+  chartExportBtn: $("chart-export-btn"),
   powerChart: $("power-chart"),
   chartEmpty: $("chart-empty"),
   chartLoading: $("chart-loading"),
+  energyChart: $("energy-chart"),
+  energyEmpty: $("energy-empty"),
+  energyLoading: $("energy-loading"),
   fpSolar: $("fp-solar"),
   fpGen: $("fp-gen"),
   fpLoad: $("fp-load"),
@@ -105,6 +109,7 @@ let pollTimer = null;
 let hasData = false;
 let currentView = "cards";
 let historyLoading = false;
+let chartHistory = null;
 
 /* ── Loading skeleton ── */
 const skeletonTargets = () => [
@@ -152,13 +157,14 @@ function setView(view) {
   fEls.tabCards.classList.toggle("active", view === "cards");
   fEls.tabFlow.classList.toggle("active", isFlow);
   fEls.tabChart.classList.toggle("active", isChart);
-  if (isChart) loadHistory(fEls.chartDate.value || null);
+  if (isChart) loadChartView();
 }
 
 fEls.tabCards.addEventListener("click", () => setView("cards"));
 fEls.tabFlow.addEventListener("click", () => setView("flow"));
 fEls.tabChart.addEventListener("click", () => setView("chart"));
 fEls.chartDate.addEventListener("change", () => loadHistory(fEls.chartDate.value));
+if (fEls.chartExportBtn) fEls.chartExportBtn.addEventListener("click", exportChartCsv);
 
 /* ── Helpers ── */
 function fmtW(w) {
@@ -235,7 +241,7 @@ function renderSystemTabs() {
       setLoading(true);
       renderSystemTabs();
       if (currentView === "chart") {
-        loadHistory(fEls.chartDate.value || null);
+        loadChartView();
       } else {
         pollNow();
       }
@@ -395,6 +401,77 @@ function setChartLoading(on) {
   if (fEls.chartLoading) fEls.chartLoading.hidden = !on;
   if (fEls.powerChart) fEls.powerChart.hidden = on;
   if (on && fEls.chartEmpty) fEls.chartEmpty.hidden = true;
+  if (on) updateChartExportBtn();
+}
+
+function sanitizeExportName(name) {
+  const safe = String(name || "system")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9._-]/g, "")
+    .slice(0, 64);
+  return safe || "system";
+}
+
+function csvCell(value) {
+  if (value == null || value === "") return "";
+  const text = String(value);
+  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function historyToCsv(points) {
+  const lines = ["time,solar_w,load_w,battery_w,soc"];
+  for (const p of points) {
+    lines.push([
+      csvCell(p.time),
+      csvCell(p.solar ?? 0),
+      csvCell(p.load ?? 0),
+      csvCell(p.battery ?? 0),
+      csvCell(Number.isFinite(p.soc) ? p.soc : ""),
+    ].join(","));
+  }
+  return lines.join("\r\n");
+}
+
+function updateChartExportBtn() {
+  const btn = fEls.chartExportBtn;
+  if (!btn) return;
+  const points = chartHistory?.points;
+  btn.disabled = historyLoading || !points?.length;
+}
+
+async function downloadCsvFile(filename, csv) {
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const file = new File([blob], filename, { type: "text/csv" });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 250);
+}
+
+function exportChartCsv() {
+  const points = chartHistory?.points;
+  if (!points?.length) return;
+  const name = chartHistory.name
+    || systems.find((s) => s.id === activeSystemId)?.name
+    || "system";
+  const date = chartHistory.date || fEls.chartDate?.value || "unknown-date";
+  const filename = `${sanitizeExportName(name)}-${date}.csv`;
+  downloadCsvFile(filename, historyToCsv(points));
 }
 
 function renderChart(data) {
@@ -497,21 +574,164 @@ function renderChart(data) {
   drawSeries("battery", CHART_COLORS.battery);
 }
 
+function setEnergyLoading(on) {
+  if (fEls.energyLoading) fEls.energyLoading.hidden = !on;
+  if (fEls.energyChart) fEls.energyChart.hidden = on;
+  if (on && fEls.energyEmpty) fEls.energyEmpty.hidden = true;
+}
+
+function fmtChartDate(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr.slice(5);
+  return d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+}
+
+function renderEnergyChart(data) {
+  const canvas = fEls.energyChart;
+  if (!canvas) return;
+
+  const series = data?.series || [];
+  const hasData = series.some((d) => (d.solarKwh ?? 0) > 0 || (d.loadKwh ?? 0) > 0);
+  if (!series.length || !hasData) {
+    canvas.hidden = true;
+    if (fEls.energyEmpty) fEls.energyEmpty.hidden = false;
+    return;
+  }
+
+  canvas.hidden = false;
+  if (fEls.energyEmpty) fEls.energyEmpty.hidden = true;
+
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(280, Math.round(rect.width || 500));
+  const height = 180;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.height = height + "px";
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const pad = { top: 16, right: 12, bottom: 32, left: 40 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const n = series.length;
+  const groupW = plotW / n;
+  const barGap = Math.min(4, groupW * 0.08);
+  const barW = Math.max(6, (groupW - barGap * 3) / 2);
+
+  let yMax = 0;
+  for (const d of series) {
+    yMax = Math.max(yMax, d.solarKwh ?? 0, d.loadKwh ?? 0);
+  }
+  if (yMax === 0) yMax = 1;
+  const yPad = yMax * 0.1 || 0.5;
+  yMax += yPad;
+
+  ctx.strokeStyle = CHART_COLORS.grid;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (plotH * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = CHART_COLORS.text;
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++) {
+    const val = yMax - (yMax * i) / 4;
+    const y = pad.top + (plotH * i) / 4;
+    ctx.fillText(val < 10 ? val.toFixed(1) : Math.round(val).toString(), pad.left - 6, y);
+  }
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (let i = 0; i < n; i++) {
+    const cx = pad.left + groupW * i + groupW / 2;
+    ctx.fillText(fmtChartDate(series[i].date), cx, pad.top + plotH + 8);
+  }
+
+  function barHeight(kwh) {
+    return ((kwh ?? 0) / yMax) * plotH;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const baseX = pad.left + groupW * i + barGap;
+    const solarH = barHeight(series[i].solarKwh);
+    const loadH = barHeight(series[i].loadKwh);
+    const yBase = pad.top + plotH;
+
+    ctx.fillStyle = CHART_COLORS.solar;
+    ctx.fillRect(baseX, yBase - solarH, barW, solarH);
+
+    ctx.fillStyle = CHART_COLORS.load;
+    ctx.fillRect(baseX + barW + barGap, yBase - loadH, barW, loadH);
+  }
+}
+
 async function loadHistory(date) {
   if (!activeSystemId || currentView !== "chart") return;
   setChartLoading(true);
   try {
     const qs = date ? `?date=${encodeURIComponent(date)}` : "";
     const data = await api("GET", `/api/systems/${activeSystemId}/history${qs}`);
+    chartHistory = data;
     if (data.date && fEls.chartDate) fEls.chartDate.value = data.date;
     renderChart(data);
     setStatus(true);
   } catch (err) {
     console.error("history error:", err);
+    chartHistory = { points: [] };
     renderChart({ points: [] });
     setStatus(false);
   } finally {
     setChartLoading(false);
+    updateChartExportBtn();
+  }
+}
+
+async function loadEnergySummary() {
+  if (!activeSystemId || currentView !== "chart") return;
+  setEnergyLoading(true);
+  try {
+    const data = await api("GET", `/api/systems/${activeSystemId}/history/summary?days=7`);
+    renderEnergyChart(data);
+  } catch (err) {
+    console.error("energy summary error:", err);
+    renderEnergyChart({ series: [] });
+  } finally {
+    setEnergyLoading(false);
+  }
+}
+
+async function loadChartView() {
+  if (!activeSystemId || currentView !== "chart") return;
+  setChartLoading(true);
+  setEnergyLoading(true);
+  const date = fEls.chartDate.value || null;
+  const qs = date ? `?date=${encodeURIComponent(date)}` : "";
+  try {
+    const [history, summary] = await Promise.all([
+      api("GET", `/api/systems/${activeSystemId}/history${qs}`),
+      api("GET", `/api/systems/${activeSystemId}/history/summary?days=7`),
+    ]);
+    if (history.date && fEls.chartDate) fEls.chartDate.value = history.date;
+    renderChart(history);
+    renderEnergyChart(summary);
+    setStatus(true);
+  } catch (err) {
+    console.error("chart view error:", err);
+    renderChart({ points: [] });
+    renderEnergyChart({ series: [] });
+    setStatus(false);
+  } finally {
+    setChartLoading(false);
+    setEnergyLoading(false);
   }
 }
 
@@ -827,7 +1047,7 @@ els.disconnectBtn.addEventListener("click", () => {
       ptr.style.height = "36px";
       if (pollTimer) clearTimeout(pollTimer);
       const refresh = currentView === "chart"
-        ? loadHistory(fEls.chartDate.value || null)
+        ? loadChartView()
         : pollNow();
       refresh.then(() => {
         if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), POLL_MS);
