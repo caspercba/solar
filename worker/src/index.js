@@ -7,7 +7,7 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
-import { deleteHistory, getHistorySummary, resolveIntradayHistory, runScheduledSnapshots, supplementSummarySoc } from "./history.js";
+import { resolveIntradayHistory } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -151,7 +151,6 @@ export default {
       const id = deleteMatch[1];
       await env.SYSTEMS.delete(`system:${id}`);
       await deleteAlertState(env, id);
-      await deleteHistory(env, id);
       const index = await listSystems(env);
       const updated = index.filter(s => s.id !== id);
       await saveIndex(env, updated);
@@ -197,37 +196,6 @@ export default {
       }
     }
 
-    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from stored snapshots
-    const summaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
-    if (summaryMatch && request.method === "GET") {
-      const id = summaryMatch[1];
-      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
-      if (!raw) return errorResponse("System not found", 404, origin);
-
-      const daysParam = url.searchParams.get("days");
-      const days = daysParam ? Number(daysParam) : 7;
-      if (!Number.isFinite(days) || days < 1 || days > 90) {
-        return errorResponse("Invalid days (expected 1–90)", 400, origin);
-      }
-
-      const endDate = url.searchParams.get("end");
-      if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-        return errorResponse("Invalid end date (expected YYYY-MM-DD)", 400, origin);
-      }
-
-      const summary = await getHistorySummary(env, id, days, endDate || null);
-      const adapter = ADAPTERS[raw.service];
-      if (adapter?.fetchSocDailySummary) {
-        try {
-          const socByDate = await adapter.fetchSocDailySummary(raw, endDate || null, days);
-          summary.series = supplementSummarySoc(summary.series, socByDate);
-        } catch {
-          /* optional supplement */
-        }
-      }
-      return jsonResponse(summary, 200, origin);
-    }
-
     // GET /api/systems/:id/history?date=YYYY-MM-DD — intraday power series
     const historyMatch = path.match(/^\/api\/systems\/([^/]+)\/history$/);
     if (historyMatch && request.method === "GET") {
@@ -257,10 +225,7 @@ export default {
   },
 
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(Promise.all([
-      runScheduledAlerts(env, ADAPTERS),
-      runScheduledSnapshots(env, ADAPTERS),
-    ]));
+    ctx.waitUntil(runScheduledAlerts(env, ADAPTERS));
   },
 };
 
