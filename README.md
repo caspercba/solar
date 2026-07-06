@@ -117,41 +117,80 @@ npm test
 
 GitHub Actions runs on every push to `main` and on pull requests (`.github/workflows/ci.yml`):
 
-1. **Test** — `npm ci` and `npm test` in `worker/`.
-2. **Deploy** — when you push a version tag matching `v*` (e.g. `v1.2.0`), the workflow deploys the Worker with `wrangler deploy` after tests pass.
+1. **Test** — worker unit tests, frontend unit tests, and Playwright E2E.
+2. **Deploy frontend** — on push to `main`, stages static assets and publishes to [Cloudflare Pages](https://developers.cloudflare.com/pages/) at **https://solar-dashboard.pages.dev** (production).
+3. **Deploy Worker** — when you push a version tag matching `v*` (e.g. `v1.2.0`), deploys the Worker with `wrangler deploy` after worker tests pass.
 
-### Required GitHub secret
+### Required GitHub secrets
 
 | Secret | Purpose |
 |--------|---------|
-| `CLOUDFLARE_API_TOKEN` | Authenticates `wrangler deploy` in CI. Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for the `SYSTEMS` namespace). |
+| `CLOUDFLARE_API_TOKEN` | Authenticates Wrangler for Worker deploy (tags) and Pages deploy (`main`). Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for the `SYSTEMS` namespace) plus **Cloudflare Pages — Edit**. |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID (Dashboard → Workers & Pages → right sidebar). Required for Pages deploy. |
 
-Add it under **Repository → Settings → Secrets and variables → Actions → New repository secret**.
+Add secrets under **Repository → Settings → Secrets and variables → Actions → New repository secret**.
 
-Deploy is skipped on PRs and non-tag pushes. To release:
+Worker deploy is skipped on PRs and non-tag pushes. Frontend deploy runs only on pushes to `main` (after all test jobs pass). To release a Worker version:
 
 ```bash
 git tag v1.2.0
 git push origin v1.2.0
 ```
 
-Runtime secrets (`API_TOKEN`, `ALLOWED_ORIGINS`) are **not** set by CI — configure those once with `wrangler secret put` on your Cloudflare account.
+Runtime Worker secrets (`API_TOKEN`, `ALLOWED_ORIGINS`, `CREDENTIALS_KEY`) are **not** set by CI — configure those once with `wrangler secret put` on your Cloudflare account.
 
 ## Host the Frontend
 
-The frontend is static — no build step. Serve `index.html`, `app.js`, and `style.css` from the repository root.
+The frontend is static — no build step. Serve `index.html`, `app.js`, `style.css`, `manifest.json`, `sw.js`, and `icons/` from the repository root.
+
+### Cloudflare Pages (recommended)
+
+**Production URL:** https://solar-dashboard.pages.dev
+
+Pushes to `main` deploy automatically via GitHub Actions (see [CI/CD](#cicd) above). The workflow runs `scripts/stage-frontend.sh` to copy only static assets into `dist/`, then `wrangler pages deploy`.
+
+**One-time setup** (if not already configured):
+
+1. Add GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (see table above).
+2. Push to `main` — the first deploy creates the `solar-dashboard` Pages project if it does not exist.
+3. Configure Worker CORS (below) so the browser can call the proxy from the Pages origin.
+
+**Manual deploy** (optional):
+
+```bash
+bash scripts/stage-frontend.sh dist
+npx wrangler pages deploy dist --project-name=solar-dashboard
+```
+
+**Alternative — connect Git in the Cloudflare dashboard:** Workers & Pages → Create → Pages → Connect to Git → select this repo. Build command: *(none)* · Build output directory: `/` · Root directory: `/`. Disable the dashboard auto-deploy if you rely on the GitHub Action above to avoid duplicate deployments.
+
+### CORS (Worker ↔ frontend)
+
+Browsers block cross-origin API calls unless the Worker returns matching `Access-Control-Allow-Origin` headers. Set the frontend origin(s) on the Worker:
+
+```bash
+cd worker
+npx wrangler secret put ALLOWED_ORIGINS
+```
+
+Enter a comma-separated list, for example:
+
+```
+https://solar-dashboard.pages.dev,https://your-custom-domain.com
+```
+
+Include every origin users open in the browser (production Pages URL, custom domain, local dev). When `ALLOWED_ORIGINS` is unset, the Worker reflects any request origin (dev mode only — do not use in production).
+
+After updating `ALLOWED_ORIGINS`, no Worker redeploy is required; secrets take effect immediately.
+
+The setup screen default **Proxy URL** (`https://solar-proxy.gaspar-solar.workers.dev`) is independent of where the frontend is hosted — it always points at the Cloudflare Worker API.
 
 ### GitHub Pages
 
 1. Push the repo to GitHub.
 2. **Settings → Pages → Build and deployment**: source = `Deploy from a branch`, branch = `main` (or your default), folder = `/ (root)`.
-3. Open the published URL and complete [first-time setup](#first-time-setup).
-
-### Cloudflare Pages
-
-1. **Workers & Pages → Create → Pages → Connect to Git** (or direct upload).
-2. Build command: *(none)* · Output directory: `/` (repository root).
-3. Deploy and open the Pages URL.
+3. Add your GitHub Pages URL to `ALLOWED_ORIGINS` on the Worker (same command as above).
+4. Open the published URL and complete [first-time setup](#first-time-setup).
 
 ### Local
 
@@ -162,12 +201,12 @@ python3 -m http.server 8080
 # or: npx serve .
 ```
 
-Open `http://localhost:8080`. The browser will call your deployed Worker URL (configure CORS is handled by the Worker).
+Open `http://localhost:8080`. Add `http://localhost:8080` to `ALLOWED_ORIGINS` if the Worker secret is set, or leave `ALLOWED_ORIGINS` unset for local dev.
 
 ## First-Time Setup
 
 1. **Deploy the Worker** and set `API_TOKEN` (above).
-2. **Open the frontend** (Pages, GitHub Pages, or local).
+2. **Open the frontend** at https://solar-dashboard.pages.dev (or GitHub Pages / local).
 3. On the setup screen, enter:
    - **Proxy URL** — your Worker URL, no trailing slash (e.g. `https://solar-proxy.example.workers.dev`)
    - **Access Token** — the same value you set with `wrangler secret put API_TOKEN`
