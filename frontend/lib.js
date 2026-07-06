@@ -111,3 +111,9 @@ export function fmtWeekStripDay(dateStr) {
   if (Number.isNaN(d.getTime())) return dateStr.slice(8);
   return String(d.getDate());
 }
+
+/** True when intraday chart should show the voltage-estimated SOC badge. */
+export function shouldShowEstimatedSocBadge(historyData) {
+  const src = historyData?.socSource;
+  return src === "estimated" || src === "mixed";
+}

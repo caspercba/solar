@@ -17,20 +17,21 @@ describe("fixture: shinemonitor device day paging", () => {
   const fixture = shinemonitorDeviceDayPaging;
 
   it("parseHistoryRows maps recorded vendor rows to normalized points", () => {
-    const points = parseHistoryRows(fixture.title, fixture.row);
+    const { points, socSource } = parseHistoryRows(fixture.title, fixture.row);
 
     expect(points).toEqual([
       { time: "06:00", solar: 0, load: 120, battery: 500, soc: 45 },
       { time: "12:00", solar: 500, load: 200, battery: -510, soc: 72 },
-      { time: "18:19", solar: 110, load: 283, battery: -3199 },
-      { time: "18:24", solar: 115, load: 290, battery: -3004 },
+      { time: "18:19", solar: 110, load: 283, battery: -3199, soc: 83 },
+      { time: "18:24", solar: 115, load: 290, battery: -3004, soc: 85 },
     ]);
+    expect(socSource).toBe("mixed");
   });
 
-  it("ignores BATTERY_SOC when vendor sends -1 or empty", () => {
-    const points = parseHistoryRows(fixture.title, fixture.row);
-    expect(points[2].soc).toBeUndefined();
-    expect(points[3].soc).toBeUndefined();
+  it("estimates SOC from voltage when BATTERY_SOC is -1 or empty", () => {
+    const { points } = parseHistoryRows(fixture.title, fixture.row);
+    expect(points[2].soc).toBe(83);
+    expect(points[3].soc).toBe(85);
   });
 });
 

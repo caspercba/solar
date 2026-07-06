@@ -16,6 +16,7 @@ import {
   buildWeekStripDates,
   fmtWeekStripWeekday,
   fmtWeekStripDay,
+  shouldShowEstimatedSocBadge,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -205,5 +206,19 @@ describe("chart date navigation helpers", () => {
   it("fmtWeekStripWeekday and fmtWeekStripDay format strip labels", () => {
     expect(fmtWeekStripWeekday("2026-07-03")).toMatch(/fri/i);
     expect(fmtWeekStripDay("2026-07-03")).toBe("3");
+  });
+});
+
+describe("shouldShowEstimatedSocBadge", () => {
+  it("shows badge for estimated or mixed SOC sources", () => {
+    expect(shouldShowEstimatedSocBadge({ socSource: "estimated" })).toBe(true);
+    expect(shouldShowEstimatedSocBadge({ socSource: "mixed" })).toBe(true);
+  });
+
+  it("hides badge for API-sourced or missing SOC metadata", () => {
+    expect(shouldShowEstimatedSocBadge({ socSource: "api" })).toBe(false);
+    expect(shouldShowEstimatedSocBadge({ socSource: null })).toBe(false);
+    expect(shouldShowEstimatedSocBadge(null)).toBe(false);
+    expect(shouldShowEstimatedSocBadge(undefined)).toBe(false);
   });
 });
