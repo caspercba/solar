@@ -62,3 +62,52 @@ export function loadPercent(load, ratedPower = 5000) {
   if (load?.percent != null) return load.percent;
   return Math.round(((load?.power ?? 0) / ratedPower) * 100);
 }
+
+/** Local calendar date as YYYY-MM-DD (no UTC drift). */
+export function todayIsoDate(now = new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Add calendar days to an ISO date string. */
+export function addIsoDays(dateStr, delta) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  d.setDate(d.getDate() + delta);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function isIsoDateAfter(a, b) {
+  return a > b;
+}
+
+/** Clamp a date to today when it would otherwise be in the future. */
+export function clampIsoDateToToday(dateStr, today = todayIsoDate()) {
+  return isIsoDateAfter(dateStr, today) ? today : dateStr;
+}
+
+/** Consecutive dates ending on selectedDate, oldest first. */
+export function buildWeekStripDates(selectedDate, count = 7) {
+  const n = Math.max(1, count);
+  const dates = [];
+  for (let i = n - 1; i >= 0; i--) {
+    dates.push(addIsoDays(selectedDate, -i));
+  }
+  return dates;
+}
+
+export function fmtWeekStripWeekday(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { weekday: "short" });
+}
+
+export function fmtWeekStripDay(dateStr) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr.slice(8);
+  return String(d.getDate());
+}

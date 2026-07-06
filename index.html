@@ -9,7 +9,7 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -171,12 +171,17 @@
     </section>
 
     <section id="chart-view" class="chart-view" hidden>
+      <div class="chart-date-nav">
+        <button type="button" id="chart-prev-day" class="chart-day-btn" aria-label="Previous day">&#8249;</button>
+        <div id="chart-week-strip" class="chart-week-strip" role="tablist" aria-label="Select day"></div>
+        <button type="button" id="chart-next-day" class="chart-day-btn" aria-label="Next day">&#8250;</button>
+      </div>
       <div class="chart-controls">
         <label for="chart-date" class="chart-date-label">Date</label>
         <input type="date" id="chart-date" class="chart-date-input">
         <button type="button" id="chart-export-btn" class="chart-export-btn" disabled>Export CSV</button>
       </div>
-      <div class="chart-wrap">
+      <div class="chart-wrap" id="chart-swipe-area">
         <canvas id="power-chart" width="500" height="220"></canvas>
         <div id="chart-empty" class="chart-empty" hidden>
           <p id="chart-empty-msg" class="chart-empty-msg">No power data for this date</p>
@@ -255,6 +260,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=13"></script>
+  <script type="module" src="app.js?v=14"></script>
 </body>
 </html>

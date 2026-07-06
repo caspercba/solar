@@ -48,4 +48,46 @@ test.describe("Chart view", () => {
     await expect(page.locator("#power-chart")).toBeVisible();
     await expect(page.locator("#chart-empty")).toBeHidden();
   });
+
+  test("week strip shows seven day pills and prev navigates to prior day", async ({ page }) => {
+    await expect(page.locator(".chart-day-pill")).toHaveCount(7);
+
+    const activeDate = await page.locator(".chart-day-pill.active").getAttribute("data-date");
+    expect(activeDate).toBeTruthy();
+
+    await page.locator("#chart-prev-day").click();
+    await expect(page.locator("#chart-loading")).toBeHidden();
+    await expect(page.locator("#chart-date")).not.toHaveValue(activeDate);
+
+    const prevDate = await page.locator(".chart-day-pill.active").getAttribute("data-date");
+    expect(prevDate).not.toBe(activeDate);
+    await expect(page.locator("#power-chart")).toBeVisible();
+  });
+
+  test("clicking a week strip day loads that date and persists in localStorage", async ({ page }) => {
+    const target = page.locator('.chart-day-pill[data-date="2026-07-01"]');
+    await target.click();
+
+    await expect(page.locator("#chart-date")).toHaveValue("2026-07-01");
+    await expect(page.locator('.chart-day-pill[data-date="2026-07-01"]')).toHaveClass(/active/);
+    await expect(page.locator("#power-chart")).toBeVisible();
+
+    await switchView(page, "cards");
+    await switchView(page, "chart");
+
+    await expect(page.locator("#chart-date")).toHaveValue("2026-07-01");
+    await expect(page.locator('.chart-day-pill[data-date="2026-07-01"]')).toHaveClass(/active/);
+  });
+
+  test("summary request includes end= aligned to selected chart date", async ({ page }) => {
+    const summaryRequests = [];
+    page.on("request", (req) => {
+      if (req.url().includes("/history/summary")) summaryRequests.push(req.url());
+    });
+
+    await page.locator('.chart-day-pill[data-date="2026-07-02"]').click();
+    await expect(page.locator("#energy-chart")).toBeVisible();
+
+    expect(summaryRequests.some((url) => url.includes("end=2026-07-02"))).toBe(true);
+  });
 });
