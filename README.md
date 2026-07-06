@@ -199,6 +199,8 @@ Use only on trusted devices — the token appears in the URL and browser history
 
 All routes require `Authorization: Bearer <API_TOKEN>` when the secret is configured.
 
+**Rate limits:** Real-time data routes (`GET /api/systems/:id/data` and `GET /api/systems/all/data`) are limited to **60 requests per minute per bearer token** (in-memory per Worker isolate). Exceeding the limit returns **429 Too Many Requests** with a `Retry-After` header (seconds until the window resets). Normal dashboard polling at 60 s intervals is well below this limit. Rate limiting is disabled when `API_TOKEN` is unset (dev open mode).
+
 ## Normalized Data Contract
 
 Both adapters return the same shape from `GET /api/systems/:id/data`:
@@ -253,6 +255,7 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 - **Frontend token storage** — The access token is kept in `localStorage` (and optionally URL params for bookmarks). Anyone with the token can call your Worker API. Rotate the token if it is exposed.
 - **HTTPS only** — Use HTTPS for both the Worker and frontend in production.
 - **Dev mode** — If `API_TOKEN` is unset, the Worker accepts unauthenticated requests. Never deploy to production without the secret.
+- **Rate limiting** — Data routes are capped at 60 requests/minute per bearer token (per isolate). Returns 429 with `Retry-After` when exceeded. Protects upstream inverter APIs from burst polling or scripted clients.
 
 ## Documentation
 
