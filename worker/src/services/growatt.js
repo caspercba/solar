@@ -295,6 +295,7 @@ export async function fetchHistory(systemConfig, date) {
     timezoneOffset: 0,
     intervalMinutes: 5,
     points: mergedPoints,
+    socSource: mergedPoints.some((p) => Number.isFinite(p.soc)) ? "api" : null,
   };
 }
 

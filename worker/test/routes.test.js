@@ -3,6 +3,7 @@ import worker from "../src/index.js";
 import * as growatt from "../src/services/growatt.js";
 import * as shinemonitor from "../src/services/shinemonitor.js";
 import { createMockKV, expectHistorySummaryShape } from "./helpers.js";
+import { resetRateLimitStore, DATA_RATE_LIMIT_MAX } from "../src/rateLimit.js";
 import smAuth from "./fixtures/shinemonitor/auth-success.json";
 import smDay0703 from "./fixtures/shinemonitor/device-day-2026-07-03.json";
 import growattEnergy0703 from "./fixtures/growatt/energy-day-2026-07-03.json";
@@ -37,6 +38,7 @@ describe("worker routes", () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
+    resetRateLimitStore();
   });
 
   afterEach(() => {
@@ -592,5 +594,89 @@ describe("worker routes", () => {
     expect(JSON.stringify(parsed)).not.toContain("secret-password");
 
     consoleError.mockRestore();
+  });
+
+  it("GET /api/systems/:id/data returns 429 when rate limit exceeded", async () => {
+    const fetchDataSpy = vi.spyOn(growatt, "fetchData");
+    fetchDataSpy.mockResolvedValue({
+      systemId: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery: { voltage: 48, soc: 50, current: 0, power: 0 },
+      solar: { power: 0, voltage: 0 },
+      load: { power: 0, percent: 0 },
+      grid: { power: 0, voltage: 0, active: false },
+      inverter: { ratedPower: 5000, nominalPV: 5000 },
+      status: "Idle",
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "p", plantId: "42", storageSn: "SN1" },
+    }));
+
+    for (let i = 0; i < DATA_RATE_LIMIT_MAX; i += 1) {
+      const res = await call(
+        request("/api/systems/s1/data", { headers: AUTH }),
+        systems,
+      );
+      expect(res.status).toBe(200);
+    }
+
+    const blocked = await call(
+      request("/api/systems/s1/data", { headers: AUTH }),
+      systems,
+    );
+    expect(blocked.status).toBe(429);
+    expect(await blocked.json()).toEqual({ error: "Too many requests" });
+    expect(blocked.headers.get("Retry-After")).toMatch(/^\d+$/);
+    expect(Number(blocked.headers.get("Retry-After"))).toBeGreaterThan(0);
+    expect(fetchDataSpy).toHaveBeenCalledTimes(DATA_RATE_LIMIT_MAX);
+  });
+
+  it("GET /api/systems/all/data shares the same per-token rate limit", async () => {
+    const fetchDataSpy = vi.spyOn(growatt, "fetchData");
+    fetchDataSpy.mockResolvedValue({
+      systemId: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery: { voltage: 48, soc: 50, current: 0, power: 0 },
+      solar: { power: 0, voltage: 0 },
+      load: { power: 0, percent: 0 },
+      grid: { power: 0, voltage: 0, active: false },
+      inverter: { ratedPower: 5000, nominalPV: 5000 },
+      status: "Idle",
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "p", plantId: "42", storageSn: "SN1" },
+    }));
+
+    for (let i = 0; i < DATA_RATE_LIMIT_MAX - 1; i += 1) {
+      await call(request("/api/systems/s1/data", { headers: AUTH }), systems);
+    }
+
+    const allDataRes = await call(
+      request("/api/systems/all/data", { headers: AUTH }),
+      systems,
+    );
+    expect(allDataRes.status).toBe(200);
+
+    const blocked = await call(
+      request("/api/systems/s1/data", { headers: AUTH }),
+      systems,
+    );
+    expect(blocked.status).toBe(429);
   });
 });

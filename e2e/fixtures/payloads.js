@@ -8,6 +8,9 @@ export const MOCK_TOKEN = "e2e-test-token";
 /** Date query param that returns empty intraday history (chart empty state). */
 export const EMPTY_HISTORY_DATE = "2026-01-01";
 
+/** Date query param that returns voltage-estimated SOC (ShineMonitor badge). */
+export const ESTIMATED_SOC_HISTORY_DATE = "2026-06-15";
+
 export const health = {
   ok: true,
   version: "1.2.0-mock",
@@ -93,6 +96,23 @@ export function historyData(systemId, date) {
     };
   }
 
+  if (queryDate === ESTIMATED_SOC_HISTORY_DATE && sys.service === "shinemonitor") {
+    return {
+      systemId: sys.id,
+      name: sys.name,
+      service: sys.service,
+      date: queryDate,
+      timezoneOffset: -6,
+      intervalMinutes: 5,
+      socSource: "estimated",
+      points: [
+        { time: "06:00", solar: 0, load: 120, battery: -45, soc: 70 },
+        { time: "12:00", solar: 500, load: 200, battery: -510, soc: 84 },
+        { time: "18:00", solar: 80, load: 780, battery: 700, soc: 58 },
+      ],
+    };
+  }
+
   return {
     systemId: sys.id,
     name: sys.name,
@@ -100,6 +120,7 @@ export function historyData(systemId, date) {
     date: queryDate,
     timezoneOffset: -6,
     intervalMinutes: 5,
+    socSource: "api",
     points: [
       { time: "06:00", solar: 0, load: 120, battery: -45, soc: 68 },
       { time: "08:00", solar: 450, load: 180, battery: -270, soc: 70 },

@@ -6,6 +6,7 @@ import {
   waitForDashboardData,
   switchView,
   EMPTY_HISTORY_DATE,
+  ESTIMATED_SOC_HISTORY_DATE,
 } from "../helpers.js";
 
 test.beforeEach(async ({ page }) => {
@@ -47,5 +48,26 @@ test.describe("Chart view", () => {
 
     await expect(page.locator("#power-chart")).toBeVisible();
     await expect(page.locator("#chart-empty")).toBeHidden();
+  });
+
+  test("shows Estimated badge when history uses voltage-derived SOC", async ({ page }) => {
+    await expect(page.locator("#soc-estimated-badge")).toBeHidden();
+
+    await page.locator("#chart-date").fill(ESTIMATED_SOC_HISTORY_DATE);
+    await page.locator("#chart-date").dispatchEvent("change");
+
+    await expect(page.locator("#power-chart")).toBeVisible();
+    await expect(page.locator(".legend-soc-item")).toBeVisible();
+    await expect(page.locator("#soc-estimated-badge")).toBeVisible();
+    await expect(page.locator("#soc-estimated-badge")).toHaveText("Estimated");
+  });
+
+  test("hides Estimated badge for API-sourced SOC history", async ({ page }) => {
+    await page.locator("#chart-date").fill("2026-07-03");
+    await page.locator("#chart-date").dispatchEvent("change");
+
+    await expect(page.locator("#power-chart")).toBeVisible();
+    await expect(page.locator(".legend-soc-item")).toBeVisible();
+    await expect(page.locator("#soc-estimated-badge")).toBeHidden();
   });
 });
