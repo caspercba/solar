@@ -78,6 +78,57 @@ flowchart LR
 
    If `API_TOKEN` is not set, the Worker runs in open mode (no auth) — useful for local testing only.
 
+### Staging environment
+
+Staging is a separate Cloudflare Worker (`solar-proxy-staging`) with its **own KV namespace** — system configs, credentials, and alert state never share storage with production.
+
+| | Production | Staging |
+|---|------------|---------|
+| Worker name | `solar-proxy` | `solar-proxy-staging` |
+| Deploy command | `npx wrangler deploy` | `npx wrangler deploy --env staging` |
+| npm script | `npm run deploy` | `npm run deploy:staging` |
+| URL | `https://solar-proxy.<account>.workers.dev` | `https://solar-proxy-staging.<account>.workers.dev` |
+| KV namespace | Top-level `[[kv_namespaces]]` in `wrangler.toml` | `[[env.staging.kv_namespaces]]` (different `id`) |
+| CI trigger | Push a version tag (`v*`) | Push to `main` |
+| Typical use | Live dashboard | Pre-release testing, adapter changes |
+
+**One-time staging setup**
+
+1. Create an isolated KV namespace and copy its id into `worker/wrangler.toml` under `[[env.staging.kv_namespaces]]` (if not already set):
+
+   ```bash
+   cd worker
+   npx wrangler kv namespace create SYSTEMS --env staging
+   ```
+
+   The command prints a namespace `id`. Ensure it is committed in `wrangler.toml` and **differs** from the production namespace id.
+
+2. Set staging-only secrets (use different values from production where appropriate):
+
+   ```bash
+   npx wrangler secret put API_TOKEN --env staging
+   npx wrangler secret put CREDENTIALS_KEY --env staging   # optional but recommended
+   npx wrangler secret put ALLOWED_ORIGINS --env staging   # e.g. Pages preview URL, localhost
+   ```
+
+   Secrets are scoped per environment — `wrangler secret put API_TOKEN` does **not** update staging.
+
+3. Deploy staging:
+
+   ```bash
+   npx wrangler deploy --env staging
+   ```
+
+4. Point a test frontend at the staging Worker URL and staging `API_TOKEN` in the setup screen (or `?proxy=...&token=...`).
+
+**Local dev against staging config** (optional):
+
+```bash
+npx wrangler dev --env staging
+```
+
+Production deploys remain **tag-only** in CI; every push to `main` deploys staging automatically after tests pass (see [CI/CD](#cicd)).
+
 ### Historical data (vendor APIs)
 
 Charts and multi-day summaries fetch **live from inverter cloud APIs** on each request. The Worker does not archive historical readings in KV — vendor portals are the source of truth.
@@ -117,25 +168,26 @@ npm test
 
 GitHub Actions runs on every push to `main` and on pull requests (`.github/workflows/ci.yml`):
 
-1. **Test** — `npm ci` and `npm test` in `worker/`.
-2. **Deploy** — when you push a version tag matching `v*` (e.g. `v1.2.0`), the workflow deploys the Worker with `wrangler deploy` after tests pass.
+1. **Test** — worker, frontend, and E2E suites.
+2. **Deploy staging** — on push to `main`, deploys the Worker with `wrangler deploy --env staging` after tests pass.
+3. **Deploy production** — when you push a version tag matching `v*` (e.g. `v1.2.0`), deploys with `wrangler deploy` (default/production env) after tests pass.
 
 ### Required GitHub secret
 
 | Secret | Purpose |
 |--------|---------|
-| `CLOUDFLARE_API_TOKEN` | Authenticates `wrangler deploy` in CI. Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for the `SYSTEMS` namespace). |
+| `CLOUDFLARE_API_TOKEN` | Authenticates `wrangler deploy` in CI (staging and production). Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** and KV read/write for both the production and staging `SYSTEMS` namespaces. |
 
 Add it under **Repository → Settings → Secrets and variables → Actions → New repository secret**.
 
-Deploy is skipped on PRs and non-tag pushes. To release:
+Pull requests run tests only — no deploy. Pushes to `main` update **staging**; production releases require a tag:
 
 ```bash
 git tag v1.2.0
 git push origin v1.2.0
 ```
 
-Runtime secrets (`API_TOKEN`, `ALLOWED_ORIGINS`) are **not** set by CI — configure those once with `wrangler secret put` on your Cloudflare account.
+Runtime secrets (`API_TOKEN`, `CREDENTIALS_KEY`, `ALLOWED_ORIGINS`) are **not** set by CI — configure those once per environment with `wrangler secret put` (add `--env staging` for staging). See [Staging environment](#staging-environment).
 
 ## Host the Frontend
 
@@ -273,7 +325,7 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 │   ├── src/index.js                # Worker entry + REST routes + scheduled alerts
 │   ├── src/history.js              # Shared adapter helpers (daily summary math, SOC merge)
 │   ├── src/services/               # ShineMonitor & Growatt adapters
-│   └── wrangler.toml               # Worker + KV binding (+ optional alert cron)
+│   └── wrangler.toml               # Worker + KV binding; [env.staging] for staging
 └── discovery/                      # Reverse-engineered vendor API docs
 ```
 

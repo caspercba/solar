@@ -2,22 +2,40 @@ name = "solar-proxy"
 main = "src/index.js"
 compatibility_date = "2024-12-01"
 
+# Production (default) — deploy with: wrangler deploy
 [[kv_namespaces]]
 binding = "SYSTEMS"
 id = "3dc7a4785e91472ba8b3a59464ebc49c"
 
-# Set the shared access token as a secret:
+# Set secrets per environment (production omits --env; staging uses --env staging):
 #   wrangler secret put API_TOKEN
+#   wrangler secret put API_TOKEN --env staging
 #
 # AES-256-GCM key for encrypting inverter credentials in KV (32 bytes, base64):
 #   openssl rand -base64 32 | wrangler secret put CREDENTIALS_KEY
+#   openssl rand -base64 32 | wrangler secret put CREDENTIALS_KEY --env staging
 #
-# Comma-separated frontend origins allowed for CORS (production).
+# Comma-separated frontend origins allowed for CORS.
 # When unset, dev mode reflects the request Origin (or "*").
 #   wrangler secret put ALLOWED_ORIGINS
+#   wrangler secret put ALLOWED_ORIGINS --env staging
 # Example: https://your-app.pages.dev,https://your-domain.com
 
 # Cron triggers (run locally with `wrangler dev --test-scheduled` or deploy to Cloudflare).
 # Each tick: evaluate alert thresholds for all systems with alerts enabled (see src/alerts.js).
 [triggers]
+crons = ["*/5 * * * *"]
+
+# Staging — deploy with: wrangler deploy --env staging
+# Isolated Worker name and KV namespace (see README "Staging environment").
+# First-time KV (once): npx wrangler kv namespace create SYSTEMS --env staging
+# Then paste the returned id below (must differ from production).
+[env.staging]
+name = "solar-proxy-staging"
+
+[[env.staging.kv_namespaces]]
+binding = "SYSTEMS"
+id = "f1a2b3c4d5e6478990abcdef12345678"
+
+[env.staging.triggers]
 crons = ["*/5 * * * *"]
