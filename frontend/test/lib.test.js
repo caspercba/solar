@@ -9,6 +9,7 @@ import {
   clampPct,
   solarPctFromPower,
   loadPercent,
+  shouldShowEstimatedSocBadge,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -163,5 +164,19 @@ describe("loadPercent", () => {
   it("treats missing load as zero percent", () => {
     expect(loadPercent(null, 5000)).toBe(0);
     expect(loadPercent(undefined, 5000)).toBe(0);
+  });
+});
+
+describe("shouldShowEstimatedSocBadge", () => {
+  it("shows badge for estimated or mixed SOC sources", () => {
+    expect(shouldShowEstimatedSocBadge({ socSource: "estimated" })).toBe(true);
+    expect(shouldShowEstimatedSocBadge({ socSource: "mixed" })).toBe(true);
+  });
+
+  it("hides badge for API-sourced or missing SOC metadata", () => {
+    expect(shouldShowEstimatedSocBadge({ socSource: "api" })).toBe(false);
+    expect(shouldShowEstimatedSocBadge({ socSource: null })).toBe(false);
+    expect(shouldShowEstimatedSocBadge(null)).toBe(false);
+    expect(shouldShowEstimatedSocBadge(undefined)).toBe(false);
   });
 });

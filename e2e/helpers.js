@@ -1,10 +1,10 @@
 import { expect } from "@playwright/test";
-import { MOCK_TOKEN, EMPTY_HISTORY_DATE } from "./fixtures/payloads.js";
+import { MOCK_TOKEN, EMPTY_HISTORY_DATE, ESTIMATED_SOC_HISTORY_DATE } from "./fixtures/payloads.js";
 
 export const MOCK_WORKER_PORT = Number(process.env.MOCK_WORKER_PORT) || 8790;
 export const FRONTEND_PORT = Number(process.env.FRONTEND_PORT) || 3456;
 export const MOCK_WORKER_URL = `http://127.0.0.1:${MOCK_WORKER_PORT}`;
-export { MOCK_TOKEN, EMPTY_HISTORY_DATE };
+export { MOCK_TOKEN, EMPTY_HISTORY_DATE, ESTIMATED_SOC_HISTORY_DATE };
 
 /** Avoid stale service-worker caches interfering with static assets in tests. */
 export async function disableServiceWorker(page) {
