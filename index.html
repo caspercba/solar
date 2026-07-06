@@ -9,7 +9,7 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -188,7 +188,7 @@
         <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar (W)</span>
         <span class="legend-item"><span class="legend-swatch legend-load"></span>Load (W)</span>
         <span class="legend-item"><span class="legend-swatch legend-battery"></span>Battery (W)</span>
-        <span class="legend-item legend-soc-item" hidden><span class="legend-swatch legend-soc"></span>SOC (%)</span>
+        <span class="legend-item legend-soc-item" hidden><span class="legend-swatch legend-soc"></span>SOC (%)<span id="soc-estimated-badge" class="soc-estimated-badge" hidden title="SOC estimated from battery voltage">Estimated</span></span>
       </div>
 
       <h3 class="energy-summary-title">7-Day Energy</h3>
