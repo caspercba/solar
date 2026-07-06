@@ -1,4 +1,5 @@
 import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
+import { logAdapterError } from "./logger.js";
 import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
 import {
   runScheduledAlerts,
@@ -96,6 +97,11 @@ export default {
       try {
         discovered = await adapter.discover({ user, password }, plantId || null);
       } catch (err) {
+        logAdapterError(env, "adapter_discover_failed", {
+          service,
+          route: "POST /api/systems",
+          error: err,
+        });
         return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
       }
 
@@ -171,6 +177,12 @@ export default {
 
       const data = results.map((r, i) => {
         if (r.status === "fulfilled") return r.value;
+        logAdapterError(env, "adapter_fetch_failed", {
+          systemId: index[i].id,
+          service: index[i].service,
+          route: "GET /api/systems/all/data",
+          error: r.reason,
+        });
         return { systemId: index[i].id, name: index[i].name, service: index[i].service, error: r.reason?.message || "Unknown error" };
       });
 
@@ -191,6 +203,12 @@ export default {
         const data = await adapter.fetchData(raw);
         return jsonResponse(data, 200, origin);
       } catch (err) {
+        logAdapterError(env, "adapter_fetch_failed", {
+          systemId: id,
+          service: raw.service,
+          route: "GET /api/systems/:id/data",
+          error: err,
+        });
         return errorResponse(`Fetch failed: ${err.message}`, 502, origin);
       }
     }
@@ -222,6 +240,12 @@ export default {
         const summary = await adapter.fetchHistorySummary(raw, days, endDate || null);
         return jsonResponse(summary, 200, origin);
       } catch (err) {
+        logAdapterError(env, "adapter_history_summary_failed", {
+          systemId: id,
+          service: raw.service,
+          route: "GET /api/systems/:id/history/summary",
+          error: err,
+        });
         return errorResponse(`History summary failed: ${err.message}`, 502, origin);
       }
     }
@@ -247,6 +271,12 @@ export default {
         const data = await adapter.fetchHistory(raw, dateParam || null);
         return jsonResponse(data, 200, origin);
       } catch (err) {
+        logAdapterError(env, "adapter_history_failed", {
+          systemId: id,
+          service: raw.service,
+          route: "GET /api/systems/:id/history",
+          error: err,
+        });
         return errorResponse(`History fetch failed: ${err.message}`, 502, origin);
       }
     }

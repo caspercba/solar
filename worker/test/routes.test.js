@@ -549,4 +549,48 @@ describe("worker routes", () => {
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "System not found" });
   });
+
+  it("GET /api/systems/:id/data logs structured error on adapter failure", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    vi.spyOn(growatt, "fetchData").mockRejectedValue(new Error("vendor offline"));
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "secret-password" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/data", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Fetch failed: vendor offline" });
+    expect(consoleError).toHaveBeenCalled();
+    const logLine = consoleError.mock.calls.find((c) => {
+      try {
+        const parsed = JSON.parse(c[0]);
+        return parsed.event === "adapter_fetch_failed";
+      } catch {
+        return false;
+      }
+    });
+    expect(logLine).toBeDefined();
+    const parsed = JSON.parse(logLine[0]);
+    expect(parsed).toMatchObject({
+      level: "error",
+      event: "adapter_fetch_failed",
+      systemId: "s1",
+      service: "growatt",
+      route: "GET /api/systems/:id/data",
+    });
+    expect(JSON.stringify(parsed)).not.toContain("secret-password");
+
+    consoleError.mockRestore();
+  });
 });
