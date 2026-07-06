@@ -258,6 +258,7 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 
 | Document | Description |
 |----------|-------------|
+| [worker/DEPLOY.md](./worker/DEPLOY.md) | Worker deployment runbook (KV, secrets, cron, CI) |
 | [PLAN.md](./PLAN.md) | Project plan and roadmap |
 | [discovery/README.md](./discovery/README.md) | ShineMonitor API discovery notes |
 | [discovery/API.md](./discovery/API.md) | ShineMonitor API reference |
