@@ -191,6 +191,49 @@ git push origin v1.2.0
 
 Runtime secrets (`API_TOKEN`, `CREDENTIALS_KEY`, `ALLOWED_ORIGINS`) are **not** set by CI — configure those once per environment with `wrangler secret put` (add `--env staging` for staging). See [Staging environment](#staging-environment).
 
+## Observability
+
+The Worker emits **structured JSON logs** for adapter failures (502 responses), alert webhook errors, and scheduled alert fetch failures. Each log line includes `level`, `event`, `timestamp`, and context such as `systemId`, `service`, and `route`. Credentials, bearer tokens, and webhook URLs are redacted before output — never logged in plain text.
+
+### Viewing logs
+
+| Method | Use case |
+|--------|----------|
+| **`wrangler tail`** | Real-time stream during development or incident response |
+| **Workers Logs** (dashboard) | Search and filter production log history |
+| **Logpush** | Ship logs to S3, Datadog, or other sinks for long-term retention |
+
+Example tail output (one JSON object per line):
+
+```json
+{"level":"error","event":"adapter_fetch_failed","timestamp":"2026-07-06T12:00:00.000Z","systemId":"abc-123","service":"growatt","route":"GET /api/systems/:id/data","message":"vendor timeout","error":{"name":"Error","message":"vendor timeout"}}
+```
+
+### Optional: Workers Analytics Engine
+
+For queryable error metrics (counts by `systemId` / `service`), bind a Workers Analytics Engine dataset:
+
+1. Create a dataset in the Cloudflare dashboard (**Workers & Pages → Analytics Engine → Create dataset**).
+2. Add the binding to `worker/wrangler.toml`:
+
+   ```toml
+   [[analytics_engine_datasets]]
+   binding = "ANALYTICS"
+   dataset = "solar_proxy_errors"
+   ```
+
+3. Redeploy. Error events are written automatically via `writeDataPoint` when the binding is present.
+
+### Sentry and third-party APM
+
+The Worker does **not** bundle a Sentry SDK (keeps the zero-dependency footprint). Options for production error tracking:
+
+- **Logpush → Sentry** — forward Workers JSON logs and parse `event` / `systemId` fields.
+- **Cloudflare Workers integration** — connect Sentry in the Cloudflare dashboard for unhandled exceptions (complements structured logs for handled 502 paths).
+- **Analytics Engine + Grafana** — chart error rates from the optional dataset above.
+
+No additional secrets are required for console-only logging. Analytics Engine uses the dashboard binding; external APM setup is account-specific.
+
 ## Host the Frontend
 
 The frontend is static — no build step. Serve `index.html`, `app.js`, `style.css`, `manifest.json`, `sw.js`, and `icons/` from the repository root.
@@ -367,6 +410,7 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 ├── index.html, app.js, style.css   # Static frontend
 ├── worker/
 │   ├── src/index.js                # Worker entry + REST routes + scheduled alerts
+│   ├── src/logger.js               # Structured JSON logging + optional Analytics Engine
 │   ├── src/history.js              # Shared adapter helpers (daily summary math, SOC merge)
 │   ├── src/services/               # ShineMonitor & Growatt adapters
 │   └── wrangler.toml               # Worker + KV binding; [env.staging] for staging
