@@ -7,6 +7,7 @@ import {
   clampPct,
   solarPctFromPower,
   loadPercent,
+  shouldShowEstimatedSocBadge,
 } from "./frontend/lib.js";
 
 /* ── Config ── */
@@ -91,6 +92,7 @@ const fEls = {
   energyEmptyMsg: $("energy-empty-msg"),
   energyRetryBtn: $("energy-retry-btn"),
   energyLoading: $("energy-loading"),
+  socEstimatedBadge: $("soc-estimated-badge"),
   fpSolar: $("fp-solar"),
   fpGen: $("fp-gen"),
   fpLoad: $("fp-load"),
@@ -433,6 +435,7 @@ function setIntradayChartState(state, opts = {}) {
   if (state !== "ready") {
     const socLegend = document.querySelector(".legend-soc-item");
     if (socLegend) socLegend.hidden = true;
+    if (fEls.socEstimatedBadge) fEls.socEstimatedBadge.hidden = true;
   }
   updateChartExportBtn();
 }
@@ -513,6 +516,9 @@ function renderChart(data) {
   const socLegend = document.querySelector(".legend-soc-item");
   const hasSoc = points.some((p) => Number.isFinite(p.soc));
   if (socLegend) socLegend.hidden = !hasSoc;
+  if (fEls.socEstimatedBadge) {
+    fEls.socEstimatedBadge.hidden = !hasSoc || !shouldShowEstimatedSocBadge(data);
+  }
 
   if (!points.length) return false;
 

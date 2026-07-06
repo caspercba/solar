@@ -160,10 +160,15 @@ function buildFieldLookup(titles) {
   };
 }
 
-/** Parse paginated device rows into normalized history points (chronological). */
+/**
+ * Parse paginated device rows into normalized history points (chronological).
+ * @returns {{ points: Array, socSource: 'api' | 'estimated' | 'mixed' | null }}
+ */
 export function parseHistoryRows(titles, rows) {
   const fieldVal = buildFieldLookup(titles);
   const points = [];
+  let hasApiSoc = false;
+  let hasEstimatedSoc = false;
 
   for (const row of rows) {
     const fields = row?.field || [];
@@ -176,7 +181,14 @@ export function parseHistoryRows(titles, rows) {
     let soc;
     if (socRaw != null && socRaw !== "" && socRaw !== "-1") {
       const parsed = parseFloat(socRaw);
-      if (Number.isFinite(parsed) && parsed >= 0) soc = Math.round(parsed);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        soc = Math.round(parsed);
+        hasApiSoc = true;
+      }
+    }
+    if (soc == null && batV > 0) {
+      soc = estimateSocFromVoltage(batV);
+      hasEstimatedSoc = true;
     }
 
     const point = {
@@ -189,7 +201,12 @@ export function parseHistoryRows(titles, rows) {
     points.push(point);
   }
 
-  return points;
+  let socSource = null;
+  if (hasEstimatedSoc && hasApiSoc) socSource = "mixed";
+  else if (hasEstimatedSoc) socSource = "estimated";
+  else if (hasApiSoc) socSource = "api";
+
+  return { points, socSource };
 }
 
 async function fetchAllDeviceData(sess, device, date) {
@@ -231,7 +248,7 @@ export async function fetchHistory(systemConfig, date) {
     ({ titles, rows } = await fetchAllDeviceData(sess, device, queryDate));
   }
 
-  const points = parseHistoryRows(titles, rows);
+  const { points, socSource } = parseHistoryRows(titles, rows);
 
   return {
     systemId: systemConfig.id,
@@ -241,6 +258,7 @@ export async function fetchHistory(systemConfig, date) {
     timezoneOffset: tzOffset,
     intervalMinutes: 5,
     points,
+    socSource,
   };
 }
 

@@ -62,3 +62,9 @@ export function loadPercent(load, ratedPower = 5000) {
   if (load?.percent != null) return load.percent;
   return Math.round(((load?.power ?? 0) / ratedPower) * 100);
 }
+
+/** True when intraday chart should show the voltage-estimated SOC badge. */
+export function shouldShowEstimatedSocBadge(historyData) {
+  const src = historyData?.socSource;
+  return src === "estimated" || src === "mixed";
+}

@@ -95,10 +95,12 @@ describe("parseHistoryRows", () => {
       { field: ["2026-04-04 18:19:48", "51.6", "-62", "110", "283"] },
       { field: ["2026-04-04 06:00:00", "50.0", "10", "0", "120"] },
     ];
-    expect(parseHistoryRows(titles, rows)).toEqual([
-      { time: "18:19", solar: 110, load: 283, battery: -3199 },
-      { time: "06:00", solar: 0, load: 120, battery: 500 },
+    const { points, socSource } = parseHistoryRows(titles, rows);
+    expect(points).toEqual([
+      { time: "18:19", solar: 110, load: 283, battery: -3199, soc: 83 },
+      { time: "06:00", solar: 0, load: 120, battery: 500, soc: 70 },
     ]);
+    expect(socSource).toBe("estimated");
   });
 
   it("includes BATTERY_SOC when present in titles", () => {
@@ -113,13 +115,51 @@ describe("parseHistoryRows", () => {
     const rows = [
       { field: ["2026-04-04 12:00:00", "51.0", "-10", "500", "200", "72"] },
     ];
-    expect(parseHistoryRows(socTitles, rows)).toEqual([
+    const { points, socSource } = parseHistoryRows(socTitles, rows);
+    expect(points).toEqual([
       { time: "12:00", solar: 500, load: 200, battery: -510, soc: 72 },
     ]);
+    expect(socSource).toBe("api");
+  });
+
+  it("estimates SOC from voltage when BATTERY_SOC is invalid", () => {
+    const socTitles = [
+      { title: "Timestamp" },
+      { title: "Battery Voltage" },
+      { title: "Batt Current" },
+      { title: "Charger Power" },
+      { title: "PLoad" },
+      { title: "BATTERY_SOC" },
+    ];
+    const rows = [
+      { field: ["2026-04-04 18:19:48", "51.6", "-62", "110", "283", "-1"] },
+    ];
+    const { points, socSource } = parseHistoryRows(socTitles, rows);
+    expect(points[0].soc).toBe(83);
+    expect(socSource).toBe("estimated");
+  });
+
+  it("returns mixed socSource when some points use API and others are estimated", () => {
+    const socTitles = [
+      { title: "Timestamp" },
+      { title: "Battery Voltage" },
+      { title: "Batt Current" },
+      { title: "Charger Power" },
+      { title: "PLoad" },
+      { title: "BATTERY_SOC" },
+    ];
+    const rows = [
+      { field: ["2026-04-04 12:00:00", "51.0", "-10", "500", "200", "72"] },
+      { field: ["2026-04-04 18:19:48", "51.6", "-62", "110", "283", "-1"] },
+    ];
+    const { socSource } = parseHistoryRows(socTitles, rows);
+    expect(socSource).toBe("mixed");
   });
 
   it("returns empty array for no rows", () => {
-    expect(parseHistoryRows(titles, [])).toEqual([]);
+    const { points, socSource } = parseHistoryRows(titles, []);
+    expect(points).toEqual([]);
+    expect(socSource).toBeNull();
   });
 });
 

@@ -1,4 +1,5 @@
 import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
+import { checkDataRateLimit, getRateLimitKey, rateLimitResponse } from "./rateLimit.js";
 import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
 import {
   runScheduledAlerts,
@@ -14,6 +15,15 @@ const ADAPTERS = { shinemonitor, growatt };
 
 function generateId() {
   return crypto.randomUUID();
+}
+
+function enforceDataRateLimit(request, env, origin) {
+  const key = getRateLimitKey(request, env);
+  const result = checkDataRateLimit(key);
+  if (!result.allowed) {
+    return rateLimitResponse(result.retryAfter, origin);
+  }
+  return null;
 }
 
 async function listSystems(env) {
@@ -158,6 +168,9 @@ export default {
 
     // GET /api/systems/all/data — fetch data for all systems (must be before :id/data)
     if (path === "/api/systems/all/data" && request.method === "GET") {
+      const limited = enforceDataRateLimit(request, env, origin);
+      if (limited) return limited;
+
       const index = await listSystems(env);
       const results = await Promise.allSettled(
         index.map(async (entry) => {
@@ -180,6 +193,9 @@ export default {
     // GET /api/systems/:id/data — fetch real-time data for one system
     const dataMatch = path.match(/^\/api\/systems\/([^/]+)\/data$/);
     if (dataMatch && request.method === "GET") {
+      const limited = enforceDataRateLimit(request, env, origin);
+      if (limited) return limited;
+
       const id = dataMatch[1];
       const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
