@@ -346,6 +346,112 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 }
 .chart-view[hidden] { display: none !important; }
 
+.chart-date-nav {
+  display: flex;
+  align-items: stretch;
+  gap: .35rem;
+  margin-bottom: .65rem;
+}
+
+.chart-day-btn {
+  flex: 0 0 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: border-color .2s, color .2s, opacity .2s;
+}
+
+.chart-day-btn:hover:not(:disabled) {
+  border-color: var(--accent-sol);
+  color: var(--accent-sol);
+}
+
+.chart-day-btn:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+.chart-week-strip {
+  flex: 1;
+  display: flex;
+  gap: .25rem;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.chart-week-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.chart-day-pill {
+  flex: 1 1 0;
+  min-width: 2.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .1rem;
+  padding: .35rem .2rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background .2s, border-color .2s, color .2s, opacity .2s;
+}
+
+.chart-day-pill:hover:not(:disabled) {
+  border-color: var(--accent-sol);
+  color: var(--text);
+}
+
+.chart-day-pill.active {
+  background: rgba(245, 158, 11, .15);
+  border-color: var(--accent-sol);
+  color: var(--text);
+}
+
+.chart-day-pill.is-today:not(.active) {
+  border-color: rgba(245, 158, 11, .45);
+}
+
+.chart-day-pill:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.chart-day-wd {
+  font-size: .65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  line-height: 1.1;
+}
+
+.chart-day-num {
+  font-size: .95rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+#chart-swipe-area {
+  touch-action: pan-y pinch-zoom;
+}
+
 .chart-controls {
   display: flex;
   align-items: center;

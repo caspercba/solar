@@ -9,6 +9,13 @@ import {
   clampPct,
   solarPctFromPower,
   loadPercent,
+  todayIsoDate,
+  addIsoDays,
+  isIsoDateAfter,
+  clampIsoDateToToday,
+  buildWeekStripDates,
+  fmtWeekStripWeekday,
+  fmtWeekStripDay,
   shouldShowEstimatedSocBadge,
 } from "../lib.js";
 
@@ -164,6 +171,41 @@ describe("loadPercent", () => {
   it("treats missing load as zero percent", () => {
     expect(loadPercent(null, 5000)).toBe(0);
     expect(loadPercent(undefined, 5000)).toBe(0);
+  });
+});
+
+describe("chart date navigation helpers", () => {
+  it("addIsoDays shifts calendar dates without UTC drift", () => {
+    expect(addIsoDays("2026-07-03", -1)).toBe("2026-07-02");
+    expect(addIsoDays("2026-07-03", 1)).toBe("2026-07-04");
+    expect(addIsoDays("2026-03-01", -1)).toBe("2026-02-28");
+  });
+
+  it("buildWeekStripDates returns consecutive days ending on selected date", () => {
+    expect(buildWeekStripDates("2026-07-03", 7)).toEqual([
+      "2026-06-27",
+      "2026-06-28",
+      "2026-06-29",
+      "2026-06-30",
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+    ]);
+  });
+
+  it("clampIsoDateToToday prevents future dates", () => {
+    expect(clampIsoDateToToday("2026-12-31", "2026-07-06")).toBe("2026-07-06");
+    expect(clampIsoDateToToday("2026-07-01", "2026-07-06")).toBe("2026-07-01");
+  });
+
+  it("isIsoDateAfter compares ISO strings lexicographically", () => {
+    expect(isIsoDateAfter("2026-07-07", "2026-07-06")).toBe(true);
+    expect(isIsoDateAfter("2026-07-06", "2026-07-06")).toBe(false);
+  });
+
+  it("fmtWeekStripWeekday and fmtWeekStripDay format strip labels", () => {
+    expect(fmtWeekStripWeekday("2026-07-03")).toMatch(/fri/i);
+    expect(fmtWeekStripDay("2026-07-03")).toBe("3");
   });
 });
 

@@ -7,6 +7,13 @@ import {
   clampPct,
   solarPctFromPower,
   loadPercent,
+  todayIsoDate,
+  addIsoDays,
+  isIsoDateAfter,
+  clampIsoDateToToday,
+  buildWeekStripDates,
+  fmtWeekStripWeekday,
+  fmtWeekStripDay,
   shouldShowEstimatedSocBadge,
 } from "./frontend/lib.js";
 
@@ -15,6 +22,8 @@ const POLL_MS = 60_000;
 const CONN_KEY = "solar_conn";
 const VIEW_KEY = "solar_view";
 const ACTIVE_KEY = "solar_active";
+const CHART_DATE_KEY = "solar_chart_date";
+const CHART_SWIPE_THRESHOLD = 50;
 
 /* ── Proxy connection ── */
 function saveConn(data) { localStorage.setItem(CONN_KEY, JSON.stringify(data)); }
@@ -81,6 +90,10 @@ const fEls = {
   tabFlow: $("tab-flow"),
   tabChart: $("tab-chart"),
   chartDate: $("chart-date"),
+  chartPrevDay: $("chart-prev-day"),
+  chartNextDay: $("chart-next-day"),
+  chartWeekStrip: $("chart-week-strip"),
+  chartSwipeArea: $("chart-swipe-area"),
   chartExportBtn: $("chart-export-btn"),
   powerChart: $("power-chart"),
   chartEmpty: $("chart-empty"),
@@ -180,16 +193,23 @@ function setView(view) {
 fEls.tabCards.addEventListener("click", () => setView("cards"));
 fEls.tabFlow.addEventListener("click", () => setView("flow"));
 fEls.tabChart.addEventListener("click", () => setView("chart"));
-fEls.chartDate.addEventListener("change", () => loadHistory(fEls.chartDate.value));
+fEls.chartDate.addEventListener("change", () => selectChartDate(fEls.chartDate.value));
+if (fEls.chartPrevDay) {
+  fEls.chartPrevDay.addEventListener("click", () => navigateChartDay(-1));
+}
+if (fEls.chartNextDay) {
+  fEls.chartNextDay.addEventListener("click", () => navigateChartDay(1));
+}
 if (fEls.chartExportBtn) fEls.chartExportBtn.addEventListener("click", exportChartCsv);
 if (fEls.chartRetryBtn) {
   fEls.chartRetryBtn.addEventListener("click", () => {
-    loadHistory(fEls.chartDate?.value || null);
+    loadChartView();
   });
 }
 if (fEls.energyRetryBtn) {
   fEls.energyRetryBtn.addEventListener("click", () => loadEnergySummary());
 }
+initChartSwipe();
 
 /* ── Helpers ── */
 function setBar(barEl, pct) {
@@ -438,6 +458,7 @@ function setIntradayChartState(state, opts = {}) {
     if (fEls.socEstimatedBadge) fEls.socEstimatedBadge.hidden = true;
   }
   updateChartExportBtn();
+  refreshChartDateNav();
 }
 
 function setEnergyChartState(state, opts = {}) {
@@ -771,35 +792,145 @@ function renderEnergyChart(data) {
   return true;
 }
 
-async function loadHistory(date) {
-  if (!activeSystemId || currentView !== "chart") return;
-  setIntradayChartState("loading");
+function loadChartDate() {
   try {
-    const qs = date ? `?date=${encodeURIComponent(date)}` : "";
-    const data = await api("GET", `/api/systems/${activeSystemId}/history${qs}`);
-    chartHistory = data;
-    if (data.date && fEls.chartDate) fEls.chartDate.value = data.date;
-    if (renderChart(data)) {
-      setStatus(true);
-    } else {
-      setIntradayChartState("empty");
-      setStatus(true);
-    }
-  } catch (err) {
-    console.error("history error:", err);
-    chartHistory = null;
-    setIntradayChartState("error", {
-      message: chartErrorMessage(err, "Could not load power history."),
-    });
-    setStatus(false);
+    return localStorage.getItem(CHART_DATE_KEY);
+  } catch {
+    return null;
   }
+}
+
+function saveChartDate(date) {
+  try {
+    localStorage.setItem(CHART_DATE_KEY, date);
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+function getSelectedChartDate() {
+  const today = todayIsoDate();
+  const raw = fEls.chartDate?.value || loadChartDate() || today;
+  return clampIsoDateToToday(raw, today);
+}
+
+function initChartDateInput() {
+  const today = todayIsoDate();
+  if (!fEls.chartDate) return;
+  fEls.chartDate.max = today;
+  const stored = loadChartDate();
+  if (stored) {
+    fEls.chartDate.value = clampIsoDateToToday(stored, today);
+  }
+}
+
+function refreshChartDateNav() {
+  const selected = getSelectedChartDate();
+  const today = todayIsoDate();
+  renderChartWeekStrip(selected, today);
+}
+
+function renderChartWeekStrip(selectedDate, today = todayIsoDate()) {
+  const strip = fEls.chartWeekStrip;
+  if (!strip) return;
+
+  strip.innerHTML = "";
+  const dates = buildWeekStripDates(selectedDate, 7);
+  for (const date of dates) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chart-day-pill";
+    if (date === selectedDate) btn.classList.add("active");
+    if (date === today) btn.classList.add("is-today");
+    btn.dataset.date = date;
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", date === selectedDate ? "true" : "false");
+    btn.setAttribute("aria-label", date);
+    btn.disabled = historyLoading;
+
+    const wd = document.createElement("span");
+    wd.className = "chart-day-wd";
+    wd.textContent = fmtWeekStripWeekday(date);
+
+    const num = document.createElement("span");
+    num.className = "chart-day-num";
+    num.textContent = fmtWeekStripDay(date);
+
+    btn.append(wd, num);
+    btn.addEventListener("click", () => {
+      if (date !== getSelectedChartDate()) selectChartDate(date);
+    });
+    strip.appendChild(btn);
+  }
+
+  if (fEls.chartPrevDay) fEls.chartPrevDay.disabled = historyLoading;
+  if (fEls.chartNextDay) {
+    fEls.chartNextDay.disabled = historyLoading || selectedDate >= today;
+  }
+}
+
+function selectChartDate(dateStr) {
+  const today = todayIsoDate();
+  const date = clampIsoDateToToday(dateStr || today, today);
+  saveChartDate(date);
+  if (fEls.chartDate) {
+    fEls.chartDate.max = today;
+    fEls.chartDate.value = date;
+  }
+  renderChartWeekStrip(date, today);
+  loadChartView();
+}
+
+function navigateChartDay(delta) {
+  if (historyLoading || !delta) return;
+  const current = getSelectedChartDate();
+  const next = addIsoDays(current, delta);
+  const today = todayIsoDate();
+  if (isIsoDateAfter(next, today)) return;
+  selectChartDate(next);
+}
+
+function initChartSwipe() {
+  const area = fEls.chartSwipeArea;
+  if (!area) return;
+
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+
+  area.addEventListener("touchstart", (e) => {
+    if (historyLoading || e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    tracking = true;
+  }, { passive: true });
+
+  area.addEventListener("touchend", (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    if (Math.abs(dx) < CHART_SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx > 0) navigateChartDay(-1);
+    else navigateChartDay(1);
+  }, { passive: true });
+
+  area.addEventListener("touchcancel", () => {
+    tracking = false;
+  }, { passive: true });
+}
+
+function historySummaryQuery(endDate) {
+  const end = endDate || getSelectedChartDate();
+  return `/api/systems/${activeSystemId}/history/summary?days=7&end=${encodeURIComponent(end)}`;
 }
 
 async function loadEnergySummary() {
   if (!activeSystemId || currentView !== "chart") return;
   setEnergyChartState("loading");
   try {
-    const data = await api("GET", `/api/systems/${activeSystemId}/history/summary?days=7`);
+    const data = await api("GET", historySummaryQuery(getSelectedChartDate()));
     if (renderEnergyChart(data)) return;
     setEnergyChartState("empty");
   } catch (err) {
@@ -812,20 +943,27 @@ async function loadEnergySummary() {
 
 async function loadChartView() {
   if (!activeSystemId || currentView !== "chart") return;
+  initChartDateInput();
+  const date = getSelectedChartDate();
+  if (fEls.chartDate) fEls.chartDate.value = date;
+  renderChartWeekStrip(date, todayIsoDate());
   setIntradayChartState("loading");
   setEnergyChartState("loading");
-  const date = fEls.chartDate.value || null;
-  const qs = date ? `?date=${encodeURIComponent(date)}` : "";
+  const qs = `?date=${encodeURIComponent(date)}`;
   const [historyResult, summaryResult] = await Promise.allSettled([
     api("GET", `/api/systems/${activeSystemId}/history${qs}`),
-    api("GET", `/api/systems/${activeSystemId}/history/summary?days=7`),
+    api("GET", historySummaryQuery(date)),
   ]);
 
   let historyOk = false;
   if (historyResult.status === "fulfilled") {
     const history = historyResult.value;
     chartHistory = history;
-    if (history.date && fEls.chartDate) fEls.chartDate.value = history.date;
+    if (history.date) {
+      saveChartDate(history.date);
+      if (fEls.chartDate) fEls.chartDate.value = history.date;
+      renderChartWeekStrip(history.date, todayIsoDate());
+    }
     if (renderChart(history)) {
       historyOk = true;
     } else {
