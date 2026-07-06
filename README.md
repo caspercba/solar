@@ -259,7 +259,8 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 | Document | Description |
 |----------|-------------|
 | [PLAN.md](./PLAN.md) | Project plan and roadmap |
-| [discovery/README.md](./discovery/README.md) | ShineMonitor API discovery notes |
+| [discovery/ADAPTER_GUIDE.md](./discovery/ADAPTER_GUIDE.md) | **Adding a new inverter brand** — adapter interface, tests, registration |
+| [discovery/README.md](./discovery/README.md) | Discovery folder index (ShineMonitor quick start) |
 | [discovery/API.md](./discovery/API.md) | ShineMonitor API reference |
 | [discovery/growatt/README.md](./discovery/growatt/README.md) | Growatt API discovery notes |
 | [discovery/growatt/API.md](./discovery/growatt/API.md) | Growatt API reference |
