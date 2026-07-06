@@ -89,7 +89,7 @@ Staging is a separate Cloudflare Worker (`solar-proxy-staging`) with its **own K
 | npm script | `npm run deploy` | `npm run deploy:staging` |
 | URL | `https://solar-proxy.<account>.workers.dev` | `https://solar-proxy-staging.<account>.workers.dev` |
 | KV namespace | Top-level `[[kv_namespaces]]` in `wrangler.toml` | `[[env.staging.kv_namespaces]]` (different `id`) |
-| CI trigger | Push a version tag (`v*`) | Push to `main` |
+| CI trigger | Push a version tag (`v*`) | Manual (`npm run deploy:staging`) |
 | Typical use | Live dashboard | Pre-release testing, adapter changes |
 
 **One-time staging setup**
@@ -127,7 +127,7 @@ Staging is a separate Cloudflare Worker (`solar-proxy-staging`) with its **own K
 npx wrangler dev --env staging
 ```
 
-Production deploys remain **tag-only** in CI; every push to `main` deploys staging automatically after tests pass (see [CI/CD](#cicd)).
+Production and staging deploys are **tag-only** in CI (see [CI/CD](#cicd)). Deploy staging manually when needed:
 
 ### Historical data (vendor APIs)
 
@@ -166,28 +166,34 @@ npm test
 
 ## CI/CD
 
-GitHub Actions runs on every push to `main` and on pull requests (`.github/workflows/ci.yml`):
+GitHub Actions runs on every push to `main`, on version tags, and on pull requests (`.github/workflows/ci.yml`):
 
-1. **Test** — worker unit tests, frontend unit tests, and Playwright E2E.
-2. **Deploy staging Worker** — on push to `main`, deploys the Worker with `wrangler deploy --env staging` after worker tests pass.
-3. **Deploy frontend** — on push to `main`, stages static assets and publishes to [Cloudflare Pages](https://developers.cloudflare.com/pages/) at **https://solar-dashboard.pages.dev** (production).
-4. **Deploy production Worker** — when you push a version tag matching `v*` (e.g. `v1.2.0`), deploys with `wrangler deploy` (default/production env) after worker tests pass.
+1. **Test** — worker unit tests, frontend unit tests, and Playwright E2E (runs on PRs and all pushes).
+2. **Deploy (production)** — only when you push a semver tag `vMAJOR.MINOR.PATCH` (e.g. `v1.2.0`). After tests pass, CI deploys **both** the static frontend to [Cloudflare Pages](https://developers.cloudflare.com/pages/) (**https://solar-dashboard.pages.dev**) and the production Worker (`wrangler deploy`).
+
+Merges to `main` run tests only — nothing goes live until you cut a release tag.
+
+### Release a version
+
+```bash
+git checkout main
+git pull
+
+# Tag the commit you want live (usually tip of main)
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+CI validates the tag format, runs the full test suite, then deploys frontend + Worker from that tag's snapshot. Each new tag you push becomes the live site/API.
 
 ### Required GitHub secrets
 
 | Secret | Purpose |
 |--------|---------|
-| `CLOUDFLARE_API_TOKEN` | Authenticates Wrangler for Worker deploy (staging, production tags) and Pages deploy (`main`). Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for production and staging `SYSTEMS` namespaces) plus **Cloudflare Pages — Edit**. |
+| `CLOUDFLARE_API_TOKEN` | Authenticates Wrangler for Worker and Pages deploy on release tags. Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for production and staging `SYSTEMS` namespaces) plus **Cloudflare Pages — Edit**. |
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID (Dashboard → Workers & Pages → right sidebar). Required for Pages deploy. |
 
 Add secrets under **Repository → Settings → Secrets and variables → Actions → New repository secret**.
-
-Pull requests run tests only — no deploy. Pushes to `main` update **staging Worker** and **frontend Pages**; production Worker releases require a tag:
-
-```bash
-git tag v1.2.0
-git push origin v1.2.0
-```
 
 Runtime secrets (`API_TOKEN`, `CREDENTIALS_KEY`, `ALLOWED_ORIGINS`) are **not** set by CI — configure those once per environment with `wrangler secret put` (add `--env staging` for staging). See [Staging environment](#staging-environment).
 
@@ -242,12 +248,12 @@ The frontend is static — no build step. Serve `index.html`, `app.js`, `style.c
 
 **Production URL:** https://solar-dashboard.pages.dev
 
-Pushes to `main` deploy automatically via GitHub Actions (see [CI/CD](#cicd) above). The workflow runs `scripts/stage-frontend.sh` to copy only static assets into `dist/`, then `wrangler pages deploy`.
+Production deploys happen when you push a release tag (see [CI/CD](#cicd) above). The workflow runs `scripts/stage-frontend.sh` to copy only static assets into `dist/`, then `wrangler pages deploy`.
 
 **One-time setup** (if not already configured):
 
 1. Add GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (see table above).
-2. Push to `main` — the first deploy creates the `solar-dashboard` Pages project if it does not exist.
+2. Push a release tag (e.g. `v1.0.0`) — the first deploy creates the `solar-dashboard` Pages project if it does not exist.
 3. Configure Worker CORS (below) so the browser can call the proxy from the Pages origin.
 
 **Manual deploy** (optional):

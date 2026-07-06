@@ -334,7 +334,7 @@ Use this before pointing users at a new deployment.
 
 ## 8. Tag-based deploy via CI
 
-GitHub Actions deploys the Worker when you push a version tag matching `v*` (e.g. `v1.2.0`).
+GitHub Actions deploys **production** (Worker + frontend Pages) when you push a semver tag `vMAJOR.MINOR.PATCH` (e.g. `v1.2.0`). Pushes to `main` run tests only.
 
 Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 
@@ -343,7 +343,9 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 | `worker-test` | Every push / PR | `npm ci && npm test` in `worker/` |
 | `frontend-test` | Every push / PR | Frontend unit tests |
 | `e2e` | Every push / PR | Playwright against mock Worker |
-| `deploy` | Push tag `v*` only | `npx wrangler deploy` after tests pass |
+| `release-gate` | Push tag `v*` only | Validates `vMAJOR.MINOR.PATCH` format |
+| `deploy-worker` | Valid release tag | `npx wrangler deploy` after tests pass |
+| `deploy-frontend` | Valid release tag | `wrangler pages deploy` after tests pass |
 
 ### 8.1 One-time GitHub secret
 
@@ -373,7 +375,7 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-CI runs tests, then deploys Worker code. **Runtime secrets are not set by CI** — configure `API_TOKEN`, `CREDENTIALS_KEY`, and `ALLOWED_ORIGINS` once per Cloudflare account with `wrangler secret put` (§3).
+CI runs tests, then deploys Worker + frontend from the tagged commit. **Runtime secrets are not set by CI** — configure `API_TOKEN`, `CREDENTIALS_KEY`, and `ALLOWED_ORIGINS` once per Cloudflare account with `wrangler secret put` (§3).
 
 ### 8.3 Manual deploy (without CI)
 
