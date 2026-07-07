@@ -9,12 +9,28 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=15">
+  <script>
+    (function () {
+      var k = "solar_theme";
+      var valid = { dark: 1, light: 1, "high-contrast": 1 };
+      var t = localStorage.getItem(k);
+      if (!valid[t]) {
+        if (window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches) t = "high-contrast";
+        else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) t = "light";
+        else t = "dark";
+      }
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
   <!-- Setup screen (first-time: enter proxy token) -->
   <div id="setup-screen" class="screen" hidden>
+    <div class="setup-theme-wrap">
+      <button type="button" id="setup-theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
+    </div>
     <div class="login-card">
       <div class="login-icon">&#9728;</div>
       <h1>Solar Dashboard</h1>
@@ -36,6 +52,7 @@
       <h1 id="header-title">Solar Dashboard</h1>
       <div class="header-right">
         <span id="status-dot" class="dot dot-ok" title="Connected"></span>
+        <button type="button" id="theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
         <button id="manage-btn" title="Manage systems">&#x2699;</button>
         <button id="disconnect-btn" title="Disconnect">&#x2715;</button>
       </div>
@@ -258,6 +275,12 @@
     <div class="modal modal-wide">
       <h2>Systems</h2>
       <div class="manage-settings">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select" aria-label="Color theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="high-contrast">High contrast</option>
+        </select>
         <label for="poll-interval">Refresh interval</label>
         <select id="poll-interval" aria-label="Data refresh interval"></select>
       </div>
@@ -269,6 +292,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=15"></script>
+  <script type="module" src="app.js?v=16"></script>
 </body>
 </html>

@@ -19,6 +19,12 @@ import {
   pollIntervalSecToMs,
   formatPollIntervalLabel,
   POLL_INTERVAL_OPTIONS_SEC,
+  THEME_STORAGE_KEY,
+  THEME_LABELS,
+  THEME_META_COLORS,
+  normalizeTheme,
+  resolveInitialTheme,
+  getNextTheme,
 } from "./frontend/lib.js";
 
 /* ── Config ── */
@@ -112,6 +118,9 @@ const els = {
   pollErrorToast: $("poll-error-toast"),
   pollErrorMsg: $("poll-error-msg"),
   pollRetryBtn: $("poll-retry-btn"),
+  themeBtn: $("theme-btn"),
+  setupThemeBtn: $("setup-theme-btn"),
+  themeSelect: $("theme-select"),
 };
 
 const fEls = {
@@ -173,6 +182,7 @@ let hasData = false;
 let currentView = "cards";
 let historyLoading = false;
 let chartHistory = null;
+let chartEnergySummary = null;
 
 /* ── Loading skeleton ── */
 const skeletonTargets = () => [
@@ -480,15 +490,89 @@ function renderFlow(d) {
   fEls.fnBatDetail.textContent = batV.toFixed(1) + "V \u00B7 " + batState;
 }
 
-/* ── Intraday chart ── */
-const CHART_COLORS = {
-  solar: "#f59e0b",
-  load: "#3b82f6",
-  battery: "#22c55e",
-  soc: "#c084fc",
-  grid: "#2a2d3a",
-  text: "#8b8fa3",
+/* ── Theme ── */
+const THEME_ICONS = {
+  dark: "\u{1F319}",
+  light: "\u2600",
+  "high-contrast": "\u25C9",
 };
+
+function getSystemThemePrefs() {
+  return {
+    prefersLight: window.matchMedia("(prefers-color-scheme: light)").matches,
+    prefersHighContrast: window.matchMedia("(prefers-contrast: more)").matches,
+  };
+}
+
+function getCurrentTheme() {
+  return normalizeTheme(document.documentElement.getAttribute("data-theme"))
+    || resolveInitialTheme(localStorage.getItem(THEME_STORAGE_KEY), getSystemThemePrefs());
+}
+
+function getChartColors() {
+  const style = getComputedStyle(document.documentElement);
+  const pick = (name) => style.getPropertyValue(name).trim();
+  return {
+    solar: pick("--accent-sol"),
+    load: pick("--accent-load"),
+    battery: pick("--accent-bat"),
+    soc: pick("--accent-soc"),
+    grid: pick("--chart-grid"),
+    text: pick("--text-dim"),
+  };
+}
+
+function updateThemeUi(theme) {
+  const label = THEME_LABELS[theme] || THEME_LABELS.dark;
+  const icon = THEME_ICONS[theme] || THEME_ICONS.dark;
+  const title = `Theme: ${label} (click to change)`;
+  for (const btn of [els.themeBtn, els.setupThemeBtn]) {
+    if (!btn) continue;
+    btn.textContent = icon;
+    btn.title = title;
+    btn.setAttribute("aria-label", title);
+  }
+  if (els.themeSelect && els.themeSelect.value !== theme) {
+    els.themeSelect.value = theme;
+  }
+}
+
+function updateMetaThemeColor(theme) {
+  const color = THEME_META_COLORS[theme] || THEME_META_COLORS.dark;
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.name = "theme-color";
+    document.head.appendChild(meta);
+  }
+  meta.content = color;
+}
+
+function refreshChartsForTheme() {
+  if (currentView !== "chart") return;
+  if (chartHistory?.points?.length) renderChart(chartHistory);
+  if (chartEnergySummary) renderEnergyChart(chartEnergySummary);
+}
+
+function applyTheme(theme) {
+  const next = normalizeTheme(theme) || "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  updateThemeUi(next);
+  updateMetaThemeColor(next);
+  refreshChartsForTheme();
+}
+
+function initTheme() {
+  const theme = resolveInitialTheme(localStorage.getItem(THEME_STORAGE_KEY), getSystemThemePrefs());
+  applyTheme(theme);
+}
+
+function cycleTheme() {
+  applyTheme(getNextTheme(getCurrentTheme()));
+}
+
+/* ── Intraday chart ── */
 
 function setIntradayChartState(state, opts = {}) {
   historyLoading = state === "loading";
@@ -600,6 +684,7 @@ function renderChart(data) {
   if (!points.length) return false;
 
   setIntradayChartState("ready");
+  const CHART_COLORS = getChartColors();
 
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -735,6 +820,7 @@ function renderEnergyChart(data) {
   if (!series.length || !hasData) return false;
 
   setEnergyChartState("ready");
+  const CHART_COLORS = getChartColors();
 
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -987,9 +1073,11 @@ async function loadEnergySummary() {
   setEnergyChartState("loading");
   try {
     const data = await api("GET", historySummaryQuery(getSelectedChartDate()));
+    chartEnergySummary = data;
     if (renderEnergyChart(data)) return;
     setEnergyChartState("empty");
   } catch (err) {
+    chartEnergySummary = null;
     console.error("energy summary error:", err);
     setEnergyChartState("error", {
       message: chartErrorMessage(err, "Could not load energy summary."),
@@ -1035,10 +1123,12 @@ async function loadChartView() {
   }
 
   if (summaryResult.status === "fulfilled") {
+    chartEnergySummary = summaryResult.value;
     if (!renderEnergyChart(summaryResult.value)) {
       setEnergyChartState("empty");
     }
   } else {
+    chartEnergySummary = null;
     console.error("chart view summary error:", summaryResult.reason);
     setEnergyChartState("error", {
       message: chartErrorMessage(summaryResult.reason, "Could not load energy summary."),
@@ -1238,6 +1328,7 @@ function renderAlertForm(sys) {
 function openManageModal() {
   manageModal.hidden = false;
   syncPollIntervalSelect();
+  updateThemeUi(getCurrentTheme());
   manageList.innerHTML = "";
 
   if (!systems.length) {
@@ -1294,6 +1385,12 @@ if (pollIntervalSelect) {
     savePollIntervalSec(pollIntervalSelect.value);
     restartPollingIfActive();
   });
+}
+
+if (els.themeBtn) els.themeBtn.addEventListener("click", cycleTheme);
+if (els.setupThemeBtn) els.setupThemeBtn.addEventListener("click", cycleTheme);
+if (els.themeSelect) {
+  els.themeSelect.addEventListener("change", () => applyTheme(els.themeSelect.value));
 }
 
 /* ── Setup (proxy connection) ── */
@@ -1403,6 +1500,7 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ── Boot ── */
+initTheme();
 setView(localStorage.getItem(VIEW_KEY) || "cards");
 
 (async function boot() {
