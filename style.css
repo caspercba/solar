@@ -682,7 +682,7 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   margin-bottom: .65rem;
 }
 
-.chart-day-btn {
+.chart-date-nav > .chart-day-btn {
   flex: 0 0 2.25rem;
   display: flex;
   align-items: center;
@@ -699,12 +699,12 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   transition: border-color .2s, color .2s, opacity .2s;
 }
 
-.chart-day-btn:hover:not(:disabled) {
+.chart-date-nav > .chart-day-btn:hover:not(:disabled) {
   border-color: var(--accent-sol);
   color: var(--accent-sol);
 }
 
-.chart-day-btn:disabled {
+.chart-date-nav > .chart-day-btn:disabled {
   opacity: .35;
   cursor: not-allowed;
 }
@@ -723,7 +723,7 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   display: none;
 }
 
-.chart-day-pill {
+.chart-week-strip .chart-day-btn {
   flex: 1 1 0;
   min-width: 2.4rem;
   display: flex;
@@ -737,28 +737,30 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   border-radius: 8px;
   color: var(--text-dim);
   font: inherit;
+  font-size: inherit;
+  line-height: inherit;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   transition: background .2s, border-color .2s, color .2s, opacity .2s;
 }
 
-.chart-day-pill:hover:not(:disabled) {
+.chart-week-strip .chart-day-btn:hover:not(:disabled) {
   border-color: var(--accent-sol);
   color: var(--text);
 }
 
-.chart-day-pill.active {
+.chart-week-strip .chart-day-btn.active {
   background: color-mix(in srgb, var(--accent-sol) 15%, transparent);
   border-color: var(--accent-sol);
   color: var(--text);
 }
 
-.chart-day-pill.is-today:not(.active) {
+.chart-week-strip .chart-day-btn.is-today:not(.active) {
   border-color: color-mix(in srgb, var(--accent-sol) 45%, transparent);
 }
 
-.chart-day-pill:disabled {
+.chart-week-strip .chart-day-btn:disabled {
   opacity: .45;
   cursor: not-allowed;
 }

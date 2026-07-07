@@ -53,6 +53,29 @@ export async function switchView(page, view) {
   await page.locator(tabId).click();
 }
 
+/** Simulate a horizontal swipe on the chart area (requires hasTouch / mobile project). */
+export async function swipeChartDay(page, { direction = "prev", distance = 120 } = {}) {
+  const area = page.locator("#chart-swipe-area");
+  const box = await area.boundingBox();
+  if (!box) throw new Error("chart-swipe-area not visible");
+  const y = Math.round(box.y + box.height / 2);
+  const centerX = Math.round(box.x + box.width / 2);
+  const endX = direction === "prev" ? centerX + distance : centerX - distance;
+
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type, x) =>
+    cdp.send("Input.dispatchTouchEvent", {
+      type,
+      touchPoints: x == null ? [] : [{ x, y }],
+    });
+
+  await touch("touchStart", centerX);
+  for (let x = centerX; direction === "prev" ? x <= endX : x >= endX; x += direction === "prev" ? 10 : -10) {
+    await touch("touchMove", x);
+  }
+  await touch("touchEnd");
+}
+
 export async function waitForCompareData(page) {
   await expect(page.locator("#compare-view")).toBeVisible();
   await expect(page.locator(".compare-card").first()).not.toHaveClass(/skeleton/);
