@@ -903,7 +903,69 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   border-radius: 8px;
   background: rgba(255, 255, 255, .03);
   border: 1px solid var(--card-border);
+  margin-bottom: .75rem;
 }
+
+.manage-section-title {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 .25rem;
+}
+
+.manage-credentials {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  padding: .75rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--card-border);
+  margin-bottom: .75rem;
+}
+
+.manage-credentials label {
+  font-size: .75rem;
+  color: var(--text-dim);
+}
+
+.manage-credentials input[type="text"],
+.manage-credentials input[type="password"],
+.manage-credentials select {
+  width: 100%;
+  padding: .5rem .65rem;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: .85rem;
+}
+
+.cred-save {
+  align-self: flex-start;
+  margin-top: .25rem;
+  padding: .45rem .85rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent-sol);
+  background: transparent;
+  color: var(--accent-sol);
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cred-save:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.cred-msg {
+  font-size: .75rem;
+  margin: 0;
+}
+
+.cred-ok { color: var(--accent-bat); }
+.cred-err { color: var(--error); }
 
 .manage-alerts label {
   font-size: .75rem;

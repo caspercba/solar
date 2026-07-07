@@ -331,6 +331,7 @@ Use only on trusted devices — the token appears in the URL and browser history
 | `GET` | `/api/services` | Supported inverter types |
 | `GET` | `/api/systems` | List systems (no credentials) |
 | `POST` | `/api/systems` | Add system (`service`, `user`, `password`, optional `name`) |
+| `PUT` | `/api/systems/:id/credentials` | Update portal username/password; re-runs discovery and updates KV |
 | `DELETE` | `/api/systems/:id` | Remove a system |
 | `GET` | `/api/systems/:id/data` | Normalized real-time data for one system |
 | `GET` | `/api/systems/all/data` | Data for all systems |

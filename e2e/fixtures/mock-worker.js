@@ -84,6 +84,37 @@ export async function handleMockWorkerRequest(request) {
     return json(systems, 200, origin);
   }
 
+  const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
+  if (credentialsMatch && request.method === "PUT") {
+    const id = credentialsMatch[1];
+    const sys = systems.find((s) => s.id === id);
+    if (!sys) return error("System not found", 404, origin);
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+
+    const { user, password } = body || {};
+    if (!user || !password) {
+      return error("Missing required fields: user, password", 400, origin);
+    }
+    if (password === "bad-password") {
+      return error("Discovery failed: Invalid credentials", 502, origin);
+    }
+
+    sys.username = user;
+    return json({
+      id: sys.id,
+      name: sys.name,
+      service: sys.service,
+      username: user,
+      discovered: { plantId: "mock-plant-1" },
+    }, 200, origin);
+  }
+
   const dataMatch = path.match(/^\/api\/systems\/([^/]+)\/data$/);
   if (dataMatch && request.method === "GET") {
     const id = dataMatch[1];
