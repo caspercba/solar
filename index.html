@@ -9,7 +9,7 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=15">
+  <link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
@@ -53,6 +53,11 @@
     <main id="cards-view" class="cards">
       <div class="inverter-status-row">
         <span id="inverter-status" class="inverter-status status-unavailable">--</span>
+      </div>
+
+      <div id="weather-strip" class="weather-strip" hidden>
+        <span class="weather-icon" aria-hidden="true">&#x1F324;</span>
+        <span id="weather-text" class="weather-text"></span>
       </div>
 
       <!-- Battery card -->
@@ -269,6 +274,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=15"></script>
+  <script type="module" src="app.js?v=16"></script>
 </body>
 </html>
