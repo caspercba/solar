@@ -22,6 +22,7 @@ import {
   formatPollIntervalLabel,
   POLL_INTERVAL_OPTIONS_SEC,
   DEFAULT_POLL_INTERVAL_SEC,
+  findLowestSocIds,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -252,5 +253,31 @@ describe("poll interval helpers", () => {
     expect(formatPollIntervalLabel(30)).toBe("30 seconds");
     expect(formatPollIntervalLabel(60)).toBe("60 seconds");
     expect(formatPollIntervalLabel(120)).toBe("2 minutes");
+  });
+});
+
+describe("findLowestSocIds", () => {
+  const home = { systemId: "home", battery: { soc: 72 } };
+  const cabin = { systemId: "cabin", battery: { soc: 45 } };
+
+  it("returns the system id with the lowest SOC", () => {
+    expect(findLowestSocIds([home, cabin])).toEqual(["cabin"]);
+  });
+
+  it("includes all tied lowest systems", () => {
+    const a = { systemId: "a", battery: { soc: 40 } };
+    const b = { systemId: "b", battery: { soc: 40 } };
+    expect(findLowestSocIds([home, a, b])).toEqual(["a", "b"]);
+  });
+
+  it("skips error entries and invalid SOC", () => {
+    const bad = { systemId: "bad", error: "offline" };
+    const noSoc = { systemId: "empty", battery: {} };
+    expect(findLowestSocIds([bad, noSoc, cabin, home])).toEqual(["cabin"]);
+  });
+
+  it("returns empty when no valid SOC values", () => {
+    expect(findLowestSocIds([])).toEqual([]);
+    expect(findLowestSocIds([{ systemId: "x", error: "fail" }])).toEqual([]);
   });
 });

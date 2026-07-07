@@ -66,9 +66,9 @@ export function realtimeData(systemId) {
       percent: 24,
     },
     grid: {
-      power: 0,
-      voltage: 0,
-      active: false,
+      power: charging ? 0 : 1500,
+      voltage: charging ? 0 : 240,
+      active: !charging,
     },
     inverter: {
       ratedPower: 3500,

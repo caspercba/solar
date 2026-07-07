@@ -9,7 +9,7 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=15">
+  <link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
@@ -48,6 +48,7 @@
       <button class="vtab active" id="tab-cards">Cards</button>
       <button class="vtab" id="tab-flow">Flow</button>
       <button class="vtab" id="tab-chart">Chart</button>
+      <button class="vtab" id="tab-compare" hidden>Compare</button>
     </nav>
 
     <main id="cards-view" class="cards">
@@ -170,6 +171,10 @@
       </svg>
     </section>
 
+    <section id="compare-view" class="compare-view" hidden>
+      <div id="compare-grid" class="compare-grid"></div>
+    </section>
+
     <section id="chart-view" class="chart-view" hidden>
       <div class="chart-date-nav">
         <button type="button" id="chart-prev-day" class="chart-day-btn" aria-label="Previous day">&#8249;</button>
@@ -269,6 +274,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=15"></script>
+  <script type="module" src="app.js?v=16"></script>
 </body>
 </html>
