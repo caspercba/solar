@@ -1,0 +1,64 @@
+# Test Summary — Configurable poll interval (b1e09584)
+
+Date: 2026-07-07
+
+## Acceptance criteria (manual code review)
+
+| Criterion | Result | Evidence |
+|-----------|--------|----------|
+| Interval selector in UI | PASS | `#poll-interval` select in manage modal (`index.html` L308–309); options populated from `POLL_INTERVAL_OPTIONS_SEC` [30, 60, 120] in `app.js` |
+| Chosen value persists across reload | PASS | Stored in `localStorage` key `solar_poll_interval`; restored via `syncPollIntervalSelect()` on `openManageModal()` |
+| Polling respects new interval immediately | PASS | `change` handler calls `savePollIntervalSec()` + `restartPollingIfActive()`; `getPollMs()` used in `startPolling()` tick loop |
+
+## Commands run
+
+### 1. `pnpm test` (repo root)
+**Status:** SKIPPED (no root test script; pnpm not installed globally)
+```
+npx pnpm@9 test → ERR_PNPM_NO_SCRIPT Missing script: test
+```
+
+### 2. Worker unit tests
+**Command:** `cd worker && npm ci && npm test`
+**Status:** PASS
+```
+Test Files  13 passed (13)
+Tests       137 passed (137)
+```
+
+### 3. Frontend unit tests
+**Command:** `cd frontend && npm ci && npm test`
+**Status:** PASS
+```
+Test Files  2 passed (2)
+Tests       71 passed (71)
+Includes poll interval helpers: normalizePollIntervalSec, pollIntervalSecToMs, formatPollIntervalLabel (lib.test.js)
+Includes i18n poll interval labels (i18n.test.js)
+```
+
+### 4. E2E tests (`pnpm test:e2e` equivalent)
+**Command:** `cd e2e && npm ci && npx playwright install --with-deps chromium && npm run test:ci`
+**Status:** BLOCKED (environment — browser download unavailable)
+
+Playwright Chromium install failed:
+```
+Error: Download failed: server returned code 403
+URL: https://cdn.playwright.dev/builds/cft/149.0.7827.55/linux64/chrome-linux64.zip
+```
+
+Alternative `npm run pretest` (fetch-deps) also failed:
+```
+TypeError: fetch failed [cause: AggregateError ETIMEDOUT]
+```
+
+No system Chromium available; apt install requires root.
+
+**New E2E coverage added (not executed locally):** `e2e/tests/dashboard.spec.js` — "Poll interval settings" describe block with 3 tests for selector visibility, localStorage persistence, and immediate poll restart on change.
+
+## Overall outcome
+
+- **Worker:** PASS
+- **Frontend:** PASS (includes poll interval unit tests)
+- **E2E:** NOT RUN (environment blocked browser install; new poll-interval specs added for CI)
+
+No developer fix tasks created — implementation and unit tests pass; E2E failure is infrastructure/network, not application code.
