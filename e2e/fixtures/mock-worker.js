@@ -24,6 +24,7 @@ import {
 export { EMPTY_HISTORY_DATE };
 
 export const MOCK_PORT = Number(process.env.MOCK_WORKER_PORT) || 8790;
+export const MOCK_HOST = process.env.MOCK_WORKER_HOST || "127.0.0.1";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -197,9 +198,10 @@ export function startMockWorker(port = MOCK_PORT) {
     }
   });
 
-  server.listen(port, "127.0.0.1", () => {
+  server.listen(port, MOCK_HOST, () => {
     const token = process.env.MOCK_WORKER_TOKEN || MOCK_TOKEN;
-    console.log(`[mock-worker] listening on http://127.0.0.1:${port}`);
+    const displayHost = MOCK_HOST === "0.0.0.0" ? "localhost" : MOCK_HOST;
+    console.log(`[mock-worker] listening on http://${displayHost}:${port}`);
     console.log(`[mock-worker] Bearer token: ${token}`);
     console.log(`[mock-worker] mock system id: ${MOCK_SYSTEM_ID}`);
   });
