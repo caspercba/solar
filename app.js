@@ -15,10 +15,14 @@ import {
   fmtWeekStripWeekday,
   fmtWeekStripDay,
   shouldShowEstimatedSocBadge,
+  normalizePollIntervalSec,
+  pollIntervalSecToMs,
+  formatPollIntervalLabel,
+  POLL_INTERVAL_OPTIONS_SEC,
 } from "./frontend/lib.js";
 
 /* ── Config ── */
-const POLL_MS = 60_000;
+const POLL_INTERVAL_KEY = "solar_poll_interval";
 const CONN_KEY = "solar_conn";
 const VIEW_KEY = "solar_view";
 const ACTIVE_KEY = "solar_active";
@@ -29,6 +33,31 @@ const CHART_SWIPE_THRESHOLD = 50;
 function saveConn(data) { localStorage.setItem(CONN_KEY, JSON.stringify(data)); }
 function loadConn() { try { return JSON.parse(localStorage.getItem(CONN_KEY)); } catch { return null; } }
 function clearConn() { localStorage.removeItem(CONN_KEY); }
+
+function getPollIntervalSec() {
+  return normalizePollIntervalSec(localStorage.getItem(POLL_INTERVAL_KEY));
+}
+
+function getPollMs() {
+  return pollIntervalSecToMs(getPollIntervalSec());
+}
+
+function savePollIntervalSec(sec) {
+  localStorage.setItem(POLL_INTERVAL_KEY, String(normalizePollIntervalSec(sec)));
+}
+
+function syncPollIntervalSelect() {
+  const select = $("poll-interval");
+  if (!select) return;
+  select.value = String(getPollIntervalSec());
+}
+
+function restartPollingIfActive() {
+  if (pollTimer) {
+    stopPolling();
+    startPolling();
+  }
+}
 
 async function api(method, path, body) {
   const conn = loadConn();
@@ -1010,7 +1039,7 @@ function startPolling() {
   if (pollTimer) clearTimeout(pollTimer);
   async function tick() {
     await pollNow();
-    pollTimer = setTimeout(tick, POLL_MS);
+    pollTimer = setTimeout(tick, getPollMs());
   }
   tick();
 }
@@ -1170,6 +1199,7 @@ function renderAlertForm(sys) {
 
 function openManageModal() {
   manageModal.hidden = false;
+  syncPollIntervalSelect();
   manageList.innerHTML = "";
 
   if (!systems.length) {
@@ -1215,6 +1245,18 @@ function openManageModal() {
 els.manageBtn.addEventListener("click", openManageModal);
 $("manage-close").addEventListener("click", () => { manageModal.hidden = true; });
 $("manage-add").addEventListener("click", openAddModal);
+
+const pollIntervalSelect = $("poll-interval");
+if (pollIntervalSelect) {
+  pollIntervalSelect.innerHTML = POLL_INTERVAL_OPTIONS_SEC.map((sec) => {
+    return `<option value="${sec}">${formatPollIntervalLabel(sec)}</option>`;
+  }).join("");
+  pollIntervalSelect.value = String(getPollIntervalSec());
+  pollIntervalSelect.addEventListener("change", () => {
+    savePollIntervalSec(pollIntervalSelect.value);
+    restartPollingIfActive();
+  });
+}
 
 /* ── Setup (proxy connection) ── */
 els.setupForm.addEventListener("submit", async (e) => {
@@ -1300,7 +1342,7 @@ els.disconnectBtn.addEventListener("click", () => {
         ? loadChartView()
         : pollNow();
       refresh.then(() => {
-        if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), POLL_MS);
+        if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), getPollMs());
       }).finally(() => {
         refreshing = false;
         ptr.className = "ptr";

@@ -252,6 +252,10 @@
   <div id="manage-modal" class="modal-overlay" hidden>
     <div class="modal modal-wide">
       <h2>Systems</h2>
+      <div class="manage-settings">
+        <label for="poll-interval">Refresh interval</label>
+        <select id="poll-interval" aria-label="Data refresh interval"></select>
+      </div>
       <div id="manage-list" class="manage-list"></div>
       <div class="modal-actions">
         <button type="button" id="manage-add" class="btn-secondary">+ Add System</button>
@@ -260,6 +264,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=14"></script>
+  <script type="module" src="app.js?v=15"></script>
 </body>
 </html>
