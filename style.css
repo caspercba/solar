@@ -801,6 +801,34 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 /* ---------- MANAGE LIST ---------- */
 
+.manage-settings {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.manage-settings label {
+  font-size: .75rem;
+  color: var(--text-dim);
+}
+
+.manage-settings select {
+  width: 100%;
+  padding: .55rem .65rem;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: .85rem;
+  appearance: none;
+  cursor: pointer;
+}
+
+.manage-settings select:focus { border-color: var(--accent-sol); }
+
 .manage-list { max-height: 70vh; overflow-y: auto; }
 
 .modal-wide {
