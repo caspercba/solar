@@ -133,7 +133,9 @@ When the account has multiple plants and `plantId` is not provided, return:
 }
 ```
 
-The frontend re-posts with `plantId` set. See ShineMonitor `discover()` for the `pwdSha1` pattern (password is hashed at discovery so the raw password is not re-sent).
+The frontend re-posts the same `user`, `password`, and selected `plantId` in a second `POST /api/systems`. The router only forwards `{ requiresPlantSelection, plants }` to the client — session material stays inside the adapter.
+
+**ShineMonitor `pwdSha1` pattern:** `discover()` hashes the password once and stores `pwdSha1` in KV via `buildCredentials()` so later polls never need the plaintext password. Growatt stores the plaintext password because its login API requires it on each session refresh.
 
 **Errors:** Throw `Error` with a human-readable message. The router wraps failures as `502 Discovery failed: …`.
 
@@ -405,13 +407,23 @@ Export **pure parsers** (e.g. `parseHistoryRows`, `parseEnergyDayPoints`) from y
 - Browser requests from unlisted origins receive **403** before auth is checked.
 - `OPTIONS` preflight returns 204 with CORS headers when allowed.
 
-### 9.3 Route error mapping
+### 9.3 Rate limiting (`rateLimit.js`)
+
+Data routes (`GET /api/systems/:id/data` and `GET /api/systems/all/data`) are capped at **60 requests per minute per bearer token** (in-memory per Worker isolate).
+
+- When `API_TOKEN` is unset (dev open mode), rate limiting is disabled.
+- Exceeded limits return **429** with `{ error: "Rate limit exceeded" }` and a `Retry-After` header (seconds).
+- New adapters do not need rate-limit hooks — only realtime poll routes are throttled. History routes are unthrottled today; keep vendor round-trips efficient in `fetchHistorySummary` loops.
+
+### 9.4 Route error mapping
 
 | Situation | Status | Body |
 |-----------|--------|------|
+| Origin not in `ALLOWED_ORIGINS` | 403 | empty |
 | Missing/invalid bearer token | 401 | `{ error: "Unauthorized" }` |
 | Bad request (missing fields, invalid date) | 400 | `{ error: "…" }` |
 | System not found | 404 | `{ error: "System not found" }` |
+| Rate limit exceeded | 429 | `{ error: "Rate limit exceeded" }` |
 | Adapter missing optional method | 501 | `{ error: "History not supported…" }` |
 | Vendor/discovery failure | 502 | `{ error: "Fetch failed: …" }` |
 
@@ -419,15 +431,27 @@ Export **pure parsers** (e.g. `parseHistoryRows`, `parseEnergyDayPoints`) from y
 
 ## 10. Testing
 
-Tests run with **Vitest** and `@cloudflare/vitest-pool-workers` in `worker/`.
+### 10.0 CI pipeline
+
+GitHub Actions (`.github/workflows/ci.yml`) runs three jobs on every push and pull request:
+
+| Job | Command | What it validates |
+|-----|---------|-------------------|
+| `worker-test` | `cd worker && npm test` | Adapter parsers, mocked fetch, route dispatch (Vitest + `@cloudflare/vitest-pool-workers`) |
+| `frontend-test` | `cd frontend && npm test` | Pure helpers in `frontend/lib.js` (formatting, CSV, escaping) |
+| `e2e` | `cd e2e && npm run test:ci` | Playwright flows against mock Worker + static frontend |
+
+All three must pass before a semver release tag triggers production deploy.
+
+### 10.1 Worker unit tests
+
+Tests run with **Vitest** and `@cloudflare/vitest-pool-workers` in `worker/`:
 
 ```bash
 cd worker && npm test
 ```
 
-CI runs this on every push/PR (`.github/workflows/ci.yml`).
-
-### 10.1 Test file layout
+### 10.2 Test file layout
 
 ```
 worker/test/
@@ -441,7 +465,7 @@ worker/test/
 └── fixtures.test.js        # parser regression tests (optional shared file)
 ```
 
-### 10.2 What to test
+### 10.3 What to test
 
 | Layer | Example | File pattern |
 |-------|---------|--------------|
@@ -451,7 +475,7 @@ worker/test/
 | **fetchHistorySummary** | Multi-day fixture map | `historySummary.test.js` |
 | **Routes** | `createMockKV`, hit `fetch` handler | `routes.test.js` |
 
-### 10.3 Mocking fetch
+### 10.4 Mocking fetch
 
 ```js
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -493,14 +517,14 @@ When adding a brand, update `expectNormalizedShape()` in `helpers.js` to accept 
 service: expect.stringMatching(/^(shinemonitor|growatt|victron)$/),
 ```
 
-### 10.4 Recording fixtures
+### 10.5 Recording fixtures
 
 1. Run your discovery script against a test account.
 2. Copy response JSON into `worker/test/fixtures/<brand>/`.
 3. **Redact** tokens, cookies, usernames, plant names if checking into git.
 4. Trim large arrays to 3–5 representative samples (keep edge cases: empty day, `-1` SOC, missing fields).
 
-### 10.5 Route-level tests
+### 10.6 Route-level tests
 
 `routes.test.js` uses `createMockKV()` and the Worker's default export to verify:
 
@@ -510,6 +534,22 @@ service: expect.stringMatching(/^(shinemonitor|growatt|victron)$/),
 - Invalid date → 400
 
 Add cases for your service id when registration changes behavior.
+
+### 10.7 E2E with mock Worker
+
+Playwright specs in `e2e/tests/` exercise the static frontend against `e2e/fixtures/mock-worker.js` — a lightweight HTTP server that returns canned normalized JSON (no real inverter credentials).
+
+```bash
+cd e2e && npm ci && npx playwright install chromium && npm test
+```
+
+When adding a brand that changes setup or chart behavior:
+
+1. Add mock payloads in `e2e/fixtures/payloads.js`.
+2. Extend `mock-worker.js` routes if new API paths are needed.
+3. Add or extend specs in `e2e/tests/` (setup, dashboard cards, chart view).
+
+See [e2e/README.md](../e2e/README.md) for manual server mode and environment variables.
 
 ---
 
@@ -548,6 +588,7 @@ Use this when adding a brand from scratch:
 - [ ] Extend `historySummary.test.js` if summary is implemented
 - [ ] Update `helpers.js` service regex
 - [ ] `cd worker && npm test` passes locally
+- [ ] (optional) Extend `e2e/fixtures/payloads.js` and mock Worker if UI flows change
 
 ### Documentation
 
