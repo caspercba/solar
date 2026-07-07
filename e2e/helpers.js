@@ -43,7 +43,13 @@ export async function waitForDashboardData(page) {
 }
 
 export async function switchView(page, view) {
-  const tabId = view === "flow" ? "#tab-flow" : view === "chart" ? "#tab-chart" : "#tab-cards";
+  const tabId = view === "flow"
+    ? "#tab-flow"
+    : view === "chart"
+      ? "#tab-chart"
+      : view === "compare"
+        ? "#tab-compare"
+        : "#tab-cards";
   await page.locator(tabId).click();
 }
 
@@ -70,6 +76,13 @@ export async function swipeChartDay(page, { direction = "prev", distance = 120 }
   await touch("touchEnd");
 }
 
+export async function waitForCompareData(page) {
+  await expect(page.locator("#compare-view")).toBeVisible();
+  await expect(page.locator(".compare-card").first()).not.toHaveClass(/skeleton/);
+  await expect(page.locator(".compare-card .compare-value").first()).not.toHaveText("--%");
+}
+
+/** Simulate a downward pull on the dashboard (requires hasTouch / mobile project). */
 export async function pullToRefresh(page, { pullDistance = 120 } = {}) {
   await page.evaluate(() => window.scrollTo(0, 0));
   const box = await page.locator("#dashboard-screen").boundingBox();

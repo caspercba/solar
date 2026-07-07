@@ -31,12 +31,14 @@ export const systems = [
     id: MOCK_SYSTEM_ID,
     name: "Mock Home Solar",
     service: "shinemonitor",
+    username: "mock-user@example.com",
     alerts: { ...defaultAlerts },
   },
   {
     id: MOCK_SYSTEM_ID_2,
     name: "Mock Cabin",
     service: "growatt",
+    username: "growatt-mock@example.com",
     alerts: { ...defaultAlerts },
   },
 ];
@@ -66,9 +68,9 @@ export function realtimeData(systemId) {
       percent: 24,
     },
     grid: {
-      power: 0,
-      voltage: 0,
-      active: false,
+      power: charging ? 0 : 1500,
+      voltage: charging ? 0 : 240,
+      active: !charging,
     },
     inverter: {
       ratedPower: 3500,

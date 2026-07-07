@@ -1,4 +1,5 @@
 import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
+import { toHaPayload } from "./ha.js";
 import { logAdapterError } from "./logger.js";
 import { checkDataRateLimit, getRateLimitKey, rateLimitResponse } from "./rateLimit.js";
 import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
@@ -84,11 +85,12 @@ export default {
     if (path === "/api/systems" && request.method === "GET") {
       const index = await listSystems(env);
       const safe = await Promise.all(index.map(async (s) => {
-        const raw = await env.SYSTEMS.get(`system:${s.id}`, "json");
+        const raw = await loadSystemConfig(env, s.id);
         return {
           id: s.id,
           name: s.name,
           service: s.service,
+          username: raw?.credentials?.user || "",
           alerts: publicAlerts(raw?.alerts || DEFAULT_ALERTS),
         };
       }));
@@ -98,7 +100,7 @@ export default {
     // POST /api/systems — add a new system
     if (path === "/api/systems" && request.method === "POST") {
       const body = await request.json();
-      const { service, name, user, password, plantId } = body;
+      const { service, name, user, password, plantId, deviceKey, deviceMode } = body;
 
       if (!service || !user || !password) {
         return errorResponse("Missing required fields: service, user, password", 400, origin);
@@ -111,7 +113,11 @@ export default {
 
       let discovered;
       try {
-        discovered = await adapter.discover({ user, password }, plantId || null);
+        discovered = await adapter.discover(
+          { user, password },
+          plantId || null,
+          service === "shinemonitor" ? { deviceKey: deviceKey || null, deviceMode: deviceMode || null } : undefined,
+        );
       } catch (err) {
         logAdapterError(env, "adapter_discover_failed", {
           service,
@@ -125,6 +131,15 @@ export default {
         return jsonResponse({
           requiresPlantSelection: true,
           plants: discovered.plants,
+        }, 200, origin);
+      }
+
+      if (discovered.requiresDeviceSelection) {
+        return jsonResponse({
+          requiresDeviceSelection: true,
+          plantId: discovered.plantId,
+          plantName: discovered.plantName,
+          devices: discovered.deviceOptions,
         }, 200, origin);
       }
 
@@ -146,6 +161,63 @@ export default {
       await saveIndex(env, index);
 
       return jsonResponse({ id, name: systemName, service, discovered }, 201, origin);
+    }
+
+    // PUT /api/systems/:id/credentials — rotate portal username/password and re-discover
+    const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
+    if (credentialsMatch && request.method === "PUT") {
+      const id = credentialsMatch[1];
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const body = await request.json();
+      const { user, password, plantId: bodyPlantId } = body;
+
+      if (!user || !password) {
+        return errorResponse("Missing required fields: user, password", 400, origin);
+      }
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter) {
+        return errorResponse(`No adapter for service: ${raw.service}`, 500, origin);
+      }
+
+      const plantId = bodyPlantId || raw.credentials?.plantId || null;
+
+      let discovered;
+      try {
+        discovered = await adapter.discover({ user, password }, plantId);
+      } catch (err) {
+        logAdapterError(env, "adapter_discover_failed", {
+          service: raw.service,
+          systemId: id,
+          route: "PUT /api/systems/:id/credentials",
+          error: err,
+        });
+        return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
+      }
+
+      if (discovered.requiresPlantSelection) {
+        return jsonResponse({
+          requiresPlantSelection: true,
+          plants: discovered.plants,
+        }, 200, origin);
+      }
+
+      const updatedConfig = {
+        ...raw,
+        credentials: { user, ...buildCredentials(raw.service, password, discovered) },
+      };
+
+      await saveSystemConfig(env, updatedConfig);
+
+      return jsonResponse({
+        id: raw.id,
+        name: raw.name,
+        service: raw.service,
+        username: user,
+        discovered,
+      }, 200, origin);
     }
 
     // PUT /api/systems/:id/alerts — update alert thresholds and webhook
@@ -206,6 +278,33 @@ export default {
       });
 
       return jsonResponse(data, 200, origin);
+    }
+
+    // GET /api/systems/:id/ha — flat JSON for Home Assistant REST sensors
+    const haMatch = path.match(/^\/api\/systems\/([^/]+)\/ha$/);
+    if (haMatch && request.method === "GET") {
+      const limited = enforceDataRateLimit(request, env, origin);
+      if (limited) return limited;
+
+      const id = haMatch[1];
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter) return errorResponse(`No adapter for service: ${raw.service}`, 500, origin);
+
+      try {
+        const data = await adapter.fetchData(forAdapter(raw, env));
+        return jsonResponse(toHaPayload(data), 200, origin);
+      } catch (err) {
+        logAdapterError(env, "adapter_fetch_failed", {
+          systemId: id,
+          service: raw.service,
+          route: "GET /api/systems/:id/ha",
+          error: err,
+        });
+        return errorResponse(`Fetch failed: ${err.message}`, 502, origin);
+      }
     }
 
     // GET /api/systems/:id/data — fetch real-time data for one system
@@ -317,6 +416,8 @@ function buildCredentials(service, password, discovered) {
       pwdSha1: discovered.pwdSha1,
       plantId: discovered.plantId,
       device: discovered.device,
+      devices: discovered.devices,
+      deviceMode: discovered.deviceMode || "primary",
       nominalPower: discovered.nominalPower,
       timezone: discovered.timezone,
     };
