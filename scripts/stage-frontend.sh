@@ -5,9 +5,10 @@ set -euo pipefail
 OUT="${1:-dist}"
 
 rm -rf "$OUT"
-mkdir -p "$OUT/icons"
+mkdir -p "$OUT/icons" "$OUT/frontend"
 
 cp index.html app.js style.css manifest.json sw.js "$OUT/"
+cp frontend/lib.js "$OUT/frontend/"
 cp icons/*.png "$OUT/icons/"
 
 echo "Staged frontend in $OUT"

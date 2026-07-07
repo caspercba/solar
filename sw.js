@@ -1,4 +1,4 @@
-const CACHE = "solar-shell-v5";
+const CACHE = "solar-shell-v6";
 
 const SHELL = [
   "/",
