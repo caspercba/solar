@@ -894,6 +894,68 @@ describe("worker routes", () => {
     expect(await res.json()).toEqual({ error: "System not found" });
   });
 
+  it("GET /api/systems/:id/ha returns flat JSON for Home Assistant", async () => {
+    vi.spyOn(growatt, "fetchData").mockResolvedValue({
+      systemId: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery: { voltage: 48, soc: 72, current: -10, power: -480 },
+      solar: { power: 1200, voltage: 95 },
+      load: { power: 850, percent: 24 },
+      grid: { power: 0, voltage: 0, active: false },
+      inverter: { ratedPower: 5000, nominalPV: 5000 },
+      status: "PV Charging",
+      energyToday: 12.4,
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "p", plantId: "42", storageSn: "SN1" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/ha", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      schema_version: 1,
+      system_id: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery_soc: 72,
+      battery_voltage: 48,
+      battery_current: -10,
+      battery_power: -480,
+      solar_power: 1200,
+      solar_voltage: 95,
+      load_power: 850,
+      load_percent: 24,
+      grid_power: 0,
+      grid_voltage: 0,
+      grid_active: false,
+      inverter_rated_power: 5000,
+      inverter_nominal_pv: 5000,
+      status: "PV Charging",
+      energy_today_kwh: 12.4,
+    });
+  });
+
+  it("GET /api/systems/:id/ha returns 404 for unknown system", async () => {
+    const res = await call(
+      request("/api/systems/missing/ha", { headers: AUTH }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "System not found" });
+  });
+
   it("GET /api/systems/:id/data logs structured error on adapter failure", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
