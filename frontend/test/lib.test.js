@@ -21,6 +21,8 @@ import {
   pollIntervalSecToMs,
   formatPollIntervalLabel,
   POLL_INTERVAL_OPTIONS_SEC,
+  isEditableElement,
+  matchesDashboardRefreshShortcut,
   DEFAULT_POLL_INTERVAL_SEC,
   impliedBatteryCapacityWh,
   formatTimeToEmpty,
@@ -28,6 +30,10 @@ import {
   DEFAULT_BATTERY_AH,
   BAT_LOW_V,
   BAT_HIGH_V,
+  normalizeTheme,
+  resolveInitialTheme,
+  getNextTheme,
+  VALID_THEMES,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -342,5 +348,77 @@ describe("estimateBatteryTimeToEmpty", () => {
         { load: activeLoad },
       ),
     ).toBeNull();
+  });
+});
+
+describe("theme helpers", () => {
+  it("normalizes valid theme names", () => {
+    for (const theme of VALID_THEMES) {
+      expect(normalizeTheme(theme)).toBe(theme);
+    }
+    expect(normalizeTheme("invalid")).toBeNull();
+    expect(normalizeTheme(null)).toBeNull();
+  });
+
+  it("resolves initial theme from saved preference first", () => {
+    expect(resolveInitialTheme("light", { prefersLight: false })).toBe("light");
+    expect(resolveInitialTheme("high-contrast", { prefersLight: true })).toBe("high-contrast");
+  });
+
+  it("falls back to system preferences when nothing is saved", () => {
+    expect(resolveInitialTheme(null, { prefersHighContrast: true })).toBe("high-contrast");
+    expect(resolveInitialTheme("", { prefersLight: true })).toBe("light");
+    expect(resolveInitialTheme(undefined, {})).toBe("dark");
+  });
+
+  it("cycles dark → light → high-contrast → dark", () => {
+    expect(getNextTheme("dark")).toBe("light");
+    expect(getNextTheme("light")).toBe("high-contrast");
+    expect(getNextTheme("high-contrast")).toBe("dark");
+    expect(getNextTheme("invalid")).toBe("light");
+  });
+});
+
+describe("isEditableElement", () => {
+  it("returns false for null and non-editable elements", () => {
+    expect(isEditableElement(null)).toBe(false);
+    expect(isEditableElement({ tagName: "DIV" })).toBe(false);
+    expect(isEditableElement({ tagName: "BUTTON" })).toBe(false);
+  });
+
+  it("returns true for text inputs, textarea, and select", () => {
+    expect(isEditableElement({ tagName: "INPUT", type: "text" })).toBe(true);
+    expect(isEditableElement({ tagName: "INPUT", type: "password" })).toBe(true);
+    expect(isEditableElement({ tagName: "INPUT", type: "date" })).toBe(true);
+    expect(isEditableElement({ tagName: "TEXTAREA" })).toBe(true);
+    expect(isEditableElement({ tagName: "SELECT" })).toBe(true);
+  });
+
+  it("returns false for non-text input types", () => {
+    expect(isEditableElement({ tagName: "INPUT", type: "button" })).toBe(false);
+    expect(isEditableElement({ tagName: "INPUT", type: "checkbox" })).toBe(false);
+    expect(isEditableElement({ tagName: "INPUT", type: "hidden" })).toBe(false);
+  });
+
+  it("returns true for contenteditable elements", () => {
+    expect(isEditableElement({ tagName: "DIV", isContentEditable: true })).toBe(true);
+  });
+});
+
+describe("matchesDashboardRefreshShortcut", () => {
+  it("matches F5", () => {
+    expect(matchesDashboardRefreshShortcut({ key: "F5" })).toBe(true);
+  });
+
+  it("matches Ctrl+R and Cmd+R without modifiers", () => {
+    expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true })).toBe(true);
+    expect(matchesDashboardRefreshShortcut({ key: "R", metaKey: true })).toBe(true);
+  });
+
+  it("does not match plain R or modified variants", () => {
+    expect(matchesDashboardRefreshShortcut({ key: "r" })).toBe(false);
+    expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, shiftKey: true })).toBe(false);
+    expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, altKey: true })).toBe(false);
+    expect(matchesDashboardRefreshShortcut({ key: "F6" })).toBe(false);
   });
 });
