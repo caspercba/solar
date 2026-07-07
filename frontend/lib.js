@@ -141,6 +141,25 @@ export function formatPollIntervalLabel(sec) {
   return `${sec} seconds`;
 }
 
+/** System IDs with the lowest finite battery SOC (ties included). Skips error entries. */
+export function findLowestSocIds(items) {
+  let minSoc = Infinity;
+  const ids = [];
+  for (const d of items) {
+    if (!d || d.error) continue;
+    const soc = d.battery?.soc;
+    if (typeof soc !== "number" || !Number.isFinite(soc)) continue;
+    if (soc < minSoc) {
+      minSoc = soc;
+      ids.length = 0;
+      ids.push(d.systemId);
+    } else if (soc === minSoc) {
+      ids.push(d.systemId);
+    }
+  }
+  return ids;
+}
+
 export const THEME_STORAGE_KEY = "solar_theme";
 export const VALID_THEMES = ["dark", "light", "high-contrast"];
 

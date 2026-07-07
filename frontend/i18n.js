@@ -25,6 +25,7 @@ const messages = {
     tabCards: "Cards",
     tabFlow: "Flow",
     tabChart: "Chart",
+    tabCompare: "Compare",
 
     cardBattery: "Battery",
     cardSolar: "Solar",
@@ -133,6 +134,7 @@ const messages = {
     tabCards: "Tarjetas",
     tabFlow: "Flujo",
     tabChart: "Gráfico",
+    tabCompare: "Comparar",
 
     cardBattery: "Batería",
     cardSolar: "Solar",

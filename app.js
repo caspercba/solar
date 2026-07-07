@@ -18,6 +18,7 @@ import {
   normalizePollIntervalSec,
   pollIntervalSecToMs,
   POLL_INTERVAL_OPTIONS_SEC,
+  findLowestSocIds,
   THEME_STORAGE_KEY,
   THEME_LABELS,
   THEME_META_COLORS,
@@ -137,9 +138,12 @@ const fEls = {
   cardsView: $("cards-view"),
   flowView: $("flow-view"),
   chartView: $("chart-view"),
+  compareView: $("compare-view"),
+  compareGrid: $("compare-grid"),
   tabCards: $("tab-cards"),
   tabFlow: $("tab-flow"),
   tabChart: $("tab-chart"),
+  tabCompare: $("tab-compare"),
   chartDate: $("chart-date"),
   chartPrevDay: $("chart-prev-day"),
   chartNextDay: $("chart-next-day"),
@@ -231,23 +235,167 @@ function setLoading(on) {
 }
 
 /* ── View toggle ── */
+function updateCompareTabVisibility() {
+  const show = systems.length >= 2;
+  if (fEls.tabCompare) fEls.tabCompare.hidden = !show;
+  if (!show && currentView === "compare") setView("cards");
+}
+
 function setView(view) {
+  if (view === "compare" && systems.length < 2) view = "cards";
   currentView = view;
   localStorage.setItem(VIEW_KEY, view);
   const isFlow = view === "flow";
   const isChart = view === "chart";
-  fEls.cardsView.hidden = isFlow || isChart;
+  const isCompare = view === "compare";
+  fEls.cardsView.hidden = isFlow || isChart || isCompare;
   fEls.flowView.hidden = !isFlow;
   fEls.chartView.hidden = !isChart;
+  if (fEls.compareView) fEls.compareView.hidden = !isCompare;
   fEls.tabCards.classList.toggle("active", view === "cards");
   fEls.tabFlow.classList.toggle("active", isFlow);
   fEls.tabChart.classList.toggle("active", isChart);
+  if (fEls.tabCompare) fEls.tabCompare.classList.toggle("active", isCompare);
+  if (isCompare) {
+    els.systemTabs.hidden = true;
+    loadCompareView();
+  } else if (systems.length > 1) {
+    els.systemTabs.hidden = false;
+  }
   if (isChart) loadChartView();
+}
+
+function loadCompareView() {
+  if (systems.length < 2) return;
+  if (!hasData) setCompareLoading(true);
+  pollNow();
+}
+
+function setCompareLoading(on) {
+  if (!fEls.compareGrid) return;
+  if (!on) return;
+  fEls.compareGrid.innerHTML = "";
+  for (const sys of systems) {
+    const card = document.createElement("article");
+    card.className = "compare-card skeleton";
+    card.innerHTML = `
+      <div class="compare-card-header">
+        <h3 class="compare-name">${escapeAttr(sys.name)}</h3>
+      </div>
+      <div class="compare-metrics">
+        <div class="compare-metric compare-metric-soc">
+          <span class="compare-label">Battery</span>
+          <span class="compare-value">--%</span>
+          <div class="compare-bar-wrap"><div class="compare-bar" style="width:0%"></div></div>
+        </div>
+        <div class="compare-metric compare-metric-solar">
+          <span class="compare-label">Solar</span>
+          <span class="compare-value">-- W</span>
+        </div>
+        <div class="compare-metric compare-metric-load">
+          <span class="compare-label">Load</span>
+          <span class="compare-value">-- W</span>
+        </div>
+        <div class="compare-metric compare-metric-gen">
+          <span class="compare-label">Generator</span>
+          <span class="compare-value">--</span>
+        </div>
+      </div>
+      <p class="compare-status">--</p>
+    `;
+    fEls.compareGrid.appendChild(card);
+  }
+}
+
+function renderComparison(allData) {
+  if (!fEls.compareGrid) return;
+  hasData = true;
+
+  const lowestIds = new Set(findLowestSocIds(allData));
+  let latestTs = null;
+
+  fEls.compareGrid.innerHTML = "";
+  for (const d of allData) {
+    const card = document.createElement("article");
+    const hasError = !d || d.error;
+    const genOn = !hasError && (d.grid?.active ?? false);
+    const isLowest = !hasError && lowestIds.has(d.systemId);
+
+    card.className = "compare-card"
+      + (isLowest ? " compare-lowest-soc" : "")
+      + (genOn ? " compare-gen-active" : "");
+
+    if (hasError) {
+      const name = d?.name || systems.find((s) => s.id === d?.systemId)?.name || "System";
+      card.innerHTML = `
+        <div class="compare-card-header">
+          <h3 class="compare-name">${escapeAttr(name)}</h3>
+        </div>
+        <p class="compare-error">${escapeAttr(d?.error || "Unavailable")}</p>
+      `;
+      fEls.compareGrid.appendChild(card);
+      continue;
+    }
+
+    const soc = d.battery?.soc ?? 0;
+    const solarW = Math.round(d.solar?.power ?? 0);
+    const loadW = Math.round(d.load?.power ?? 0);
+    const badges = [];
+    if (isLowest && lowestIds.size > 0) {
+      badges.push('<span class="compare-highlight compare-highlight-lowest">Lowest SOC</span>');
+    }
+    if (genOn) {
+      badges.push('<span class="compare-highlight compare-highlight-gen">Generator ON</span>');
+    }
+
+    card.innerHTML = `
+      <div class="compare-card-header">
+        <h3 class="compare-name">${escapeAttr(d.name)}</h3>
+        ${badges.length ? `<div class="compare-badges">${badges.join("")}</div>` : ""}
+      </div>
+      <div class="compare-metrics">
+        <div class="compare-metric compare-metric-soc">
+          <span class="compare-label">Battery</span>
+          <span class="compare-value">${soc}%</span>
+          <div class="compare-bar-wrap"><div class="compare-bar" style="width:${clampPct(soc)}%"></div></div>
+        </div>
+        <div class="compare-metric compare-metric-solar">
+          <span class="compare-label">Solar</span>
+          <span class="compare-value">${solarW} W</span>
+        </div>
+        <div class="compare-metric compare-metric-load">
+          <span class="compare-label">Load</span>
+          <span class="compare-value">${loadW} W</span>
+        </div>
+        <div class="compare-metric compare-metric-gen">
+          <span class="compare-label">Generator</span>
+          <span class="gen-badge ${genOn ? "gen-on" : "gen-off"}">${genOn ? "ON" : "OFF"}</span>
+        </div>
+      </div>
+      <p class="compare-status">${escapeAttr(d.status || "--")}</p>
+    `;
+    fEls.compareGrid.appendChild(card);
+
+    const ts = d.timestamp;
+    if (ts && (!latestTs || ts > latestTs)) latestTs = ts;
+  }
+
+  if (latestTs) {
+    const timePart = latestTs.includes(" ")
+      ? latestTs.split(" ")[1]
+      : latestTs.includes("T")
+        ? latestTs.split("T")[1]?.split(".")[0]
+        : latestTs;
+    els.lastUpdate.textContent = `Last update: ${timePart}`;
+  }
+
+  setStatus(allData.some((d) => d && !d.error));
 }
 
 fEls.tabCards.addEventListener("click", () => setView("cards"));
 fEls.tabFlow.addEventListener("click", () => setView("flow"));
 fEls.tabChart.addEventListener("click", () => setView("chart"));
+if (fEls.tabCompare) fEls.tabCompare.addEventListener("click", () => setView("compare"));
 fEls.chartDate.addEventListener("change", () => selectChartDate(fEls.chartDate.value));
 if (fEls.chartPrevDay) {
   fEls.chartPrevDay.addEventListener("click", () => navigateChartDay(-1));
@@ -336,6 +484,11 @@ function setPollRetrying(retrying) {
 /* ── System tabs ── */
 function renderSystemTabs() {
   els.systemTabs.innerHTML = "";
+  updateCompareTabVisibility();
+  if (currentView === "compare") {
+    els.systemTabs.hidden = true;
+    return;
+  }
   if (systems.length <= 1) {
     els.systemTabs.hidden = true;
     if (systems.length === 1) {
@@ -1152,6 +1305,24 @@ async function loadChartView() {
 
 /* ── Polling ── */
 async function pollNow() {
+  if (currentView === "compare") {
+    if (systems.length < 2) return;
+    if (!hasData) setCompareLoading(true);
+    try {
+      const data = await api("GET", "/api/systems/all/data");
+      renderComparison(data);
+      hidePollError();
+    } catch (err) {
+      console.error("compare poll error:", err);
+      setCompareLoading(false);
+      setStatus(false);
+      showPollError(chartErrorMessage(err, "Could not load comparison data."));
+    } finally {
+      setPollRetrying(false);
+    }
+    return;
+  }
+
   if (!activeSystemId) return;
   if (!hasData) setLoading(true);
   try {
@@ -1169,6 +1340,12 @@ async function pollNow() {
 }
 
 async function retryPollNow() {
+  if (currentView === "compare") {
+    if (systems.length < 2 || pollRetrying) return;
+    setPollRetrying(true);
+    await pollNow();
+    return;
+  }
   if (!activeSystemId || pollRetrying) return;
   setPollRetrying(true);
   await pollNow();
@@ -1608,6 +1785,7 @@ els.setupForm.addEventListener("submit", async (e) => {
     saveConn({ url, token });
     await loadSystems();
     showDash();
+    setView(localStorage.getItem(VIEW_KEY) || "cards");
 
     if (!systems.length) {
       openAddModal();
@@ -1716,17 +1894,23 @@ setView(localStorage.getItem(VIEW_KEY) || "cards");
   }
 
   const conn = loadConn();
-  if (!conn) { showSetup(); return; }
+  if (!conn) {
+    setView("cards");
+    showSetup();
+    return;
+  }
 
   try {
     await loadSystems();
     showDash();
+    setView(localStorage.getItem(VIEW_KEY) || "cards");
     if (systems.length) {
       startPolling();
     } else {
       openAddModal();
     }
   } catch {
+    setView("cards");
     showSetup();
   }
 })();
