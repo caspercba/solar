@@ -7,10 +7,10 @@ export function fmtW(w) {
   return Math.round(w) + " W";
 }
 
-export function fmtChartDate(dateStr) {
+export function fmtChartDate(dateStr, locale) {
   const d = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr.slice(5);
-  return d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+  return d.toLocaleDateString(locale || undefined, { month: "numeric", day: "numeric" });
 }
 
 export function sanitizeExportName(name) {
@@ -100,10 +100,10 @@ export function buildWeekStripDates(selectedDate, count = 7) {
   return dates;
 }
 
-export function fmtWeekStripWeekday(dateStr) {
+export function fmtWeekStripWeekday(dateStr, locale) {
   const d = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { weekday: "short" });
+  return d.toLocaleDateString(locale || undefined, { weekday: "short" });
 }
 
 export function fmtWeekStripDay(dateStr) {
@@ -116,4 +116,46 @@ export function fmtWeekStripDay(dateStr) {
 export function shouldShowEstimatedSocBadge(historyData) {
   const src = historyData?.socSource;
   return src === "estimated" || src === "mixed";
+}
+
+export const DEFAULT_POLL_INTERVAL_SEC = 60;
+export const POLL_INTERVAL_OPTIONS_SEC = [30, 60, 120];
+
+/** Normalize stored poll interval to a supported seconds value. */
+export function normalizePollIntervalSec(value, options = POLL_INTERVAL_OPTIONS_SEC, defaultSec = DEFAULT_POLL_INTERVAL_SEC) {
+  const sec = Number.parseInt(String(value ?? ""), 10);
+  if (options.includes(sec)) return sec;
+  return defaultSec;
+}
+
+export function pollIntervalSecToMs(sec) {
+  return normalizePollIntervalSec(sec) * 1000;
+}
+
+export function formatPollIntervalLabel(sec) {
+  if (sec < 60) return `${sec} seconds`;
+  if (sec > 60 && sec % 60 === 0) {
+    const mins = sec / 60;
+    return `${mins} minutes`;
+  }
+  return `${sec} seconds`;
+}
+
+/** True when the element accepts text entry (skip refresh shortcuts). */
+export function isEditableElement(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag === "INPUT") {
+    const type = (el.type || "text").toLowerCase();
+    return !["button", "submit", "reset", "checkbox", "radio", "file", "hidden", "range", "color"].includes(type);
+  }
+  return !!el.isContentEditable;
+}
+
+/** F5 or Ctrl/Cmd+R — same keys users expect for refresh. */
+export function matchesDashboardRefreshShortcut({ key, ctrlKey, metaKey, shiftKey, altKey }) {
+  if (key === "F5") return true;
+  if ((ctrlKey || metaKey) && !shiftKey && !altKey && key.toLowerCase() === "r") return true;
+  return false;
 }

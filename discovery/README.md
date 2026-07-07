@@ -6,6 +6,8 @@ This folder holds reverse-engineered vendor API docs, Python validation scripts,
 |---------------|-------------|
 | [**ADAPTER_GUIDE.md**](./ADAPTER_GUIDE.md) | **How to add a new brand** — discovery layout, adapter interface, normalized JSON, Worker registration, tests, CI |
 | [**API.md**](./API.md) | ShineMonitor API reference: hosts, auth, signing, endpoints, example responses |
+| [**WEBSOCKET_REALTIME.md**](./WEBSOCKET_REALTIME.md) | Spike: `ws.shinemonitor.com` is HTTP not WebSocket — **defer** push/SSE |
+| [**ws_probe.py**](./ws_probe.py) | Stdlib probe: WebSocket handshake test + optional legacy `ws` host comparison |
 | [**fetch_plant_json.py**](./fetch_plant_json.py) | ShineMonitor Python client (login + sample queries) |
 | [**growatt/**](./growatt/) | Growatt API reference + `fetch_data.py` |
 

@@ -17,6 +17,14 @@ On Linux, either:
 From the repository root:
 
 ```bash
+# Docker (recommended) — mock Worker + dashboard
+npm run dev
+# open http://localhost:8080 — proxy http://localhost:8787, token e2e-test-token
+```
+
+Or run Playwright tests only:
+
+```bash
 cd e2e
 npm ci
 npx playwright install chromium
@@ -54,6 +62,7 @@ Set `CI=1` to skip the user-space dependency bootstrap and rely on system librar
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MOCK_WORKER_PORT` | `8790` | Mock Worker listen port |
+| `MOCK_WORKER_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `FRONTEND_PORT` | `3456` | Static file server port |
 | `MOCK_WORKER_TOKEN` | `e2e-test-token` | Bearer token expected by mock Worker |
 

@@ -15,10 +15,24 @@ import {
   fmtWeekStripWeekday,
   fmtWeekStripDay,
   shouldShowEstimatedSocBadge,
+  normalizePollIntervalSec,
+  pollIntervalSecToMs,
+  POLL_INTERVAL_OPTIONS_SEC,
+  isEditableElement,
+  matchesDashboardRefreshShortcut,
 } from "./frontend/lib.js";
+import {
+  loadStoredLocale,
+  setLocale,
+  getLocale,
+  t,
+  applyTranslations,
+  syncLangToggle,
+  formatPollIntervalLabelI18n,
+} from "./frontend/i18n.js";
 
 /* ── Config ── */
-const POLL_MS = 60_000;
+const POLL_INTERVAL_KEY = "solar_poll_interval";
 const CONN_KEY = "solar_conn";
 const VIEW_KEY = "solar_view";
 const ACTIVE_KEY = "solar_active";
@@ -30,9 +44,34 @@ function saveConn(data) { localStorage.setItem(CONN_KEY, JSON.stringify(data)); 
 function loadConn() { try { return JSON.parse(localStorage.getItem(CONN_KEY)); } catch { return null; } }
 function clearConn() { localStorage.removeItem(CONN_KEY); }
 
+function getPollIntervalSec() {
+  return normalizePollIntervalSec(localStorage.getItem(POLL_INTERVAL_KEY));
+}
+
+function getPollMs() {
+  return pollIntervalSecToMs(getPollIntervalSec());
+}
+
+function savePollIntervalSec(sec) {
+  localStorage.setItem(POLL_INTERVAL_KEY, String(normalizePollIntervalSec(sec)));
+}
+
+function syncPollIntervalSelect() {
+  const select = $("poll-interval");
+  if (!select) return;
+  select.value = String(getPollIntervalSec());
+}
+
+function restartPollingIfActive() {
+  if (pollTimer) {
+    stopPolling();
+    startPolling();
+  }
+}
+
 async function api(method, path, body) {
   const conn = loadConn();
-  if (!conn) throw new Error("Not connected");
+  if (!conn) throw new Error(t("notConnected"));
   const opts = {
     method,
     headers: { "Authorization": `Bearer ${conn.token}`, "Content-Type": "application/json" },
@@ -80,6 +119,9 @@ const els = {
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
   inverterStatus: $("inverter-status"),
+  pollErrorToast: $("poll-error-toast"),
+  pollErrorMsg: $("poll-error-msg"),
+  pollRetryBtn: $("poll-retry-btn"),
 };
 
 const fEls = {
@@ -136,10 +178,14 @@ const manageList = $("manage-list");
 let systems = [];
 let activeSystemId = null;
 let pollTimer = null;
+let pollRetrying = false;
+let dashboardRefreshing = false;
 let hasData = false;
 let currentView = "cards";
 let historyLoading = false;
 let chartHistory = null;
+let lastEnergySummary = null;
+let lastRenderData = null;
 
 /* ── Loading skeleton ── */
 const skeletonTargets = () => [
@@ -228,13 +274,13 @@ function setInverterStatus(text) {
 
 function setBatRate(absAmps) {
   if (absAmps < 15) {
-    els.batRate.textContent = "Slow";
+    els.batRate.textContent = t("batRateSlow");
     els.batRate.className = "bat-rate rate-slow";
   } else if (absAmps < 40) {
-    els.batRate.textContent = "Mid";
+    els.batRate.textContent = t("batRateMid");
     els.batRate.className = "bat-rate rate-mid";
   } else {
-    els.batRate.textContent = "Fast";
+    els.batRate.textContent = t("batRateFast");
     els.batRate.className = "bat-rate rate-fast";
   }
 }
@@ -252,6 +298,30 @@ function showDash() {
 
 function setStatus(ok) {
   els.statusDot.className = ok ? "dot dot-ok" : "dot dot-err";
+  els.statusDot.title = t(ok ? "statusConnected" : "statusDisconnected");
+}
+
+function showPollError(message) {
+  if (!els.pollErrorToast || !els.pollErrorMsg) return;
+  els.pollErrorMsg.textContent = message;
+  els.pollErrorToast.hidden = false;
+}
+
+function hidePollError() {
+  if (!els.pollErrorToast) return;
+  els.pollErrorToast.hidden = true;
+  if (els.pollRetryBtn) {
+    els.pollRetryBtn.disabled = false;
+    els.pollRetryBtn.textContent = t("retry");
+  }
+  pollRetrying = false;
+}
+
+function setPollRetrying(retrying) {
+  pollRetrying = retrying;
+  if (!els.pollRetryBtn) return;
+  els.pollRetryBtn.disabled = retrying;
+  els.pollRetryBtn.textContent = retrying ? t("retrying") : t("retry");
 }
 
 /* ── System tabs ── */
@@ -265,7 +335,7 @@ function renderSystemTabs() {
     return;
   }
   els.systemTabs.hidden = false;
-  els.headerTitle.textContent = "Solar Dashboard";
+  els.headerTitle.textContent = t("appTitle");
 
   for (const sys of systems) {
     const btn = document.createElement("button");
@@ -296,6 +366,7 @@ function renderData(d) {
     return;
   }
 
+  lastRenderData = d;
   setLoading(false);
   hasData = true;
 
@@ -317,16 +388,16 @@ function renderData(d) {
   const batA = bat.current ?? 0;
   const absA = Math.abs(batA);
   if (absA < 2) {
-    els.batDirection.textContent = "Idle";
+    els.batDirection.textContent = t("batIdle");
     els.batDirection.className = "bat-direction dir-idle";
     els.batRate.textContent = "";
     els.batRate.className = "bat-rate";
   } else if (batA < 0) {
-    els.batDirection.textContent = "Charging";
+    els.batDirection.textContent = t("batCharging");
     els.batDirection.className = "bat-direction dir-charging";
     setBatRate(absA);
   } else {
-    els.batDirection.textContent = "Discharging";
+    els.batDirection.textContent = t("batDischarging");
     els.batDirection.className = "bat-direction dir-discharging";
     setBatRate(absA);
   }
@@ -348,7 +419,7 @@ function renderData(d) {
   const genOn = grid.active ?? false;
   const gridW = grid.power ?? 0;
   const gridV = grid.voltage ?? 0;
-  els.genStatus.textContent = genOn ? "ON" : "OFF";
+  els.genStatus.textContent = genOn ? t("genOn") : t("genOff");
   els.genStatus.className = genOn ? "gen-badge gen-on" : "gen-badge gen-off";
   els.genWatts.textContent = genOn ? Math.abs(Math.round(gridW)) : "0";
   els.genVolts.textContent = genOn ? gridV.toFixed(0) : "--";
@@ -357,13 +428,13 @@ function renderData(d) {
   /* Footer */
   const ts = d.timestamp || "--";
   const timePart = ts.includes(" ") ? ts.split(" ")[1] : ts.includes("T") ? ts.split("T")[1]?.split(".")[0] : ts;
-  els.lastUpdate.textContent = `Last update: ${timePart}`;
+  els.lastUpdate.textContent = t("lastUpdate", { time: timePart });
   if (d.energyToday != null) {
-    els.energyToday.textContent = `Today: ${parseFloat(d.energyToday).toFixed(1)} kWh`;
+    els.energyToday.textContent = t("energyToday", { kwh: parseFloat(d.energyToday).toFixed(1) });
   }
 
   if (systems.length === 1) {
-    els.headerTitle.textContent = d.name || systems[0]?.name || "Solar Dashboard";
+    els.headerTitle.textContent = d.name || systems[0]?.name || t("appTitle");
   }
 
   /* Flow */
@@ -389,7 +460,7 @@ function renderFlow(d) {
 
   fEls.fpGen.classList.toggle("active", genOn);
   fEls.fnGenBg.classList.toggle("active", genOn);
-  fEls.fnGenV.textContent = genOn ? fmtW(Math.abs(gridW)) : "OFF";
+  fEls.fnGenV.textContent = genOn ? fmtW(Math.abs(gridW)) : t("genOff");
   fEls.flGen.classList.toggle("active", genOn);
   fEls.flGen.textContent = genOn ? fmtW(Math.abs(gridW)) : "";
 
@@ -420,7 +491,7 @@ function renderFlow(d) {
   fEls.fnBatBg.classList.add(charging ? "charging" : discharging ? "discharging" : "idle");
 
   fEls.fnBatV.textContent = soc + "%";
-  const batState = charging ? "Charging" : discharging ? "Discharging" : "Idle";
+  const batState = charging ? t("batCharging") : discharging ? t("batDischarging") : t("batIdle");
   fEls.fnBatDetail.textContent = batV.toFixed(1) + "V \u00B7 " + batState;
 }
 
@@ -445,10 +516,9 @@ function setIntradayChartState(state, opts = {}) {
   }
   if (fEls.chartEmptyMsg) {
     if (state === "error") {
-      fEls.chartEmptyMsg.textContent = opts.message || "Could not load power history.";
+      fEls.chartEmptyMsg.textContent = opts.message || t("chartLoadError");
     } else if (state === "empty") {
-      fEls.chartEmptyMsg.textContent = opts.message
-        || "No power data for this date. The inverter may not have reported readings yet.";
+      fEls.chartEmptyMsg.textContent = opts.message || t("chartEmptyDetail");
     }
   }
   if (fEls.chartRetryBtn) fEls.chartRetryBtn.hidden = state !== "error";
@@ -471,10 +541,9 @@ function setEnergyChartState(state, opts = {}) {
   }
   if (fEls.energyEmptyMsg) {
     if (state === "error") {
-      fEls.energyEmptyMsg.textContent = opts.message || "Could not load energy summary.";
+      fEls.energyEmptyMsg.textContent = opts.message || t("energyLoadError");
     } else if (state === "empty") {
-      fEls.energyEmptyMsg.textContent = opts.message
-        || "No energy data for the last 7 days from the inverter.";
+      fEls.energyEmptyMsg.textContent = opts.message || t("energyEmptyDetail");
     }
   }
   if (fEls.energyRetryBtn) fEls.energyRetryBtn.hidden = state !== "error";
@@ -741,7 +810,7 @@ function renderEnergyChart(data) {
   ctx.textBaseline = "top";
   for (let i = 0; i < n; i++) {
     const cx = pad.left + groupW * i + groupW / 2;
-    ctx.fillText(fmtChartDate(series[i].date), cx, pad.top + plotH + 8);
+    ctx.fillText(fmtChartDate(series[i].date, getLocale()), cx, pad.top + plotH + 8);
     const day = series[i];
     if (day.minSoc != null && day.maxSoc != null) {
       ctx.fillStyle = CHART_COLORS.soc;
@@ -850,7 +919,7 @@ function renderChartWeekStrip(selectedDate, today = todayIsoDate()) {
 
     const wd = document.createElement("span");
     wd.className = "chart-day-wd";
-    wd.textContent = fmtWeekStripWeekday(date);
+    wd.textContent = fmtWeekStripWeekday(date, getLocale());
 
     const num = document.createElement("span");
     num.className = "chart-day-num";
@@ -931,12 +1000,13 @@ async function loadEnergySummary() {
   setEnergyChartState("loading");
   try {
     const data = await api("GET", historySummaryQuery(getSelectedChartDate()));
+    lastEnergySummary = data;
     if (renderEnergyChart(data)) return;
     setEnergyChartState("empty");
   } catch (err) {
     console.error("energy summary error:", err);
     setEnergyChartState("error", {
-      message: chartErrorMessage(err, "Could not load energy summary."),
+      message: chartErrorMessage(err, t("energyLoadError")),
     });
   }
 }
@@ -974,18 +1044,19 @@ async function loadChartView() {
     console.error("chart view history error:", historyResult.reason);
     chartHistory = null;
     setIntradayChartState("error", {
-      message: chartErrorMessage(historyResult.reason, "Could not load power history."),
+      message: chartErrorMessage(historyResult.reason, t("chartLoadError")),
     });
   }
 
   if (summaryResult.status === "fulfilled") {
+    lastEnergySummary = summaryResult.value;
     if (!renderEnergyChart(summaryResult.value)) {
       setEnergyChartState("empty");
     }
   } else {
     console.error("chart view summary error:", summaryResult.reason);
     setEnergyChartState("error", {
-      message: chartErrorMessage(summaryResult.reason, "Could not load energy summary."),
+      message: chartErrorMessage(summaryResult.reason, t("energyLoadError")),
     });
   }
 
@@ -999,24 +1070,51 @@ async function pollNow() {
   try {
     const data = await api("GET", `/api/systems/${activeSystemId}/data`);
     renderData(data);
+    hidePollError();
   } catch (err) {
     console.error("poll error:", err);
     setLoading(false);
     setStatus(false);
+    showPollError(chartErrorMessage(err, t("pollLoadError")));
+  } finally {
+    setPollRetrying(false);
   }
+}
+
+async function retryPollNow() {
+  if (!activeSystemId || pollRetrying) return;
+  setPollRetrying(true);
+  await pollNow();
 }
 
 function startPolling() {
   if (pollTimer) clearTimeout(pollTimer);
   async function tick() {
     await pollNow();
-    pollTimer = setTimeout(tick, POLL_MS);
+    pollTimer = setTimeout(tick, getPollMs());
   }
   tick();
 }
 
 function stopPolling() {
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  hidePollError();
+}
+
+/** Same refresh path as pull-to-refresh (cards/flow → poll, chart → history). */
+async function refreshDashboardNow() {
+  if (dashboardRefreshing || els.dashScreen.hidden) return;
+  dashboardRefreshing = true;
+  try {
+    if (pollTimer) clearTimeout(pollTimer);
+    const refresh = currentView === "chart"
+      ? loadChartView()
+      : pollNow();
+    await refresh;
+    if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), getPollMs());
+  } finally {
+    dashboardRefreshing = false;
+  }
 }
 
 /* ── Load systems list ── */
@@ -1036,11 +1134,19 @@ async function loadSystems() {
 /* ── Add System ── */
 const addPlantGroup = $("add-plant-group");
 const addPlantSelect = $("add-plant");
+const addDeviceGroup = $("add-device-group");
+const addDeviceSelect = $("add-device");
 
 function hidePlantPicker() {
   addPlantGroup.hidden = true;
   addPlantSelect.innerHTML = "";
   addPlantSelect.required = false;
+}
+
+function hideDevicePicker() {
+  addDeviceGroup.hidden = true;
+  addDeviceSelect.innerHTML = "";
+  addDeviceSelect.required = false;
 }
 
 function showPlantPicker(plants) {
@@ -1055,11 +1161,28 @@ function showPlantPicker(plants) {
   addPlantSelect.required = true;
 }
 
+function showDevicePicker(devices) {
+  addDeviceSelect.innerHTML = "";
+  const aggregateOpt = document.createElement("option");
+  aggregateOpt.value = "__aggregate__";
+  aggregateOpt.textContent = "All inverters (combined)";
+  addDeviceSelect.appendChild(aggregateOpt);
+  for (const d of devices) {
+    const opt = document.createElement("option");
+    opt.value = d.key;
+    opt.textContent = d.label;
+    addDeviceSelect.appendChild(opt);
+  }
+  addDeviceGroup.hidden = false;
+  addDeviceSelect.required = true;
+}
+
 function openAddModal() {
   manageModal.hidden = true;
   addModal.hidden = false;
   addForm.reset();
   hidePlantPicker();
+  hideDevicePicker();
   addError.hidden = true;
 }
 
@@ -1071,7 +1194,7 @@ addForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   addError.hidden = true;
   $("add-submit").disabled = true;
-  $("add-submit").textContent = "Adding...";
+  $("add-submit").textContent = t("adding");
 
   const body = {
     service: $("add-service").value,
@@ -1082,6 +1205,13 @@ addForm.addEventListener("submit", async (e) => {
   if (!addPlantGroup.hidden && addPlantSelect.value) {
     body.plantId = addPlantSelect.value;
   }
+  if (!addDeviceGroup.hidden && addDeviceSelect.value) {
+    if (addDeviceSelect.value === "__aggregate__") {
+      body.deviceMode = "aggregate";
+    } else {
+      body.deviceKey = addDeviceSelect.value;
+    }
+  }
 
   try {
     const result = await api("POST", "/api/systems", body);
@@ -1089,8 +1219,13 @@ addForm.addEventListener("submit", async (e) => {
       showPlantPicker(result.plants);
       return;
     }
+    if (result.requiresDeviceSelection) {
+      showDevicePicker(result.devices);
+      return;
+    }
     closeAddModal();
     hidePlantPicker();
+    hideDevicePicker();
     await loadSystems();
     if (systems.length === 1) activeSystemId = systems[0].id;
     renderSystemTabs();
@@ -1100,13 +1235,105 @@ addForm.addEventListener("submit", async (e) => {
     addError.hidden = false;
   } finally {
     $("add-submit").disabled = false;
-    $("add-submit").textContent = "Add System";
+    $("add-submit").textContent = t("addSystem");
   }
 });
 
 $("add-cancel").addEventListener("click", closeAddModal);
 
 /* ── Manage Systems ── */
+function renderCredentialForm(sys) {
+  const form = document.createElement("div");
+  form.className = "manage-credentials";
+  form.innerHTML = `
+    <p class="manage-section-title">Portal credentials</p>
+    <label>Username</label>
+    <input type="text" class="cred-user" required value="${escapeAttr(sys.username || "")}">
+    <label>Password</label>
+    <input type="password" class="cred-pass" required placeholder="New password">
+    <div class="cred-plant-group" hidden>
+      <label>Plant</label>
+      <select class="cred-plant"></select>
+    </div>
+    <button type="button" class="cred-save">Save credentials</button>
+    <p class="cred-msg" hidden></p>
+  `;
+
+  const msg = form.querySelector(".cred-msg");
+  const plantGroup = form.querySelector(".cred-plant-group");
+  const plantSelect = form.querySelector(".cred-plant");
+
+  function hidePlantPicker() {
+    plantGroup.hidden = true;
+    plantSelect.innerHTML = "";
+    plantSelect.required = false;
+  }
+
+  function showPlantPicker(plants) {
+    plantSelect.innerHTML = "";
+    for (const p of plants) {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      plantSelect.appendChild(opt);
+    }
+    plantGroup.hidden = false;
+    plantSelect.required = true;
+  }
+
+  form.querySelector(".cred-save").addEventListener("click", async () => {
+    msg.hidden = true;
+    const btn = form.querySelector(".cred-save");
+    const userInput = form.querySelector(".cred-user");
+    const passInput = form.querySelector(".cred-pass");
+
+    if (!userInput.value.trim() || !passInput.value) {
+      msg.textContent = "Username and password are required";
+      msg.className = "cred-msg cred-err";
+      msg.hidden = false;
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    const body = {
+      user: userInput.value.trim(),
+      password: passInput.value,
+    };
+    if (!plantGroup.hidden && plantSelect.value) {
+      body.plantId = plantSelect.value;
+    }
+
+    try {
+      const result = await api("PUT", `/api/systems/${sys.id}/credentials`, body);
+      if (result.requiresPlantSelection) {
+        showPlantPicker(result.plants);
+        msg.textContent = "Select a plant and save again";
+        msg.className = "cred-msg cred-ok";
+        msg.hidden = false;
+        return;
+      }
+      sys.username = result.username || body.user;
+      passInput.value = "";
+      hidePlantPicker();
+      msg.textContent = "Credentials updated";
+      msg.className = "cred-msg cred-ok";
+      msg.hidden = false;
+      startPolling();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "cred-msg cred-err";
+      msg.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Save credentials";
+    }
+  });
+
+  return form;
+}
+
 function renderAlertForm(sys) {
   const alerts = sys.alerts || {};
   const form = document.createElement("div");
@@ -1114,25 +1341,25 @@ function renderAlertForm(sys) {
   form.innerHTML = `
     <label class="alert-toggle">
       <input type="checkbox" class="alert-enabled" ${alerts.enabled ? "checked" : ""}>
-      Enable alerts
+      ${escapeAttr(t("alertsEnable"))}
     </label>
-    <label>Webhook URL</label>
-    <input type="url" class="alert-webhook" placeholder="https://discord.com/api/webhooks/..." value="${escapeAttr(alerts.webhookUrl || "")}">
+    <label>${escapeAttr(t("alertsWebhook"))}</label>
+    <input type="url" class="alert-webhook" placeholder="${escapeAttr(t("alertsWebhookPlaceholder"))}" value="${escapeAttr(alerts.webhookUrl || "")}">
     <div class="alert-grid">
       <div>
-        <label>Low SOC %</label>
+        <label>${escapeAttr(t("alertsLowSoc"))}</label>
         <input type="number" class="alert-threshold" min="0" max="100" value="${alerts.lowSocThreshold ?? 20}">
       </div>
       <div>
-        <label>Cooldown (min)</label>
+        <label>${escapeAttr(t("alertsCooldown"))}</label>
         <input type="number" class="alert-cooldown" min="5" max="1440" value="${alerts.cooldownMinutes ?? 60}">
       </div>
     </div>
     <div class="alert-checks">
-      <label><input type="checkbox" class="alert-low-soc" ${alerts.notifyLowSoc !== false ? "checked" : ""}> Low battery</label>
-      <label><input type="checkbox" class="alert-generator" ${alerts.notifyGenerator !== false ? "checked" : ""}> Generator on</label>
+      <label><input type="checkbox" class="alert-low-soc" ${alerts.notifyLowSoc !== false ? "checked" : ""}> ${escapeAttr(t("alertsLowBattery"))}</label>
+      <label><input type="checkbox" class="alert-generator" ${alerts.notifyGenerator !== false ? "checked" : ""}> ${escapeAttr(t("alertsGeneratorOn"))}</label>
     </div>
-    <button type="button" class="alert-save">Save alerts</button>
+    <button type="button" class="alert-save">${escapeAttr(t("alertsSave"))}</button>
     <p class="alert-msg" hidden></p>
   `;
 
@@ -1141,7 +1368,7 @@ function renderAlertForm(sys) {
     msg.hidden = true;
     const btn = form.querySelector(".alert-save");
     btn.disabled = true;
-    btn.textContent = "Saving...";
+    btn.textContent = t("alertsSaving");
     try {
       const body = {
         enabled: form.querySelector(".alert-enabled").checked,
@@ -1152,7 +1379,7 @@ function renderAlertForm(sys) {
         notifyGenerator: form.querySelector(".alert-generator").checked,
       };
       sys.alerts = await api("PUT", `/api/systems/${sys.id}/alerts`, body);
-      msg.textContent = "Alerts saved";
+      msg.textContent = t("alertsSaved");
       msg.className = "alert-msg alert-ok";
       msg.hidden = false;
     } catch (err) {
@@ -1161,7 +1388,7 @@ function renderAlertForm(sys) {
       msg.hidden = false;
     } finally {
       btn.disabled = false;
-      btn.textContent = "Save alerts";
+      btn.textContent = t("alertsSave");
     }
   });
 
@@ -1170,10 +1397,11 @@ function renderAlertForm(sys) {
 
 function openManageModal() {
   manageModal.hidden = false;
+  syncPollIntervalSelect();
   manageList.innerHTML = "";
 
   if (!systems.length) {
-    manageList.innerHTML = '<p class="manage-empty">No systems configured.</p>';
+    manageList.innerHTML = `<p class="manage-empty">${t("noSystems")}</p>`;
     return;
   }
 
@@ -1186,14 +1414,16 @@ function openManageModal() {
 
     const info = document.createElement("div");
     info.className = "manage-info";
-    const alertBadge = sys.alerts?.enabled ? '<span class="alert-badge">Alerts on</span>' : "";
+    const alertBadge = sys.alerts?.enabled
+      ? `<span class="alert-badge">${escapeAttr(t("alertsOnBadge"))}</span>`
+      : "";
     info.innerHTML = `<strong>${sys.name}</strong><span class="manage-service">${sys.service}${alertBadge}</span>`;
 
     const del = document.createElement("button");
     del.className = "manage-delete";
-    del.textContent = "Remove";
+    del.textContent = t("remove");
     del.addEventListener("click", async () => {
-      if (!confirm(`Remove "${sys.name}"?`)) return;
+      if (!confirm(t("removeConfirm", { name: sys.name }))) return;
       await api("DELETE", `/api/systems/${sys.id}`);
       await loadSystems();
       openManageModal();
@@ -1207,6 +1437,7 @@ function openManageModal() {
     top.appendChild(info);
     top.appendChild(del);
     row.appendChild(top);
+    row.appendChild(renderCredentialForm(sys));
     row.appendChild(renderAlertForm(sys));
     manageList.appendChild(row);
   }
@@ -1216,12 +1447,59 @@ els.manageBtn.addEventListener("click", openManageModal);
 $("manage-close").addEventListener("click", () => { manageModal.hidden = true; });
 $("manage-add").addEventListener("click", openAddModal);
 
+const pollIntervalSelect = $("poll-interval");
+
+function refreshPollIntervalOptions() {
+  if (!pollIntervalSelect) return;
+  const current = pollIntervalSelect.value || String(getPollIntervalSec());
+  pollIntervalSelect.innerHTML = POLL_INTERVAL_OPTIONS_SEC.map((sec) => {
+    return `<option value="${sec}">${formatPollIntervalLabelI18n(sec)}</option>`;
+  }).join("");
+  pollIntervalSelect.value = current;
+}
+
+function changeLocale(locale) {
+  setLocale(locale);
+  applyTranslations();
+  syncLangToggle();
+  refreshPollIntervalOptions();
+  renderSystemTabs();
+  if (lastRenderData) renderData(lastRenderData);
+  if (els.pollErrorToast && !els.pollErrorToast.hidden) {
+    setPollRetrying(pollRetrying);
+  }
+  if (currentView === "chart") {
+    refreshChartDateNav();
+    if (chartHistory && fEls.powerChart && !fEls.powerChart.hidden) {
+      renderChart(chartHistory);
+    }
+    if (lastEnergySummary && fEls.energyChart && !fEls.energyChart.hidden) {
+      renderEnergyChart(lastEnergySummary);
+    }
+  }
+  if (!manageModal.hidden) openManageModal();
+}
+
+function initLangToggle() {
+  document.querySelectorAll("[data-lang]").forEach((btn) => {
+    btn.addEventListener("click", () => changeLocale(btn.dataset.lang));
+  });
+}
+
+if (pollIntervalSelect) {
+  refreshPollIntervalOptions();
+  pollIntervalSelect.addEventListener("change", () => {
+    savePollIntervalSec(pollIntervalSelect.value);
+    restartPollingIfActive();
+  });
+}
+
 /* ── Setup (proxy connection) ── */
 els.setupForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   els.setupError.hidden = true;
   els.setupBtn.disabled = true;
-  els.setupBtn.textContent = "Connecting...";
+  els.setupBtn.textContent = t("connecting");
 
   const url = els.setupUrl.value.trim().replace(/\/+$/, "");
   const token = els.setupToken.value.trim();
@@ -1230,7 +1508,7 @@ els.setupForm.addEventListener("submit", async (e) => {
     const resp = await fetch(`${url}/api/systems`, {
       headers: { "Authorization": `Bearer ${token}` },
     });
-    if (!resp.ok) throw new Error("Invalid token or proxy URL");
+    if (!resp.ok) throw new Error(t("invalidTokenOrUrl"));
     await resp.json();
 
     saveConn({ url, token });
@@ -1247,7 +1525,7 @@ els.setupForm.addEventListener("submit", async (e) => {
     els.setupError.hidden = false;
   } finally {
     els.setupBtn.disabled = false;
-    els.setupBtn.textContent = "Connect";
+    els.setupBtn.textContent = t("connect");
   }
 });
 
@@ -1255,6 +1533,19 @@ els.disconnectBtn.addEventListener("click", () => {
   clearConn();
   stopPolling();
   showSetup();
+});
+
+if (els.pollRetryBtn) {
+  els.pollRetryBtn.addEventListener("click", () => retryPollNow());
+}
+
+/* ── Desktop keyboard refresh (F5 / Ctrl|Cmd+R) ── */
+document.addEventListener("keydown", (e) => {
+  if (els.dashScreen.hidden) return;
+  if (isEditableElement(document.activeElement)) return;
+  if (!matchesDashboardRefreshShortcut(e)) return;
+  e.preventDefault();
+  refreshDashboardNow();
 });
 
 /* ── Pull to refresh ── */
@@ -1272,7 +1563,7 @@ els.disconnectBtn.addEventListener("click", () => {
   }
 
   dash.addEventListener("touchstart", (e) => {
-    if (refreshing || !isAtTop()) return;
+    if (refreshing || dashboardRefreshing || !isAtTop()) return;
     startY = e.touches[0].clientY;
     pulling = true;
   }, { passive: true });
@@ -1291,17 +1582,11 @@ els.disconnectBtn.addEventListener("click", () => {
     if (!pulling) return;
     pulling = false;
     const armed = ptr.classList.contains("armed");
-    if (armed && !refreshing) {
+    if (armed && !refreshing && !dashboardRefreshing) {
       refreshing = true;
       ptr.className = "ptr refreshing";
       ptr.style.height = "36px";
-      if (pollTimer) clearTimeout(pollTimer);
-      const refresh = currentView === "chart"
-        ? loadChartView()
-        : pollNow();
-      refresh.then(() => {
-        if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), POLL_MS);
-      }).finally(() => {
+      refreshDashboardNow().finally(() => {
         refreshing = false;
         ptr.className = "ptr";
         ptr.style.height = "0";
@@ -1319,6 +1604,10 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ── Boot ── */
+loadStoredLocale();
+applyTranslations();
+syncLangToggle();
+initLangToggle();
 setView(localStorage.getItem(VIEW_KEY) || "cards");
 
 (async function boot() {

@@ -296,11 +296,11 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [x] Documented CORS limitation motivating the proxy architecture
 - [x] Root `README.md` — architecture overview, deploy guide
 - [x] Sanitize Growatt README — credentials redacted from examples
+- [x] Adapter development guide for adding new inverter brands ([discovery/ADAPTER_GUIDE.md](./discovery/ADAPTER_GUIDE.md))
+- [x] Worker deployment runbook ([worker/DEPLOY.md](./worker/DEPLOY.md) — KV, secrets, alerts/cron, production checklist, tag-based CI)
 
 ### 7.2 Planned
 
-- [ ] Worker deployment runbook (`wrangler secret put`, KV namespace setup, alert cron)
-- [ ] Adapter development guide for adding new inverter brands
 - [ ] Update README to reflect vendor-only history (remove KV snapshot docs)
 
 ### 7.3 Testing

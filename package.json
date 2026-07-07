@@ -1,0 +1,14 @@
+{
+  "name": "solar-dashboard",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Solar Dashboard — static frontend + Cloudflare Worker proxy",
+  "scripts": {
+    "dev": "docker compose up --build",
+    "dev:down": "docker compose down",
+    "dev:worker": "API_MODE=worker docker compose up --build",
+    "dev:local": "node scripts/dev-local.js",
+    "dev:local:worker": "API_MODE=worker node scripts/dev-local.js"
+  }
+}

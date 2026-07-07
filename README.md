@@ -25,6 +25,45 @@ flowchart LR
 | **KV** | System configs (`system:<id>`), credentials index (`_index`), and optional alert state (`alert-state:<uuid>`). No historical readings are stored. |
 | **Vendor APIs** | ShineMonitor (signed GET) and Growatt (cookie session POST). Neither is callable directly from the browser due to CORS and auth complexity. |
 
+## Quick start (local dev)
+
+Run the full dashboard locally with **Docker Compose** — mock Worker API plus static frontend, no Cloudflare account or inverter credentials required.
+
+```bash
+# From the repository root
+npm run dev
+# equivalent: docker compose up --build
+```
+
+| Service | URL |
+|---------|-----|
+| Dashboard | http://localhost:8080 |
+| Mock Worker API | http://localhost:8787 |
+
+On the setup screen, enter:
+
+- **Proxy URL:** `http://localhost:8787`
+- **Access Token:** `e2e-test-token`
+
+The mock Worker serves normalized JSON from `e2e/fixtures/` (two sample systems, intraday history, 7-day summary). Use this stack for UI work, E2E debugging, or offline development.
+
+**Real Miniflare Worker** (local KV, no mock fixtures — add systems with real inverter credentials):
+
+```bash
+npm run dev:worker
+# Proxy URL: http://localhost:8787 — leave token empty (open dev mode)
+```
+
+**Without Docker** (Node.js 20+):
+
+```bash
+cd worker && npm ci && cd ../e2e && npm ci && cd ..
+npm run dev:local          # mock Worker + static server
+npm run dev:local:worker   # wrangler dev + static server
+```
+
+Stop Docker services with `npm run dev:down`.
+
 ## Prerequisites
 
 - [Cloudflare account](https://dash.cloudflare.com/sign-up) (Workers + KV)
@@ -32,6 +71,8 @@ flowchart LR
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) — installed via the worker package (see below)
 
 ## Deploy the Worker
+
+> **First-time production deploy:** follow the step-by-step runbook at **[worker/DEPLOY.md](./worker/DEPLOY.md)** — KV namespace binding, all three secrets (`API_TOKEN`, `CREDENTIALS_KEY`, `ALLOWED_ORIGINS`), optional alert webhooks, cron verification, production checklist, and tag-based CI releases.
 
 1. **Install dependencies**
 
@@ -127,7 +168,7 @@ Staging is a separate Cloudflare Worker (`solar-proxy-staging`) with its **own K
 npx wrangler dev --env staging
 ```
 
-Production and staging deploys are **tag-only** in CI (see [CI/CD](#cicd)). Deploy staging manually when needed:
+Production Worker deploys are **tag-only** in CI; the frontend auto-deploys on every push to `main` (see [CI/CD](#cicd)). Deploy staging manually when needed:
 
 ### Historical data (vendor APIs)
 
@@ -169,9 +210,10 @@ npm test
 GitHub Actions runs on every push to `main`, on version tags, and on pull requests (`.github/workflows/ci.yml`):
 
 1. **Test** — worker unit tests, frontend unit tests, and Playwright E2E (runs on PRs and all pushes).
-2. **Deploy (production)** — only when you push a semver tag `vMAJOR.MINOR.PATCH` (e.g. `v1.2.0`). After tests pass, CI deploys **both** the static frontend to [Cloudflare Pages](https://developers.cloudflare.com/pages/) (**https://solar-dashboard.pages.dev**) and the production Worker (`wrangler deploy`).
+2. **Deploy frontend** — on every push to `main`, after tests pass, CI stages static assets (`scripts/stage-frontend.sh`) and deploys to [Cloudflare Pages](https://developers.cloudflare.com/pages/) (**https://solar-dashboard.pages.dev**).
+3. **Deploy Worker (production)** — only when you push a semver tag `vMAJOR.MINOR.PATCH` (e.g. `v1.2.0`). After tests pass, CI deploys the production Worker (`wrangler deploy`).
 
-Merges to `main` run tests only — nothing goes live until you cut a release tag.
+Merges to `main` update the live frontend automatically. Cut a release tag when you want to promote Worker API changes to production.
 
 ### Release a version
 
@@ -184,13 +226,13 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-CI validates the tag format, runs the full test suite, then deploys frontend + Worker from that tag's snapshot. Each new tag you push becomes the live site/API.
+CI validates the tag format, runs the full test suite, then deploys the production Worker from that tag's snapshot. The frontend is already live if the tagged commit is on `main`.
 
 ### Required GitHub secrets
 
 | Secret | Purpose |
 |--------|---------|
-| `CLOUDFLARE_API_TOKEN` | Authenticates Wrangler for Worker and Pages deploy on release tags. Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for production and staging `SYSTEMS` namespaces) plus **Cloudflare Pages — Edit**. |
+| `CLOUDFLARE_API_TOKEN` | Authenticates Wrangler for Pages deploy on pushes to `main` and Worker deploy on release tags. Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for production and staging `SYSTEMS` namespaces) plus **Cloudflare Pages — Edit**. |
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID (Dashboard → Workers & Pages → right sidebar). Required for Pages deploy. |
 
 Add secrets under **Repository → Settings → Secrets and variables → Actions → New repository secret**.
@@ -248,12 +290,12 @@ The frontend is static — no build step. Serve `index.html`, `app.js`, `style.c
 
 **Production URL:** https://solar-dashboard.pages.dev
 
-Production deploys happen when you push a release tag (see [CI/CD](#cicd) above). The workflow runs `scripts/stage-frontend.sh` to copy only static assets into `dist/`, then `wrangler pages deploy`.
+Production deploys happen on every push to `main` (see [CI/CD](#cicd) above). The workflow runs `scripts/stage-frontend.sh` to copy only static assets into `dist/`, then `wrangler pages deploy`.
 
 **One-time setup** (if not already configured):
 
 1. Add GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (see table above).
-2. Push a release tag (e.g. `v1.0.0`) — the first deploy creates the `solar-dashboard` Pages project if it does not exist.
+2. Merge to `main` — the first deploy creates the `solar-dashboard` Pages project if it does not exist.
 3. Configure Worker CORS (below) so the browser can call the proxy from the Pages origin.
 
 **Manual deploy** (optional):
@@ -331,15 +373,132 @@ Use only on trusted devices — the token appears in the URL and browser history
 | `GET` | `/api/services` | Supported inverter types |
 | `GET` | `/api/systems` | List systems (no credentials) |
 | `POST` | `/api/systems` | Add system (`service`, `user`, `password`, optional `name`) |
+| `PUT` | `/api/systems/:id/credentials` | Update portal username/password; re-runs discovery and updates KV |
 | `DELETE` | `/api/systems/:id` | Remove a system |
 | `GET` | `/api/systems/:id/data` | Normalized real-time data for one system |
+| `GET` | `/api/systems/:id/ha` | Flat JSON for Home Assistant REST sensors (same data as `/data`) |
 | `GET` | `/api/systems/all/data` | Data for all systems |
 | `GET` | `/api/systems/:id/history?date=` | Intraday power series (vendor fetch on demand) |
 | `GET` | `/api/systems/:id/history/summary?days=7` | Daily energy totals for bar chart (vendor fetch on demand) |
 
 All routes require `Authorization: Bearer <API_TOKEN>` when the secret is configured.
 
-**Rate limits:** Real-time data routes (`GET /api/systems/:id/data` and `GET /api/systems/all/data`) are limited to **60 requests per minute per bearer token** (in-memory per Worker isolate). Exceeding the limit returns **429 Too Many Requests** with a `Retry-After` header (seconds until the window resets). Normal dashboard polling at 60 s intervals is well below this limit. Rate limiting is disabled when `API_TOKEN` is unset (dev open mode).
+**Rate limits:** Real-time data routes (`GET /api/systems/:id/data`, `GET /api/systems/:id/ha`, and `GET /api/systems/all/data`) are limited to **60 requests per minute per bearer token** (in-memory per Worker isolate). Exceeding the limit returns **429 Too Many Requests** with a `Retry-After` header (seconds until the window resets). Normal dashboard polling at 60 s intervals is well below this limit. Rate limiting is disabled when `API_TOKEN` is unset (dev open mode).
+
+## Home Assistant integration
+
+Expose inverter metrics in [Home Assistant](https://www.home-assistant.io/) via the **`GET /api/systems/:id/ha`** endpoint. It returns the same realtime snapshot as `/data`, flattened into a **stable snake_case schema** (`schema_version: 1`) so REST sensors can use simple `value_template` paths without nested JSON.
+
+### Prerequisites
+
+1. Deploy the Worker and add at least one system (dashboard setup or `POST /api/systems`).
+2. Note the **system UUID** from `GET /api/systems` (e.g. `a1b2c3d4-...`).
+3. Use the same **Worker URL** and **`API_TOKEN`** as the dashboard.
+
+### Response schema (v1)
+
+```json
+{
+  "schema_version": 1,
+  "system_id": "uuid",
+  "name": "Cabin Solar",
+  "service": "growatt",
+  "timestamp": "2026-07-03 14:32:00",
+  "battery_soc": 72,
+  "battery_voltage": 48.2,
+  "battery_current": -15,
+  "battery_power": -723,
+  "solar_power": 1200,
+  "solar_voltage": 95,
+  "load_power": 850,
+  "load_percent": 24,
+  "grid_power": 0,
+  "grid_voltage": 0,
+  "grid_active": false,
+  "inverter_rated_power": 3500,
+  "inverter_nominal_pv": 5000,
+  "status": "PV Charging",
+  "energy_today_kwh": 12.4
+}
+```
+
+| Field | Unit / type | Notes |
+|-------|-------------|-------|
+| `battery_current` | A | Negative = charging, positive = discharging |
+| `battery_power` | W | Same sign convention as current |
+| `grid_active` | boolean | Generator/grid input detected |
+| `energy_today_kwh` | kWh | Today's PV production when available |
+
+Breaking changes to this shape will increment `schema_version`. Poll at **60 s or slower** to stay within rate limits and avoid stressing vendor APIs.
+
+### Example: REST sensors (`configuration.yaml`)
+
+Store secrets in [secrets.yaml](https://www.home-assistant.io/docs/configuration/secrets/):
+
+```yaml
+solar_ha_url: https://solar-proxy.example.workers.dev/api/systems/your-system-uuid/ha
+solar_api_token: your-long-random-token
+```
+
+Add sensors (one per metric, or pick the fields you need):
+
+```yaml
+rest:
+  - resource: !secret solar_ha_url
+    scan_interval: 60
+    headers:
+      Authorization: "Bearer !secret solar_api_token"
+    sensor:
+      - name: Solar Battery SOC
+        unique_id: solar_battery_soc
+        value_template: "{{ value_json.battery_soc }}"
+        unit_of_measurement: "%"
+        device_class: battery
+        json_attributes_path: "$"
+        json_attributes:
+          - battery_voltage
+          - battery_power
+          - solar_power
+          - load_power
+          - status
+
+      - name: Solar Production
+        unique_id: solar_production_w
+        value_template: "{{ value_json.solar_power }}"
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+
+      - name: Solar Load
+        unique_id: solar_load_w
+        value_template: "{{ value_json.load_power }}"
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+
+      - name: Solar Generator Active
+        unique_id: solar_generator_active
+        value_template: "{{ value_json.grid_active }}"
+        device_class: power
+```
+
+### Example: REST command-line test
+
+```bash
+curl -sS -H "Authorization: Bearer $API_TOKEN" \
+  "https://solar-proxy.example.workers.dev/api/systems/$SYSTEM_ID/ha" | jq .
+```
+
+### Alternatives
+
+| Approach | When to use |
+|----------|-------------|
+| **`/ha` endpoint** (recommended) | Stable flat schema; easiest REST sensor templates |
+| **`/data` endpoint** | Custom automations that already consume nested JSON (`value_json.battery.soc`) |
+| **Alert webhooks** | Push notifications on low SOC or generator start (Worker cron + `PUT /api/systems/:id/alerts`) — not a continuous sensor feed |
+| **MQTT** | Out of scope for the Worker; use an external bridge (e.g. Node-RED or a small script polling `/ha` and publishing to your broker) |
+
+Home Assistant runs server-side and is not subject to browser CORS. You do not need to add the HA host to `ALLOWED_ORIGINS` unless you also open the Worker from a browser on that host.
 
 ## Normalized Data Contract
 
@@ -395,7 +554,7 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 - **Frontend token storage** — The access token is kept in `localStorage` (and optionally URL params for bookmarks). Anyone with the token can call your Worker API. Rotate the token if it is exposed.
 - **HTTPS only** — Use HTTPS for both the Worker and frontend in production.
 - **Dev mode** — If `API_TOKEN` is unset, the Worker accepts unauthenticated requests. Never deploy to production without the secret.
-- **Rate limiting** — Data routes are capped at 60 requests/minute per bearer token (per isolate). Returns 429 with `Retry-After` when exceeded. Protects upstream inverter APIs from burst polling or scripted clients.
+- **Rate limiting** — Data routes (`/data`, `/ha`, `/all/data`) are capped at 60 requests/minute per bearer token (per isolate). Returns 429 with `Retry-After` when exceeded. Protects upstream inverter APIs from burst polling or scripted clients.
 
 ## Documentation
 
@@ -414,6 +573,13 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 
 ```
 ├── index.html, app.js, style.css   # Static frontend
+├── docker-compose.yml              # Local dev stack (mock or Miniflare Worker)
+├── Dockerfile                      # Dev image for compose services
+├── package.json                    # npm run dev — one-command local stack
+├── scripts/
+│   ├── dev-local.js                # Non-Docker local dev (mock or wrangler)
+│   ├── docker-api-entry.sh         # Compose: mock Worker or wrangler dev
+│   └── docker-frontend-entry.sh    # Compose: static file server
 ├── worker/
 │   ├── src/index.js                # Worker entry + REST routes + scheduled alerts
 │   ├── src/logger.js               # Structured JSON logging + optional Analytics Engine

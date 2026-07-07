@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-07-06_
+_Last updated: 2026-07-07_
 
 ## Done
 
@@ -38,6 +38,8 @@ _Last updated: 2026-07-06_
 - Worker tests for `fetchHistorySummary` (`historySummary.test.js`) and alert cron (`scheduled.test.js`)
 - HTTP fixtures for vendor parser regression (`worker/test/fixtures/`)
 - **SOC threshold alerts** — Worker cron (`wrangler.toml`), webhook dispatch, manage-systems UI
+- **Adapter development guide** — [discovery/ADAPTER_GUIDE.md](./discovery/ADAPTER_GUIDE.md) (discovery → adapter → tests → CI)
+- **Worker deployment runbook** — [worker/DEPLOY.md](./worker/DEPLOY.md) (KV, secrets, alerts/cron, production checklist, tag-based CI)
 
 ## In Progress
 
@@ -54,23 +56,21 @@ _Priority order — finish v1.2.0 chart polish, then productization and UX (PLAN
 
 **Documentation & ops:**
 
-3. Worker deployment runbook (`wrangler secret put`, KV setup, alert cron, production checklist)
-4. Adapter development guide for adding new inverter brands
-5. Always-on `API_TOKEN` and `CREDENTIALS_KEY` in production (ops/config)
-6. Cloudflare Pages auto-deploy for frontend from `main`
-7. Staging worker environment
+3. Always-on `API_TOKEN` and `CREDENTIALS_KEY` in production (ops/config)
+4. Cloudflare Pages auto-deploy for frontend from `main`
+5. Staging worker environment
 
 **UX & resilience:**
 
-8. Configurable poll interval
-9. Error toast / retry UI when poll fails
-10. Desktop keyboard shortcut for refresh
-11. Light theme / high-contrast mode
+6. Configurable poll interval
+7. Error toast / retry UI when poll fails
+8. Desktop keyboard shortcut for refresh
+9. Light theme / high-contrast mode
 
 **Security & hardening:**
 
-12. Per-token rate limiting on `/api/systems/*/data`
-13. Structured logging / error reporting (Workers Analytics or Sentry)
+11. Per-token rate limiting on `/api/systems/*/data`
+12. Structured logging / error reporting (Workers Analytics or Sentry)
 
 **Adapter improvements:**
 
