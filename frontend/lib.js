@@ -118,6 +118,12 @@ export function shouldShowEstimatedSocBadge(historyData) {
   return src === "estimated" || src === "mixed";
 }
 
+/** Prefer API/Error message text; fall back to a caller-provided default. */
+export function chartErrorMessage(err, fallback) {
+  const msg = err?.message?.trim();
+  return msg || fallback;
+}
+
 export const DEFAULT_POLL_INTERVAL_SEC = 60;
 export const POLL_INTERVAL_OPTIONS_SEC = [30, 60, 120];
 

@@ -15,6 +15,7 @@ import {
   fmtWeekStripWeekday,
   fmtWeekStripDay,
   shouldShowEstimatedSocBadge,
+  chartErrorMessage,
   normalizePollIntervalSec,
   pollIntervalSecToMs,
   POLL_INTERVAL_OPTIONS_SEC,
@@ -823,11 +824,6 @@ function setEnergyChartState(state, opts = {}) {
     const socLegend = document.querySelector(".legend-soc-range-item");
     if (socLegend) socLegend.hidden = true;
   }
-}
-
-function chartErrorMessage(err, fallback) {
-  const msg = err?.message?.trim();
-  return msg || fallback;
 }
 
 function updateChartExportBtn() {

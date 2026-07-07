@@ -17,6 +17,7 @@ import {
   fmtWeekStripWeekday,
   fmtWeekStripDay,
   shouldShowEstimatedSocBadge,
+  chartErrorMessage,
   normalizePollIntervalSec,
   pollIntervalSecToMs,
   formatPollIntervalLabel,
@@ -426,6 +427,26 @@ describe("theme helpers", () => {
     expect(getNextTheme("light")).toBe("high-contrast");
     expect(getNextTheme("high-contrast")).toBe("dark");
     expect(getNextTheme("invalid")).toBe("light");
+  });
+});
+
+describe("chartErrorMessage", () => {
+  it("returns trimmed Error message when present", () => {
+    expect(chartErrorMessage(new Error("  Fetch failed: vendor offline  "), "fallback")).toBe(
+      "Fetch failed: vendor offline",
+    );
+  });
+
+  it("returns fallback for empty or missing message", () => {
+    expect(chartErrorMessage(new Error(""), "Could not load system data.")).toBe(
+      "Could not load system data.",
+    );
+    expect(chartErrorMessage(new Error("   "), "Could not load system data.")).toBe(
+      "Could not load system data.",
+    );
+    expect(chartErrorMessage(null, "Could not load system data.")).toBe(
+      "Could not load system data.",
+    );
   });
 });
 
