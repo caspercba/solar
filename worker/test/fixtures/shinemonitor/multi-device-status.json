@@ -1,0 +1,44 @@
+{
+  "err": 0,
+  "desc": "success",
+  "dat": {
+    "status": 0,
+    "collector": [
+      {
+        "pn": "B1419120275203",
+        "alias": "Main RTU",
+        "status": 0,
+        "device": [
+          {
+            "devcode": 697,
+            "devaddr": 4,
+            "sn": "INV001",
+            "status": 0,
+            "comStatus": 1
+          },
+          {
+            "devcode": 697,
+            "devaddr": 5,
+            "sn": "INV002",
+            "status": 0,
+            "comStatus": 1
+          }
+        ]
+      },
+      {
+        "pn": "B1419120275204",
+        "alias": "Garage RTU",
+        "status": 0,
+        "device": [
+          {
+            "devcode": 698,
+            "devaddr": 6,
+            "sn": "INV003",
+            "status": 0,
+            "comStatus": 1
+          }
+        ]
+      }
+    ]
+  }
+}

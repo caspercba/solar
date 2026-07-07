@@ -182,6 +182,49 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 .header-right { display: flex; align-items: center; gap: .75rem; }
 
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.lang-toggle-compact { gap: .2rem; }
+
+.lang-label {
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-right: .25rem;
+}
+
+.lang-btn {
+  min-width: 2rem;
+  padding: .2rem .45rem;
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  border: 1px solid var(--border);
+  border-radius: .35rem;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.lang-btn.active {
+  background: var(--accent-sol);
+  border-color: var(--accent-sol);
+  color: #111;
+}
+
+.lang-btn:focus-visible {
+  outline: 2px solid var(--accent-sol);
+  outline-offset: 2px;
+}
+
+.login-card .lang-toggle {
+  justify-content: center;
+  margin-bottom: .75rem;
+}
+
 .dot {
   width: 10px;
   height: 10px;
@@ -988,7 +1031,69 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   border-radius: 8px;
   background: var(--surface-muted);
   border: 1px solid var(--card-border);
+  margin-bottom: .75rem;
 }
+
+.manage-section-title {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 .25rem;
+}
+
+.manage-credentials {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  padding: .75rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--card-border);
+  margin-bottom: .75rem;
+}
+
+.manage-credentials label {
+  font-size: .75rem;
+  color: var(--text-dim);
+}
+
+.manage-credentials input[type="text"],
+.manage-credentials input[type="password"],
+.manage-credentials select {
+  width: 100%;
+  padding: .5rem .65rem;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: .85rem;
+}
+
+.cred-save {
+  align-self: flex-start;
+  margin-top: .25rem;
+  padding: .45rem .85rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent-sol);
+  background: transparent;
+  color: var(--accent-sol);
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cred-save:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.cred-msg {
+  font-size: .75rem;
+  margin: 0;
+}
+
+.cred-ok { color: var(--accent-bat); }
+.cred-err { color: var(--error); }
 
 .manage-alerts label {
   font-size: .75rem;
