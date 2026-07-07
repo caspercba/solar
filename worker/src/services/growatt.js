@@ -2,9 +2,11 @@
  * Growatt service adapter.
  *
  * Auth flow: POST /login with plaintext password (HTTPS), receive JSESSIONID cookie.
- * Cookie-based session for all subsequent requests.
+ * Cookie-based session for all subsequent requests. Session cookies are persisted in KV;
+ * password is used only for initial discover or re-login when the session expires.
  */
 
+import { saveSystemConfig } from "../credentials.js";
 import {
   computeDailySummary,
   computeSocExtrema,
@@ -38,6 +40,19 @@ export const STATUS_MAP = {
 
 const sessionCache = new Map();
 const SESSION_TTL = 240_000; // 4 min (Growatt sessions expire quickly)
+
+export class SessionExpiredError extends Error {
+  constructor(message = "Growatt session expired") {
+    super(message);
+    this.name = "SessionExpiredError";
+  }
+}
+
+/** Attach KV env so successful auth can persist session cookies (and migrate legacy creds). */
+export function withAdapterContext(systemConfig, env) {
+  if (!env) return systemConfig;
+  return { ...systemConfig, _adapterContext: { env } };
+}
 
 function parseCookies(response) {
   const cookies = {};
@@ -94,6 +109,16 @@ async function login(user, password) {
   return { cookies, ts: Date.now() };
 }
 
+function isAuthFailureResponse(resp, text, parsed) {
+  if (resp.status === 401 || resp.status === 403) return true;
+  if (!parsed) return true;
+  if (parsed.result === -1 || parsed.result === 0) {
+    const msg = String(parsed.msg || parsed.message || "").toLowerCase();
+    if (msg.includes("login") || msg.includes("session") || msg.includes("auth")) return true;
+  }
+  return false;
+}
+
 async function postJson(session, path, bodyObj = {}) {
   const body = new URLSearchParams(bodyObj);
   const resp = await fetch(`${BASE}${path}`, {
@@ -106,22 +131,89 @@ async function postJson(session, path, bodyObj = {}) {
     body: body.toString(),
   });
   const text = await resp.text();
+  let parsed;
   try {
-    return JSON.parse(text);
+    parsed = JSON.parse(text);
   } catch {
+    if (isAuthFailureResponse(resp, text, null)) {
+      throw new SessionExpiredError();
+    }
     throw new Error("Session expired or invalid response");
   }
+  if (isAuthFailureResponse(resp, text, parsed)) {
+    throw new SessionExpiredError();
+  }
+  return parsed;
 }
 
-async function getSession(systemConfig) {
-  const key = systemConfig.id;
-  const cached = sessionCache.get(key);
-  if (cached && Date.now() - cached.ts < SESSION_TTL) return cached;
+function sessionFromCookies(cookies) {
+  return { cookies, ts: Date.now() };
+}
 
+async function persistSessionCredentials(systemConfig, cookies) {
   const creds = systemConfig.credentials;
+  const sameSession =
+    creds.sessionCookies?.JSESSIONID &&
+    creds.sessionCookies.JSESSIONID === cookies.JSESSIONID &&
+    !creds.password;
+  if (sameSession) return;
+
+  const nextCredentials = {
+    ...creds,
+    sessionCookies: cookies,
+  };
+  delete nextCredentials.password;
+
+  systemConfig.credentials = nextCredentials;
+
+  const env = systemConfig._adapterContext?.env;
+  if (!env) return;
+
+  await saveSystemConfig(env, {
+    ...systemConfig,
+    credentials: nextCredentials,
+  });
+}
+
+async function loginAndPersist(systemConfig) {
+  const creds = systemConfig.credentials;
+  if (!creds.password) {
+    throw new SessionExpiredError("Growatt session expired and no password stored for re-login");
+  }
   const sess = await login(creds.user, creds.password);
-  sessionCache.set(key, sess);
+  sessionCache.set(systemConfig.id, sess);
+  await persistSessionCredentials(systemConfig, sess.cookies);
   return sess;
+}
+
+async function getSession(systemConfig, { forceLogin = false } = {}) {
+  const key = systemConfig.id;
+  if (!forceLogin) {
+    const cached = sessionCache.get(key);
+    if (cached && Date.now() - cached.ts < SESSION_TTL) return cached;
+
+    const stored = systemConfig.credentials.sessionCookies;
+    if (stored?.JSESSIONID) {
+      const sess = sessionFromCookies(stored);
+      sessionCache.set(key, sess);
+      return sess;
+    }
+  } else {
+    sessionCache.delete(key);
+  }
+
+  return loginAndPersist(systemConfig);
+}
+
+async function postJsonWithRetry(systemConfig, path, bodyObj = {}) {
+  let session = await getSession(systemConfig);
+  try {
+    return await postJson(session, path, bodyObj);
+  } catch (err) {
+    if (!(err instanceof SessionExpiredError)) throw err;
+    session = await getSession(systemConfig, { forceLogin: true });
+    return postJson(session, path, bodyObj);
+  }
 }
 
 /* ── Discovery ── */
@@ -170,18 +262,18 @@ export async function discover(credentials, plantId = null) {
     nominalPower,
     nominalPV,
     deviceModel,
+    sessionCookies: sess.cookies,
   };
 }
 
 /* ── Data fetch + normalize ── */
 
 export async function fetchData(systemConfig) {
-  const sess = await getSession(systemConfig);
   const { plantId, storageSn, nominalPower, nominalPV } = systemConfig.credentials;
 
   const [statusResp, totalsResp] = await Promise.all([
-    postJson(sess, `/panel/storage/getStorageStatusData?plantId=${plantId}`, { storageSn }),
-    postJson(sess, `/panel/storage/getStorageTotalData?plantId=${plantId}`, { storageSn }),
+    postJsonWithRetry(systemConfig, `/panel/storage/getStorageStatusData?plantId=${plantId}`, { storageSn }),
+    postJsonWithRetry(systemConfig, `/panel/storage/getStorageTotalData?plantId=${plantId}`, { storageSn }),
   ]);
 
   if (statusResp.result !== 1) throw new Error("Failed to fetch Growatt status data");
@@ -262,13 +354,12 @@ export function parseSocCapacityPoints(capacity = []) {
 }
 
 export async function fetchHistory(systemConfig, date) {
-  const sess = await getSession(systemConfig);
   const { plantId, storageSn } = systemConfig.credentials;
   const queryDate = date || new Date().toISOString().slice(0, 10);
 
   const [energyResp, lineResp] = await Promise.all([
-    postJson(sess, "/panel/storage/getStorageEnergyDayChart", { plantId, storageSn, date: queryDate }),
-    postJson(sess, "/panel/storage/getStorageLineChartData", { plantId, storageSn, date: queryDate }).catch(() => null),
+    postJsonWithRetry(systemConfig, "/panel/storage/getStorageEnergyDayChart", { plantId, storageSn, date: queryDate }),
+    postJsonWithRetry(systemConfig, "/panel/storage/getStorageLineChartData", { plantId, storageSn, date: queryDate }).catch(() => null),
   ]);
 
   if (energyResp.result !== 1) throw new Error("Failed to fetch Growatt history");
@@ -301,11 +392,10 @@ export async function fetchHistory(systemConfig, date) {
 
 /** Intraday SOC series from getStorageBatChart (valid only for obj.date). */
 export async function fetchSocChart(systemConfig, date) {
-  const sess = await getSession(systemConfig);
   const { plantId, storageSn } = systemConfig.credentials;
   const queryDate = date || new Date().toISOString().slice(0, 10);
 
-  const resp = await postJson(sess, "/panel/storage/getStorageBatChart", { plantId, storageSn });
+  const resp = await postJsonWithRetry(systemConfig, "/panel/storage/getStorageBatChart", { plantId, storageSn });
   if (resp.result !== 1) return [];
 
   const obj = resp.obj || {};
@@ -369,10 +459,9 @@ export async function fetchHistorySummary(systemConfig, days = 7, endDate = null
 
 /** Daily min/max SOC for the chart day when stored snapshots lack SOC. */
 export async function fetchSocDailySummary(_systemConfig, _endDate, _days) {
-  const sess = await getSession(_systemConfig);
   const { plantId, storageSn } = _systemConfig.credentials;
 
-  const resp = await postJson(sess, "/panel/storage/getStorageBatChart", { plantId, storageSn });
+  const resp = await postJsonWithRetry(_systemConfig, "/panel/storage/getStorageBatChart", { plantId, storageSn });
   if (resp.result !== 1) return {};
 
   const obj = resp.obj || {};

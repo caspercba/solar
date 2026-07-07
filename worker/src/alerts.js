@@ -1,5 +1,6 @@
 import { loadSystemConfig, saveSystemConfig } from "./credentials.js";
 import { logAdapterError } from "./logger.js";
+import { withAdapterContext } from "./services/growatt.js";
 
 export const DEFAULT_ALERTS = {
   enabled: false,
@@ -195,7 +196,10 @@ export async function runScheduledAlerts(env, adapters) {
       if (!raw) return { systemId: entry.id, sent: 0, error: "Not found" };
       const adapter = adapters[raw.service];
       if (!adapter) return { systemId: entry.id, sent: 0, error: "No adapter" };
-      return processSystemAlerts(env, raw, (cfg) => adapter.fetchData(cfg));
+      return processSystemAlerts(env, raw, (cfg) => {
+        const ctx = cfg.service === "growatt" ? withAdapterContext(cfg, env) : cfg;
+        return adapter.fetchData(ctx);
+      });
     }),
   );
 

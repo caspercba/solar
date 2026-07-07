@@ -14,6 +14,12 @@ import * as growatt from "./services/growatt.js";
 
 const ADAPTERS = { shinemonitor, growatt };
 
+/** Pass KV env to adapters that persist session state (Growatt). */
+function forAdapter(raw, env) {
+  if (raw.service === "growatt") return growatt.withAdapterContext(raw, env);
+  return raw;
+}
+
 function generateId() {
   return crypto.randomUUID();
 }
@@ -184,7 +190,7 @@ export default {
           if (!raw) return { systemId: entry.id, error: "Not found" };
           const adapter = ADAPTERS[raw.service];
           if (!adapter) return { systemId: entry.id, error: "No adapter" };
-          return adapter.fetchData(raw);
+          return adapter.fetchData(forAdapter(raw, env));
         })
       );
 
@@ -216,7 +222,7 @@ export default {
       if (!adapter) return errorResponse(`No adapter for service: ${raw.service}`, 500, origin);
 
       try {
-        const data = await adapter.fetchData(raw);
+        const data = await adapter.fetchData(forAdapter(raw, env));
         return jsonResponse(data, 200, origin);
       } catch (err) {
         logAdapterError(env, "adapter_fetch_failed", {
@@ -253,7 +259,7 @@ export default {
       }
 
       try {
-        const summary = await adapter.fetchHistorySummary(raw, days, endDate || null);
+        const summary = await adapter.fetchHistorySummary(forAdapter(raw, env), days, endDate || null);
         return jsonResponse(summary, 200, origin);
       } catch (err) {
         logAdapterError(env, "adapter_history_summary_failed", {
@@ -284,7 +290,7 @@ export default {
       }
 
       try {
-        const data = await adapter.fetchHistory(raw, dateParam || null);
+        const data = await adapter.fetchHistory(forAdapter(raw, env), dateParam || null);
         return jsonResponse(data, 200, origin);
       } catch (err) {
         logAdapterError(env, "adapter_history_failed", {
@@ -317,11 +323,11 @@ function buildCredentials(service, password, discovered) {
   }
   if (service === "growatt") {
     return {
-      password,
       plantId: discovered.plantId,
       storageSn: discovered.storageSn,
       nominalPower: discovered.nominalPower,
       nominalPV: discovered.nominalPV,
+      sessionCookies: discovered.sessionCookies,
     };
   }
   return { password };
