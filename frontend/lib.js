@@ -7,10 +7,10 @@ export function fmtW(w) {
   return Math.round(w) + " W";
 }
 
-export function fmtChartDate(dateStr) {
+export function fmtChartDate(dateStr, locale) {
   const d = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr.slice(5);
-  return d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+  return d.toLocaleDateString(locale || undefined, { month: "numeric", day: "numeric" });
 }
 
 export function sanitizeExportName(name) {
@@ -100,10 +100,10 @@ export function buildWeekStripDates(selectedDate, count = 7) {
   return dates;
 }
 
-export function fmtWeekStripWeekday(dateStr) {
+export function fmtWeekStripWeekday(dateStr, locale) {
   const d = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { weekday: "short" });
+  return d.toLocaleDateString(locale || undefined, { weekday: "short" });
 }
 
 export function fmtWeekStripDay(dateStr) {

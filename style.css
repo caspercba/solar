@@ -112,6 +112,49 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 .header-right { display: flex; align-items: center; gap: .75rem; }
 
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.lang-toggle-compact { gap: .2rem; }
+
+.lang-label {
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-right: .25rem;
+}
+
+.lang-btn {
+  min-width: 2rem;
+  padding: .2rem .45rem;
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  border: 1px solid var(--border);
+  border-radius: .35rem;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.lang-btn.active {
+  background: var(--accent-sol);
+  border-color: var(--accent-sol);
+  color: #111;
+}
+
+.lang-btn:focus-visible {
+  outline: 2px solid var(--accent-sol);
+  outline-offset: 2px;
+}
+
+.login-card .lang-toggle {
+  justify-content: center;
+  margin-bottom: .75rem;
+}
+
 .dot {
   width: 10px;
   height: 10px;
