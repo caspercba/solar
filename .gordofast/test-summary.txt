@@ -1,0 +1,51 @@
+Task: Test — Add error toast and retry UI on poll failure (cdd4cc36)
+Date: 2026-07-07
+
+## Commands run
+
+Note: `pnpm` is not installed in this environment. Equivalent npm commands were used per CI layout.
+
+1. `cd worker && npm ci && npm test` — PASS
+2. `cd frontend && npm ci && npm test` — PASS (after adding chartErrorMessage unit tests)
+3. `cd e2e && CI=1 npm run test:ci` — FAIL (infrastructure: Playwright browser not installed)
+
+## Results
+
+### Worker unit tests — PASS
+- 13 files, 137 tests passed
+- Duration ~4s
+
+### Frontend unit tests — PASS
+- 2 files, 73 tests passed (includes 2 new chartErrorMessage tests for poll error messaging)
+- Duration ~0.5s
+
+### E2E (Playwright) — NOT RUN (browser missing)
+- 66/66 tests failed to launch: `browserType.launch: Executable doesn't exist at .../chromium_headless_shell-1228/...`
+- `npx playwright install chromium` failed: CDN returns HTTP 403 for browser download
+- No sudo/docker available to install system Chromium
+- Mock worker and static frontend servers started successfully; failures are pre-test launch only
+
+Relevant poll error E2E specs (could not execute):
+- `Poll error toast › shows toast with retry on cards view and clears after success`
+- `Poll error toast › shows toast on flow view`
+
+## Manual code review (acceptance criteria)
+
+Implementation present in commit 0bcd0cf on branch:
+
+| Criterion | Status |
+|-----------|--------|
+| Simulated API failure shows toast with retry | Implemented: `pollNow()` catch → `showPollError(chartErrorMessage(...))`; E2E spec mocks 502 on `/api/systems/*/data` |
+| Retry triggers immediate fetch | Implemented: `#poll-retry-btn` → `retryPollNow()` → `pollNow()` |
+| Success clears toast | Implemented: successful poll calls `hidePollError()` |
+| Works on cards and flow views | Toast is outside view containers (fixed bottom); cards/flow remain visible; dedicated E2E tests for both views |
+| Non-blocking layout | `#poll-error-toast` uses fixed positioning; skeleton/cards not hidden on error |
+
+## Tester additions
+
+- Extracted `chartErrorMessage` to `frontend/lib.js` (used by poll error toast)
+- Added unit tests in `frontend/test/lib.test.js`
+
+## Verdict
+
+Unit test suites pass. E2E could not validate browser flows in this environment due to Playwright browser install failure (not an application regression). No developer fix tasks filed — implementation and E2E specs appear correct; E2E requires CI or an environment with Playwright browsers installed.
