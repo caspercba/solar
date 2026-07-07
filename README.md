@@ -25,6 +25,45 @@ flowchart LR
 | **KV** | System configs (`system:<id>`), credentials index (`_index`), and optional alert state (`alert-state:<uuid>`). No historical readings are stored. |
 | **Vendor APIs** | ShineMonitor (signed GET) and Growatt (cookie session POST). Neither is callable directly from the browser due to CORS and auth complexity. |
 
+## Quick start (local dev)
+
+Run the full dashboard locally with **Docker Compose** — mock Worker API plus static frontend, no Cloudflare account or inverter credentials required.
+
+```bash
+# From the repository root
+npm run dev
+# equivalent: docker compose up --build
+```
+
+| Service | URL |
+|---------|-----|
+| Dashboard | http://localhost:8080 |
+| Mock Worker API | http://localhost:8787 |
+
+On the setup screen, enter:
+
+- **Proxy URL:** `http://localhost:8787`
+- **Access Token:** `e2e-test-token`
+
+The mock Worker serves normalized JSON from `e2e/fixtures/` (two sample systems, intraday history, 7-day summary). Use this stack for UI work, E2E debugging, or offline development.
+
+**Real Miniflare Worker** (local KV, no mock fixtures — add systems with real inverter credentials):
+
+```bash
+npm run dev:worker
+# Proxy URL: http://localhost:8787 — leave token empty (open dev mode)
+```
+
+**Without Docker** (Node.js 20+):
+
+```bash
+cd worker && npm ci && cd ../e2e && npm ci && cd ..
+npm run dev:local          # mock Worker + static server
+npm run dev:local:worker   # wrangler dev + static server
+```
+
+Stop Docker services with `npm run dev:down`.
+
 ## Prerequisites
 
 - [Cloudflare account](https://dash.cloudflare.com/sign-up) (Workers + KV)
@@ -414,6 +453,13 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 
 ```
 ├── index.html, app.js, style.css   # Static frontend
+├── docker-compose.yml              # Local dev stack (mock or Miniflare Worker)
+├── Dockerfile                      # Dev image for compose services
+├── package.json                    # npm run dev — one-command local stack
+├── scripts/
+│   ├── dev-local.js                # Non-Docker local dev (mock or wrangler)
+│   ├── docker-api-entry.sh         # Compose: mock Worker or wrangler dev
+│   └── docker-frontend-entry.sh    # Compose: static file server
 ├── worker/
 │   ├── src/index.js                # Worker entry + REST routes + scheduled alerts
 │   ├── src/logger.js               # Structured JSON logging + optional Analytics Engine
