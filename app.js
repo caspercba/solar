@@ -19,6 +19,7 @@ import {
   pollIntervalSecToMs,
   POLL_INTERVAL_OPTIONS_SEC,
   estimateBatteryTimeToEmpty,
+  formatWeatherStrip,
   findLowestSocIds,
   THEME_STORAGE_KEY,
   THEME_LABELS,
@@ -128,6 +129,8 @@ const els = {
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
   inverterStatus: $("inverter-status"),
+  weatherStrip: $("weather-strip"),
+  weatherText: $("weather-text"),
   pollErrorToast: $("poll-error-toast"),
   pollErrorMsg: $("poll-error-msg"),
   pollRetryBtn: $("poll-retry-btn"),
@@ -147,8 +150,8 @@ const fEls = {
   tabChart: $("tab-chart"),
   tabCompare: $("tab-compare"),
   chartDate: $("chart-date"),
-  chartPrevDay: $("chart-prev-day"),
-  chartNextDay: $("chart-next-day"),
+  chartPrev: $("chart-prev"),
+  chartNext: $("chart-next"),
   chartWeekStrip: $("chart-week-strip"),
   chartSwipeArea: $("chart-swipe-area"),
   chartExportBtn: $("chart-export-btn"),
@@ -403,11 +406,11 @@ fEls.tabFlow.addEventListener("click", () => setView("flow"));
 fEls.tabChart.addEventListener("click", () => setView("chart"));
 if (fEls.tabCompare) fEls.tabCompare.addEventListener("click", () => setView("compare"));
 fEls.chartDate.addEventListener("change", () => selectChartDate(fEls.chartDate.value));
-if (fEls.chartPrevDay) {
-  fEls.chartPrevDay.addEventListener("click", () => navigateChartDay(-1));
+if (fEls.chartPrev) {
+  fEls.chartPrev.addEventListener("click", () => navigateChartDay(-1));
 }
-if (fEls.chartNextDay) {
-  fEls.chartNextDay.addEventListener("click", () => navigateChartDay(1));
+if (fEls.chartNext) {
+  fEls.chartNext.addEventListener("click", () => navigateChartDay(1));
 }
 if (fEls.chartExportBtn) fEls.chartExportBtn.addEventListener("click", exportChartCsv);
 if (fEls.chartRetryBtn) {
@@ -527,10 +530,22 @@ function renderSystemTabs() {
 }
 
 /* ── Render normalized data ── */
+function renderWeatherStrip(weather) {
+  if (!els.weatherStrip || !els.weatherText) return;
+  const label = formatWeatherStrip(weather);
+  if (!label) {
+    els.weatherStrip.hidden = true;
+    return;
+  }
+  els.weatherText.textContent = label;
+  els.weatherStrip.hidden = false;
+}
+
 function renderData(d) {
   if (!d || d.error) {
     setInverterStatus("--");
     setStatus(false);
+    renderWeatherStrip(null);
     return;
   }
 
@@ -545,6 +560,7 @@ function renderData(d) {
   const inv = d.inverter || {};
 
   setInverterStatus(d.status);
+  renderWeatherStrip(d.weather);
 
   /* Battery */
   const soc = bat.soc ?? 0;
@@ -1166,7 +1182,7 @@ function renderChartWeekStrip(selectedDate, today = todayIsoDate()) {
   for (const date of dates) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "chart-day-pill";
+    btn.className = "chart-day-btn";
     if (date === selectedDate) btn.classList.add("active");
     if (date === today) btn.classList.add("is-today");
     btn.dataset.date = date;
@@ -1190,9 +1206,9 @@ function renderChartWeekStrip(selectedDate, today = todayIsoDate()) {
     strip.appendChild(btn);
   }
 
-  if (fEls.chartPrevDay) fEls.chartPrevDay.disabled = historyLoading;
-  if (fEls.chartNextDay) {
-    fEls.chartNextDay.disabled = historyLoading || selectedDate >= today;
+  if (fEls.chartPrev) fEls.chartPrev.disabled = historyLoading;
+  if (fEls.chartNext) {
+    fEls.chartNext.disabled = historyLoading || selectedDate >= today;
   }
 }
 

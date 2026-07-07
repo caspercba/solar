@@ -266,14 +266,58 @@ export async function discover(credentials, plantId = null) {
   };
 }
 
+/* ── Weather ── */
+
+/** Parse getWeatherByPlantId response into optional normalized weather fields. */
+export function parseGrowattWeather(resp) {
+  if (!resp || resp.result !== 1) return null;
+
+  const obj = resp.obj || {};
+  const heWeather = obj.data?.HeWeather6?.[0];
+  if (!heWeather) return null;
+
+  const now = heWeather.now || {};
+  const weather = {};
+
+  const temp = parseFloat(now.tmp);
+  if (Number.isFinite(temp)) weather.temperature = temp;
+
+  const hum = parseFloat(now.hum);
+  if (Number.isFinite(hum)) weather.humidity = Math.round(hum);
+
+  if (now.cond_txt) weather.condition = String(now.cond_txt);
+
+  const radiant = obj.radiant;
+  if (radiant != null && radiant !== "" && radiant !== "--") {
+    const irradiance = parseFloat(radiant);
+    if (Number.isFinite(irradiance)) weather.irradiance = irradiance;
+  }
+
+  const city = obj.city || heWeather.basic?.location;
+  if (city) weather.city = String(city);
+
+  return Object.keys(weather).length ? weather : null;
+}
+
+export async function fetchWeather(systemConfig) {
+  const { plantId } = systemConfig.credentials;
+  const resp = await postJsonWithRetry(
+    systemConfig,
+    `/index/getWeatherByPlantId?plantId=${plantId}`,
+    {},
+  );
+  return parseGrowattWeather(resp);
+}
+
 /* ── Data fetch + normalize ── */
 
 export async function fetchData(systemConfig) {
   const { plantId, storageSn, nominalPower, nominalPV } = systemConfig.credentials;
 
-  const [statusResp, totalsResp] = await Promise.all([
+  const [statusResp, totalsResp, weatherResp] = await Promise.all([
     postJsonWithRetry(systemConfig, `/panel/storage/getStorageStatusData?plantId=${plantId}`, { storageSn }),
     postJsonWithRetry(systemConfig, `/panel/storage/getStorageTotalData?plantId=${plantId}`, { storageSn }),
+    postJsonWithRetry(systemConfig, `/index/getWeatherByPlantId?plantId=${plantId}`, {}).catch(() => null),
   ]);
 
   if (statusResp.result !== 1) throw new Error("Failed to fetch Growatt status data");
@@ -300,7 +344,7 @@ export async function fetchData(systemConfig) {
     energyToday = parseFloat(totalsResp.obj?.epvToday) || 0;
   }
 
-  return {
+  const payload = {
     systemId: systemConfig.id,
     name: systemConfig.name,
     service: "growatt",
@@ -313,6 +357,11 @@ export async function fetchData(systemConfig) {
     status: statusText,
     energyToday,
   };
+
+  const weather = parseGrowattWeather(weatherResp);
+  if (weather) payload.weather = weather;
+
+  return payload;
 }
 
 export function statusLabel(statusCode) {
