@@ -252,6 +252,57 @@ describe("worker routes", () => {
     expect(stored.credentials.devices).toHaveLength(2);
   });
 
+  it("POST /api/systems discovers Growatt and stores sessionCookies instead of password", async () => {
+    globalThis.fetch = vi.fn(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith("/login") && init?.method === "POST") {
+        return new Response(JSON.stringify({ result: 1 }), {
+          headers: { "set-cookie": "JSESSIONID=growatt-sess; Path=/" },
+        });
+      }
+      if (u.includes("getPlantListTitle")) {
+        return Response.json([{ id: 42, plantName: "Growatt Farm" }]);
+      }
+      if (u.includes("getDevicesByPlantList")) {
+        return Response.json({
+          result: 1,
+          obj: { datas: [{ sn: "SN1", nominalPower: "5000", deviceModel: "MOD" }] },
+        });
+      }
+      if (u.includes("getPlantData")) {
+        return Response.json({ result: 1, obj: { nominalPower: "6000" } });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "growatt",
+          name: "Growatt Site",
+          user: "growatt@test.com",
+          password: "password",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.service).toBe("growatt");
+    expect(json.name).toBe("Growatt Site");
+
+    const stored = await systems.SYSTEMS.get(`system:${json.id}`, "json");
+    expect(stored.credentials.user).toBe("growatt@test.com");
+    expect(stored.credentials.password).toBeUndefined();
+    expect(stored.credentials.sessionCookies).toEqual({ JSESSIONID: "growatt-sess" });
+    expect(stored.credentials.plantId).toBe("42");
+    expect(stored.credentials.storageSn).toBe("SN1");
+  });
+
   it("PUT /api/systems/:id/alerts updates alert settings", async () => {
     const systems = env();
     await systems.SYSTEMS.put("_index", JSON.stringify([

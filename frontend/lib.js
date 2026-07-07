@@ -117,3 +117,26 @@ export function shouldShowEstimatedSocBadge(historyData) {
   const src = historyData?.socSource;
   return src === "estimated" || src === "mixed";
 }
+
+export const DEFAULT_POLL_INTERVAL_SEC = 60;
+export const POLL_INTERVAL_OPTIONS_SEC = [30, 60, 120];
+
+/** Normalize stored poll interval to a supported seconds value. */
+export function normalizePollIntervalSec(value, options = POLL_INTERVAL_OPTIONS_SEC, defaultSec = DEFAULT_POLL_INTERVAL_SEC) {
+  const sec = Number.parseInt(String(value ?? ""), 10);
+  if (options.includes(sec)) return sec;
+  return defaultSec;
+}
+
+export function pollIntervalSecToMs(sec) {
+  return normalizePollIntervalSec(sec) * 1000;
+}
+
+export function formatPollIntervalLabel(sec) {
+  if (sec < 60) return `${sec} seconds`;
+  if (sec > 60 && sec % 60 === 0) {
+    const mins = sec / 60;
+    return `${mins} minutes`;
+  }
+  return `${sec} seconds`;
+}

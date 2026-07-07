@@ -15,10 +15,14 @@ import {
   fmtWeekStripWeekday,
   fmtWeekStripDay,
   shouldShowEstimatedSocBadge,
+  normalizePollIntervalSec,
+  pollIntervalSecToMs,
+  formatPollIntervalLabel,
+  POLL_INTERVAL_OPTIONS_SEC,
 } from "./frontend/lib.js";
 
 /* ── Config ── */
-const POLL_MS = 60_000;
+const POLL_INTERVAL_KEY = "solar_poll_interval";
 const CONN_KEY = "solar_conn";
 const VIEW_KEY = "solar_view";
 const ACTIVE_KEY = "solar_active";
@@ -29,6 +33,31 @@ const CHART_SWIPE_THRESHOLD = 50;
 function saveConn(data) { localStorage.setItem(CONN_KEY, JSON.stringify(data)); }
 function loadConn() { try { return JSON.parse(localStorage.getItem(CONN_KEY)); } catch { return null; } }
 function clearConn() { localStorage.removeItem(CONN_KEY); }
+
+function getPollIntervalSec() {
+  return normalizePollIntervalSec(localStorage.getItem(POLL_INTERVAL_KEY));
+}
+
+function getPollMs() {
+  return pollIntervalSecToMs(getPollIntervalSec());
+}
+
+function savePollIntervalSec(sec) {
+  localStorage.setItem(POLL_INTERVAL_KEY, String(normalizePollIntervalSec(sec)));
+}
+
+function syncPollIntervalSelect() {
+  const select = $("poll-interval");
+  if (!select) return;
+  select.value = String(getPollIntervalSec());
+}
+
+function restartPollingIfActive() {
+  if (pollTimer) {
+    stopPolling();
+    startPolling();
+  }
+}
 
 async function api(method, path, body) {
   const conn = loadConn();
@@ -80,6 +109,9 @@ const els = {
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
   inverterStatus: $("inverter-status"),
+  pollErrorToast: $("poll-error-toast"),
+  pollErrorMsg: $("poll-error-msg"),
+  pollRetryBtn: $("poll-retry-btn"),
 };
 
 const fEls = {
@@ -136,6 +168,7 @@ const manageList = $("manage-list");
 let systems = [];
 let activeSystemId = null;
 let pollTimer = null;
+let pollRetrying = false;
 let hasData = false;
 let currentView = "cards";
 let historyLoading = false;
@@ -252,6 +285,29 @@ function showDash() {
 
 function setStatus(ok) {
   els.statusDot.className = ok ? "dot dot-ok" : "dot dot-err";
+}
+
+function showPollError(message) {
+  if (!els.pollErrorToast || !els.pollErrorMsg) return;
+  els.pollErrorMsg.textContent = message;
+  els.pollErrorToast.hidden = false;
+}
+
+function hidePollError() {
+  if (!els.pollErrorToast) return;
+  els.pollErrorToast.hidden = true;
+  if (els.pollRetryBtn) {
+    els.pollRetryBtn.disabled = false;
+    els.pollRetryBtn.textContent = "Retry";
+  }
+  pollRetrying = false;
+}
+
+function setPollRetrying(retrying) {
+  pollRetrying = retrying;
+  if (!els.pollRetryBtn) return;
+  els.pollRetryBtn.disabled = retrying;
+  els.pollRetryBtn.textContent = retrying ? "Retrying…" : "Retry";
 }
 
 /* ── System tabs ── */
@@ -999,24 +1055,35 @@ async function pollNow() {
   try {
     const data = await api("GET", `/api/systems/${activeSystemId}/data`);
     renderData(data);
+    hidePollError();
   } catch (err) {
     console.error("poll error:", err);
     setLoading(false);
     setStatus(false);
+    showPollError(chartErrorMessage(err, "Could not load system data."));
+  } finally {
+    setPollRetrying(false);
   }
+}
+
+async function retryPollNow() {
+  if (!activeSystemId || pollRetrying) return;
+  setPollRetrying(true);
+  await pollNow();
 }
 
 function startPolling() {
   if (pollTimer) clearTimeout(pollTimer);
   async function tick() {
     await pollNow();
-    pollTimer = setTimeout(tick, POLL_MS);
+    pollTimer = setTimeout(tick, getPollMs());
   }
   tick();
 }
 
 function stopPolling() {
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  hidePollError();
 }
 
 /* ── Load systems list ── */
@@ -1207,6 +1274,7 @@ function renderAlertForm(sys) {
 
 function openManageModal() {
   manageModal.hidden = false;
+  syncPollIntervalSelect();
   manageList.innerHTML = "";
 
   if (!systems.length) {
@@ -1253,6 +1321,18 @@ els.manageBtn.addEventListener("click", openManageModal);
 $("manage-close").addEventListener("click", () => { manageModal.hidden = true; });
 $("manage-add").addEventListener("click", openAddModal);
 
+const pollIntervalSelect = $("poll-interval");
+if (pollIntervalSelect) {
+  pollIntervalSelect.innerHTML = POLL_INTERVAL_OPTIONS_SEC.map((sec) => {
+    return `<option value="${sec}">${formatPollIntervalLabel(sec)}</option>`;
+  }).join("");
+  pollIntervalSelect.value = String(getPollIntervalSec());
+  pollIntervalSelect.addEventListener("change", () => {
+    savePollIntervalSec(pollIntervalSelect.value);
+    restartPollingIfActive();
+  });
+}
+
 /* ── Setup (proxy connection) ── */
 els.setupForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1293,6 +1373,10 @@ els.disconnectBtn.addEventListener("click", () => {
   stopPolling();
   showSetup();
 });
+
+if (els.pollRetryBtn) {
+  els.pollRetryBtn.addEventListener("click", () => retryPollNow());
+}
 
 /* ── Pull to refresh ── */
 {
@@ -1337,7 +1421,7 @@ els.disconnectBtn.addEventListener("click", () => {
         ? loadChartView()
         : pollNow();
       refresh.then(() => {
-        if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), POLL_MS);
+        if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), getPollMs());
       }).finally(() => {
         refreshing = false;
         ptr.className = "ptr";

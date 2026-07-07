@@ -801,6 +801,34 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 /* ---------- MANAGE LIST ---------- */
 
+.manage-settings {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.manage-settings label {
+  font-size: .75rem;
+  color: var(--text-dim);
+}
+
+.manage-settings select {
+  width: 100%;
+  padding: .55rem .65rem;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: .85rem;
+  appearance: none;
+  cursor: pointer;
+}
+
+.manage-settings select:focus { border-color: var(--accent-sol); }
+
 .manage-list { max-height: 70vh; overflow-y: auto; }
 
 .modal-wide {
@@ -944,6 +972,60 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 .alert-ok { color: var(--accent-bat); }
 .alert-err { color: var(--error); }
+
+/* ---------- POLL ERROR TOAST ---------- */
+
+.poll-error-toast {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem 1rem;
+  background: color-mix(in srgb, var(--card-bg) 92%, var(--error) 8%);
+  border: 1px solid color-mix(in srgb, var(--error) 45%, var(--card-border));
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  max-width: 580px;
+  margin: 0 auto;
+}
+
+.poll-error-toast[hidden] {
+  display: none !important;
+}
+
+.poll-error-msg {
+  flex: 1;
+  margin: 0;
+  font-size: .85rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.poll-retry-btn {
+  flex-shrink: 0;
+  padding: .45rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--error) 55%, var(--card-border));
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.poll-retry-btn:hover:not(:disabled) {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.poll-retry-btn:disabled {
+  opacity: .6;
+  cursor: wait;
+}
 
 /* ---------- FOOTER ---------- */
 

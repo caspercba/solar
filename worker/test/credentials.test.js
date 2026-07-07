@@ -19,7 +19,7 @@ describe("credentials encryption", () => {
   it("round-trips Growatt credentials", async () => {
     const plain = {
       user: "growatt-user",
-      password: "secret-pass",
+      sessionCookies: { JSESSIONID: "abc123" },
       plantId: "12345",
       storageSn: "SN001",
       nominalPower: 5000,

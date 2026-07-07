@@ -44,6 +44,24 @@ async function apiAuth(user, pwdSha1) {
   return { ...json.dat, ts: Date.now() };
 }
 
+/** Thrown when the vendor rejects token/secret — triggers one re-login retry. */
+export class ShineMonitorAuthError extends Error {
+  constructor(message, errCode = null) {
+    super(message);
+    this.name = "ShineMonitorAuthError";
+    this.errCode = errCode;
+  }
+}
+
+/** Detect expired/invalid token or sign failures from vendor JSON or HTTP status. */
+export function isAuthFailure(json, httpStatus = 200) {
+  if (httpStatus === 401 || httpStatus === 403) return true;
+  if (!json || json.err === 0) return false;
+  const desc = String(json.desc || "").toUpperCase();
+  if (/TOKEN|SIGN|AUTH|LOGIN|EXPIR|SESSION|UNAUTHORIZED/.test(desc)) return true;
+  return false;
+}
+
 async function apiGet(session, actionCore) {
   const action = `${actionCore}&i18n=en_US&lang=en_US`;
   const salt = Date.now();
@@ -52,7 +70,11 @@ async function apiGet(session, actionCore) {
   const url = `${API_BASE}?sign=${sign}&salt=${salt}&token=${session.token}${enc}`;
   const resp = await fetch(url);
   const json = await resp.json();
-  if (json.err !== 0) throw new Error(json.desc || `API error ${json.err}`);
+  if (json.err !== 0) {
+    const message = json.desc || `API error ${json.err}`;
+    if (isAuthFailure(json, resp.status)) throw new ShineMonitorAuthError(message, json.err);
+    throw new Error(message);
+  }
   return json.dat;
 }
 
@@ -61,14 +83,49 @@ async function apiGet(session, actionCore) {
 const sessionCache = new Map();
 const SESSION_TTL = 300_000; // 5 min
 
+function invalidateSession(systemConfig) {
+  sessionCache.delete(systemConfig.id);
+}
+
+/** @internal Test helper — clears in-memory session cache between test cases. */
+export function _clearSessionCacheForTests() {
+  sessionCache.clear();
+}
+
+async function loginSession(systemConfig) {
+  const sess = await apiAuth(systemConfig.credentials.user, systemConfig.credentials.pwdSha1);
+  sessionCache.set(systemConfig.id, sess);
+  return sess;
+}
+
 async function getSession(systemConfig) {
   const key = systemConfig.id;
   const cached = sessionCache.get(key);
   if (cached && Date.now() - cached.ts < SESSION_TTL) return cached;
+  return loginSession(systemConfig);
+}
 
-  const sess = await apiAuth(systemConfig.credentials.user, systemConfig.credentials.pwdSha1);
-  sessionCache.set(key, sess);
-  return sess;
+/**
+ * Run an operation with a cached session; on auth failure, re-login once and retry.
+ * Persistent auth failure surfaces as a clear Error for 502 mapping upstream.
+ */
+async function withAuthRetry(systemConfig, operation) {
+  let session = await getSession(systemConfig);
+  try {
+    return await operation(session);
+  } catch (err) {
+    if (!(err instanceof ShineMonitorAuthError)) throw err;
+    invalidateSession(systemConfig);
+    session = await loginSession(systemConfig);
+    try {
+      return await operation(session);
+    } catch (retryErr) {
+      if (retryErr instanceof ShineMonitorAuthError) {
+        throw new Error(`ShineMonitor authentication failed: ${retryErr.message}`);
+      }
+      throw retryErr;
+    }
+  }
 }
 
 /* ── Discovery: find plant + device info on first setup ── */
@@ -385,55 +442,56 @@ export function mergeHistoryByTime(devicePointLists) {
 }
 
 export async function fetchHistory(systemConfig, date) {
-  const sess = await getSession(systemConfig);
-  const { timezone } = systemConfig.credentials;
-  const devices = getActiveDevices(systemConfig.credentials);
-  const tzOffset = timezone ?? 0;
-  const today = localDate(tzOffset);
-  let queryDate = date || today;
+  return withAuthRetry(systemConfig, async (sess) => {
+    const { timezone } = systemConfig.credentials;
+    const devices = getActiveDevices(systemConfig.credentials);
+    const tzOffset = timezone ?? 0;
+    const today = localDate(tzOffset);
+    let queryDate = date || today;
 
-  async function fetchRowsForDate(d) {
-    const results = await Promise.all(
-      devices.map((device) => fetchAllDeviceData(sess, device, d)),
-    );
-    if (devices.length === 1) {
-      return results[0];
+    async function fetchRowsForDate(d) {
+      const results = await Promise.all(
+        devices.map((device) => fetchAllDeviceData(sess, device, d)),
+      );
+      if (devices.length === 1) {
+        return results[0];
+      }
+      const titles = results[0]?.titles || [];
+      const mergedPoints = mergeHistoryByTime(
+        results.map((r) => parseHistoryRows(r.titles, r.rows).points),
+      );
+      return { titles, rows: [], _mergedPoints: mergedPoints };
     }
-    const titles = results[0]?.titles || [];
-    const mergedPoints = mergeHistoryByTime(
-      results.map((r) => parseHistoryRows(r.titles, r.rows).points),
-    );
-    return { titles, rows: [], _mergedPoints: mergedPoints };
-  }
 
-  let result = await fetchRowsForDate(queryDate);
+    let result = await fetchRowsForDate(queryDate);
 
-  if (!result._mergedPoints && !result.rows.length && !date && queryDate === today) {
-    queryDate = localDate(tzOffset - 86400);
-    result = await fetchRowsForDate(queryDate);
-  }
+    if (!result._mergedPoints && !result.rows.length && !date && queryDate === today) {
+      queryDate = localDate(tzOffset - 86400);
+      result = await fetchRowsForDate(queryDate);
+    }
 
-  let points;
-  let socSource;
-  if (result._mergedPoints) {
-    points = result._mergedPoints;
-    socSource = devices.length > 1 ? "mixed" : null;
-  } else {
-    ({ points, socSource } = parseHistoryRows(result.titles, result.rows));
-  }
+    let points;
+    let socSource;
+    if (result._mergedPoints) {
+      points = result._mergedPoints;
+      socSource = devices.length > 1 ? "mixed" : null;
+    } else {
+      ({ points, socSource } = parseHistoryRows(result.titles, result.rows));
+    }
 
-  return {
-    systemId: systemConfig.id,
-    name: systemConfig.name,
-    service: "shinemonitor",
-    date: queryDate,
-    timezoneOffset: tzOffset,
-    intervalMinutes: 5,
-    points,
-    socSource,
-    deviceMode: systemConfig.credentials.deviceMode || "primary",
-    deviceCount: devices.length,
-  };
+    return {
+      systemId: systemConfig.id,
+      name: systemConfig.name,
+      service: "shinemonitor",
+      date: queryDate,
+      timezoneOffset: tzOffset,
+      intervalMinutes: 5,
+      points,
+      socSource,
+      deviceMode: systemConfig.credentials.deviceMode || "primary",
+      deviceCount: devices.length,
+    };
+  });
 }
 
 function emptySummaryDay(date) {
@@ -484,58 +542,60 @@ export async function fetchHistorySummary(systemConfig, days = 7, endDate = null
 }
 
 export async function fetchData(systemConfig) {
-  const sess = await getSession(systemConfig);
-  const { plantId, timezone } = systemConfig.credentials;
-  const devices = getActiveDevices(systemConfig.credentials);
-  const tzOffset = timezone ?? 0;
-  const today = localDate(tzOffset);
+  return withAuthRetry(systemConfig, async (sess) => {
+    const { plantId, timezone } = systemConfig.credentials;
+    const devices = getActiveDevices(systemConfig.credentials);
+    const tzOffset = timezone ?? 0;
+    const today = localDate(tzOffset);
 
-  const plantCurrentPromise = apiGet(sess, `&action=queryPlantCurrentData&plantid=${plantId}&par=CURRENT_POWER,ENERGY_TODAY,BATTERY_SOC`);
+    const plantCurrentPromise = apiGet(sess, `&action=queryPlantCurrentData&plantid=${plantId}&par=CURRENT_POWER,ENERGY_TODAY,BATTERY_SOC`);
 
-  async function fetchSnapshotsForDate(date) {
-    return Promise.all(devices.map((device) => fetchLatestDeviceRow(sess, device, date)));
-  }
+    async function fetchSnapshotsForDate(date) {
+      return Promise.all(devices.map((device) => fetchLatestDeviceRow(sess, device, date)));
+    }
 
-  let snapshots;
-  try {
-    snapshots = await fetchSnapshotsForDate(today);
-  } catch {
-    const yesterday = localDate(tzOffset - 86400);
-    snapshots = await fetchSnapshotsForDate(yesterday);
-  }
+    let snapshots;
+    try {
+      snapshots = await fetchSnapshotsForDate(today);
+    } catch (err) {
+      if (err instanceof ShineMonitorAuthError) throw err;
+      const yesterday = localDate(tzOffset - 86400);
+      snapshots = await fetchSnapshotsForDate(yesterday);
+    }
 
-  const plantCurrent = await plantCurrentPromise;
-  const merged = aggregateDeviceSnapshots(snapshots);
-  const { batV, batA, solarW, pvV, loadW, gridW, gridV, ratedW, workState, ts } = merged;
+    const plantCurrent = await plantCurrentPromise;
+    const merged = aggregateDeviceSnapshots(snapshots);
+    const { batV, batA, solarW, pvV, loadW, gridW, gridV, ratedW, workState, ts } = merged;
 
-  const nominalPV = systemConfig.credentials.nominalPower || 5000;
-  const ratedPower = ratedW || 5000;
+    const nominalPV = systemConfig.credentials.nominalPower || 5000;
+    const ratedPower = ratedW || 5000;
 
-  const { soc, socSource } = resolveBatterySoc(plantCurrent, batV);
+    const { soc, socSource } = resolveBatterySoc(plantCurrent, batV);
 
-  const genOn = gridV > 30 && Math.abs(gridW) > 5;
+    const genOn = gridV > 30 && Math.abs(gridW) > 5;
 
-  let energyToday = null;
-  if (Array.isArray(plantCurrent)) {
-    const item = plantCurrent.find(i => i.key === "ENERGY_TODAY");
-    if (item) energyToday = parseFloat(item.val);
-  }
+    let energyToday = null;
+    if (Array.isArray(plantCurrent)) {
+      const item = plantCurrent.find(i => i.key === "ENERGY_TODAY");
+      if (item) energyToday = parseFloat(item.val);
+    }
 
-  const deviceMode = systemConfig.credentials.deviceMode || "primary";
+    const deviceMode = systemConfig.credentials.deviceMode || "primary";
 
-  return {
-    systemId: systemConfig.id,
-    name: systemConfig.name,
-    service: "shinemonitor",
-    timestamp: ts,
-    battery: { voltage: batV, soc, socSource, current: batA, power: Math.round(batV * batA) },
-    solar: { power: solarW, voltage: pvV },
-    load: { power: loadW, percent: Math.round((loadW / ratedPower) * 100) },
-    grid: { power: gridW, voltage: gridV, active: genOn },
-    inverter: { ratedPower, nominalPV },
-    status: workState,
-    energyToday,
-    deviceMode,
-    deviceCount: devices.length,
-  };
+    return {
+      systemId: systemConfig.id,
+      name: systemConfig.name,
+      service: "shinemonitor",
+      timestamp: ts,
+      battery: { voltage: batV, soc, socSource, current: batA, power: Math.round(batV * batA) },
+      solar: { power: solarW, voltage: pvV },
+      load: { power: loadW, percent: Math.round((loadW / ratedPower) * 100) },
+      grid: { power: gridW, voltage: gridV, active: genOn },
+      inverter: { ratedPower, nominalPV },
+      status: workState,
+      energyToday,
+      deviceMode,
+      deviceCount: devices.length,
+    };
+  });
 }
