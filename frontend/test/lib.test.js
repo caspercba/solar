@@ -21,6 +21,8 @@ import {
   pollIntervalSecToMs,
   formatPollIntervalLabel,
   POLL_INTERVAL_OPTIONS_SEC,
+  isEditableElement,
+  matchesDashboardRefreshShortcut,
   DEFAULT_POLL_INTERVAL_SEC,
 } from "../lib.js";
 
@@ -252,5 +254,49 @@ describe("poll interval helpers", () => {
     expect(formatPollIntervalLabel(30)).toBe("30 seconds");
     expect(formatPollIntervalLabel(60)).toBe("60 seconds");
     expect(formatPollIntervalLabel(120)).toBe("2 minutes");
+  });
+});
+
+describe("isEditableElement", () => {
+  it("returns false for null and non-editable elements", () => {
+    expect(isEditableElement(null)).toBe(false);
+    expect(isEditableElement({ tagName: "DIV" })).toBe(false);
+    expect(isEditableElement({ tagName: "BUTTON" })).toBe(false);
+  });
+
+  it("returns true for text inputs, textarea, and select", () => {
+    expect(isEditableElement({ tagName: "INPUT", type: "text" })).toBe(true);
+    expect(isEditableElement({ tagName: "INPUT", type: "password" })).toBe(true);
+    expect(isEditableElement({ tagName: "INPUT", type: "date" })).toBe(true);
+    expect(isEditableElement({ tagName: "TEXTAREA" })).toBe(true);
+    expect(isEditableElement({ tagName: "SELECT" })).toBe(true);
+  });
+
+  it("returns false for non-text input types", () => {
+    expect(isEditableElement({ tagName: "INPUT", type: "button" })).toBe(false);
+    expect(isEditableElement({ tagName: "INPUT", type: "checkbox" })).toBe(false);
+    expect(isEditableElement({ tagName: "INPUT", type: "hidden" })).toBe(false);
+  });
+
+  it("returns true for contenteditable elements", () => {
+    expect(isEditableElement({ tagName: "DIV", isContentEditable: true })).toBe(true);
+  });
+});
+
+describe("matchesDashboardRefreshShortcut", () => {
+  it("matches F5", () => {
+    expect(matchesDashboardRefreshShortcut({ key: "F5" })).toBe(true);
+  });
+
+  it("matches Ctrl+R and Cmd+R without modifiers", () => {
+    expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true })).toBe(true);
+    expect(matchesDashboardRefreshShortcut({ key: "R", metaKey: true })).toBe(true);
+  });
+
+  it("does not match plain R or modified variants", () => {
+    expect(matchesDashboardRefreshShortcut({ key: "r" })).toBe(false);
+    expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, shiftKey: true })).toBe(false);
+    expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, altKey: true })).toBe(false);
+    expect(matchesDashboardRefreshShortcut({ key: "F6" })).toBe(false);
   });
 });
