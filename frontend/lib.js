@@ -140,3 +140,22 @@ export function formatPollIntervalLabel(sec) {
   }
   return `${sec} seconds`;
 }
+
+/** True when the element accepts text entry (skip refresh shortcuts). */
+export function isEditableElement(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag === "INPUT") {
+    const type = (el.type || "text").toLowerCase();
+    return !["button", "submit", "reset", "checkbox", "radio", "file", "hidden", "range", "color"].includes(type);
+  }
+  return !!el.isContentEditable;
+}
+
+/** F5 or Ctrl/Cmd+R — same keys users expect for refresh. */
+export function matchesDashboardRefreshShortcut({ key, ctrlKey, metaKey, shiftKey, altKey }) {
+  if (key === "F5") return true;
+  if ((ctrlKey || metaKey) && !shiftKey && !altKey && key.toLowerCase() === "r") return true;
+  return false;
+}

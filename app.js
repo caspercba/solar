@@ -19,6 +19,8 @@ import {
   pollIntervalSecToMs,
   formatPollIntervalLabel,
   POLL_INTERVAL_OPTIONS_SEC,
+  isEditableElement,
+  matchesDashboardRefreshShortcut,
 } from "./frontend/lib.js";
 
 /* ── Config ── */
@@ -169,6 +171,7 @@ let systems = [];
 let activeSystemId = null;
 let pollTimer = null;
 let pollRetrying = false;
+let dashboardRefreshing = false;
 let hasData = false;
 let currentView = "cards";
 let historyLoading = false;
@@ -1086,6 +1089,22 @@ function stopPolling() {
   hidePollError();
 }
 
+/** Same refresh path as pull-to-refresh (cards/flow → poll, chart → history). */
+async function refreshDashboardNow() {
+  if (dashboardRefreshing || els.dashScreen.hidden) return;
+  dashboardRefreshing = true;
+  try {
+    if (pollTimer) clearTimeout(pollTimer);
+    const refresh = currentView === "chart"
+      ? loadChartView()
+      : pollNow();
+    await refresh;
+    if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), getPollMs());
+  } finally {
+    dashboardRefreshing = false;
+  }
+}
+
 /* ── Load systems list ── */
 async function loadSystems() {
   systems = await api("GET", "/api/systems");
@@ -1378,6 +1397,15 @@ if (els.pollRetryBtn) {
   els.pollRetryBtn.addEventListener("click", () => retryPollNow());
 }
 
+/* ── Desktop keyboard refresh (F5 / Ctrl|Cmd+R) ── */
+document.addEventListener("keydown", (e) => {
+  if (els.dashScreen.hidden) return;
+  if (isEditableElement(document.activeElement)) return;
+  if (!matchesDashboardRefreshShortcut(e)) return;
+  e.preventDefault();
+  refreshDashboardNow();
+});
+
 /* ── Pull to refresh ── */
 {
   const ptr = $("ptr");
@@ -1393,7 +1421,7 @@ if (els.pollRetryBtn) {
   }
 
   dash.addEventListener("touchstart", (e) => {
-    if (refreshing || !isAtTop()) return;
+    if (refreshing || dashboardRefreshing || !isAtTop()) return;
     startY = e.touches[0].clientY;
     pulling = true;
   }, { passive: true });
@@ -1412,17 +1440,11 @@ if (els.pollRetryBtn) {
     if (!pulling) return;
     pulling = false;
     const armed = ptr.classList.contains("armed");
-    if (armed && !refreshing) {
+    if (armed && !refreshing && !dashboardRefreshing) {
       refreshing = true;
       ptr.className = "ptr refreshing";
       ptr.style.height = "36px";
-      if (pollTimer) clearTimeout(pollTimer);
-      const refresh = currentView === "chart"
-        ? loadChartView()
-        : pollNow();
-      refresh.then(() => {
-        if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), getPollMs());
-      }).finally(() => {
+      refreshDashboardNow().finally(() => {
         refreshing = false;
         ptr.className = "ptr";
         ptr.style.height = "0";
