@@ -1,0 +1,44 @@
+Task: Test — Add ShineMonitor automatic re-auth on token expiry
+Date: 2026-07-07
+Branch: worker/tester/d84b0f2b
+
+## Commands run
+
+1. `npm ci --prefix worker && npm ci --prefix frontend && npm ci --prefix e2e` — PASS (deps installed)
+2. `pnpm test` — NOT AVAILABLE (pnpm not installed; no root test script). Ran equivalent suites below.
+3. `npm --prefix worker test` — PASS
+4. `npm --prefix frontend test` — PASS
+5. `npm --prefix worker test -- test/shinemonitor.test.js` — PASS (22/22)
+6. E2E (`npx playwright install chromium` + `npm --prefix e2e run test:ci`) — SKIPPED (Playwright browser download returned HTTP 403). Change is worker-only; UI/E2E not required per task scope.
+
+## Worker test results
+
+```
+Test Files  13 passed (13)
+     Tests  137 passed (137)
+```
+
+## Frontend test results
+
+```
+Test Files  2 passed (2)
+     Tests  71 passed (71)
+```
+
+## Acceptance criteria verification
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Simulated 401/expired token triggers re-auth and successful retry | PASS | `shinemonitor.test.js`: "re-authenticates once when token expires and retries successfully" (fetchData); "re-authenticates once when history fetch hits expired token" (fetchHistory). authCalls=2, retry succeeds with fresh token. |
+| Unit test with mocked vendor responses | PASS | Tests mock `globalThis.fetch` returning 401 + ERR_TOKEN_EXPIRED for expired-token URLs, fresh auth on second login. |
+| No infinite retry loop | PASS | "surfaces persistent auth failure without infinite retries" — authCalls=2, throws `ShineMonitor authentication failed: ERR_TOKEN_EXPIRED`. |
+| isAuthFailure detection | PASS | Tests HTTP 401/403 and token/sign/auth message patterns. |
+
+## Implementation notes (reviewed)
+
+- `worker/src/services/shinemonitor.js`: `ShineMonitorAuthError`, `isAuthFailure()`, `withAuthRetry()` invalidates session cache and re-logins once before surfacing persistent failure as `ShineMonitor authentication failed: …` (mapped to 502 upstream).
+- Commit `5d79961` ("Add ShineMonitor automatic re-auth on token expiry.") present on branch.
+
+## Overall status: PASS
+
+All relevant unit tests pass. No developer fix tasks required.
