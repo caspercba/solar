@@ -4,6 +4,7 @@ import {
   clearAppStorage,
   loginViaDeepLink,
   waitForDashboardData,
+  waitForCompareData,
   switchView,
 } from "../helpers.js";
 import { MOCK_SYSTEM_ID_2 } from "../fixtures/payloads.js";
@@ -103,6 +104,58 @@ test.describe("View toggle persistence", () => {
     await expect(page.locator("#chart-view")).toBeVisible();
     await page.reload();
     await expect(page.locator("#chart-view")).toBeVisible();
+  });
+});
+
+test.describe("Compare view", () => {
+  test("shows Compare tab when two or more systems configured", async ({ page }) => {
+    await expect(page.locator("#tab-compare")).toBeVisible();
+    await expect(page.locator("#tab-compare")).toHaveText("Compare");
+  });
+
+  test("renders side-by-side metrics and highlights lowest SOC and generator", async ({ page }) => {
+    await switchView(page, "compare");
+    await waitForCompareData(page);
+
+    const cards = page.locator(".compare-card");
+    await expect(cards).toHaveCount(2);
+
+    const cabin = page.locator(".compare-card", { hasText: "Mock Cabin" });
+    const home = page.locator(".compare-card", { hasText: "Mock Home Solar" });
+
+    await expect(cabin).toHaveClass(/compare-lowest-soc/);
+    await expect(cabin).toHaveClass(/compare-gen-active/);
+    await expect(cabin.locator(".compare-highlight-lowest")).toBeVisible();
+    await expect(cabin.locator(".compare-highlight-gen")).toBeVisible();
+    await expect(cabin.locator(".compare-metric-soc .compare-value")).toHaveText("45%");
+    await expect(cabin.locator(".compare-metric-solar .compare-value")).toHaveText("1200 W");
+    await expect(cabin.locator(".compare-metric-load .compare-value")).toHaveText("850 W");
+    await expect(cabin.locator(".gen-badge")).toHaveText("ON");
+
+    await expect(home).not.toHaveClass(/compare-lowest-soc/);
+    await expect(home).not.toHaveClass(/compare-gen-active/);
+    await expect(home.locator(".compare-metric-soc .compare-value")).toHaveText("72%");
+    await expect(home.locator(".gen-badge")).toHaveText("OFF");
+  });
+
+  test("persists compare view in localStorage across reload", async ({ page }) => {
+    await switchView(page, "compare");
+    await waitForCompareData(page);
+
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem("solar_view")))
+      .toBe("compare");
+
+    await page.reload();
+    await expect(page.locator("#compare-view")).toBeVisible();
+    await expect(page.locator("#tab-compare")).toHaveClass(/active/);
+    await waitForCompareData(page);
+  });
+
+  test("hides system tabs while comparing all systems", async ({ page }) => {
+    await switchView(page, "compare");
+    await waitForCompareData(page);
+    await expect(page.locator("#system-tabs")).toBeHidden();
   });
 });
 

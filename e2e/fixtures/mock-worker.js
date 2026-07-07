@@ -85,6 +85,10 @@ export async function handleMockWorkerRequest(request) {
     return json(systems, 200, origin);
   }
 
+  if (path === "/api/systems/all/data" && request.method === "GET") {
+    return json(systems.map((s) => realtimeData(s.id)), 200, origin);
+  }
+
   const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
   if (credentialsMatch && request.method === "PUT") {
     const id = credentialsMatch[1];
