@@ -4,6 +4,7 @@ import {
   fetchHistory,
   fetchSocChart,
   fetchSocDailySummary,
+  parseGrowattWeather,
   withAdapterContext,
 } from "../src/services/growatt.js";
 import { createMockKV, expectNormalizedShape } from "./helpers.js";
@@ -61,6 +62,21 @@ describe("growatt fetchData normalization", () => {
       if (u.includes("getStorageTotalData")) {
         return Response.json({ result: 1, obj: { epvToday: "8.3" } });
       }
+      if (u.includes("getWeatherByPlantId")) {
+        return Response.json({
+          result: 1,
+          obj: {
+            city: "Los reartes",
+            radiant: "420",
+            data: {
+              HeWeather6: [{
+                now: { tmp: "11", hum: "82", cond_txt: "Shower Rain" },
+                basic: { location: "Los reartes" },
+              }],
+            },
+          },
+        });
+      }
       throw new Error(`Unexpected fetch: ${u}`);
     });
 
@@ -71,6 +87,104 @@ describe("growatt fetchData normalization", () => {
     expect(data.solar.power).toBe(1500);
     expect(data.energyToday).toBe(8.3);
     expect(data.status).toBe("PV Charging");
+    expect(data.weather).toEqual({
+      temperature: 11,
+      humidity: 82,
+      condition: "Shower Rain",
+      irradiance: 420,
+      city: "Los reartes",
+    });
+  });
+
+  it("omits weather when vendor returns no data", async () => {
+    const systemConfig = {
+      id: "growatt-1",
+      name: "Growatt Home",
+      credentials: {
+        user: "growatt-user",
+        password: "secret",
+        plantId: "42",
+        storageSn: "STORAGE-SN",
+        nominalPower: 3500,
+        nominalPV: 4000,
+      },
+    };
+
+    globalThis.fetch = vi.fn(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith("/login") && init?.method === "POST") {
+        return new Response(JSON.stringify({ result: 1 }), {
+          headers: { "set-cookie": "JSESSIONID=abc123; Path=/" },
+        });
+      }
+      if (u.includes("getStorageStatusData")) {
+        return Response.json({
+          result: 1,
+          obj: {
+            panelPower: "1500",
+            vPv1: "360",
+            vBat: "51.2",
+            capacity: "80",
+            batPower: "200",
+            loadPower: "900",
+            loadPrecent: "25",
+            gridPower: "100",
+            vAcInput: "230",
+            status: "5",
+          },
+        });
+      }
+      if (u.includes("getStorageTotalData")) {
+        return Response.json({ result: 1, obj: { epvToday: "8.3" } });
+      }
+      if (u.includes("getWeatherByPlantId")) {
+        return Response.json({ result: 0 });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const data = await fetchData(systemConfig);
+    expect(data.weather).toBeUndefined();
+  });
+});
+
+describe("growatt weather parsing", () => {
+  it("parseGrowattWeather maps HeWeather6 fields and radiant", () => {
+    const weather = parseGrowattWeather({
+      result: 1,
+      obj: {
+        city: "Los reartes",
+        radiant: "380.5",
+        data: {
+          HeWeather6: [{
+            now: { tmp: "18", hum: "55", cond_txt: "Partly Cloudy" },
+            basic: { location: "Los reartes" },
+          }],
+        },
+      },
+    });
+
+    expect(weather).toEqual({
+      temperature: 18,
+      humidity: 55,
+      condition: "Partly Cloudy",
+      irradiance: 380.5,
+      city: "Los reartes",
+    });
+  });
+
+  it("parseGrowattWeather ignores placeholder radiant and failed responses", () => {
+    expect(parseGrowattWeather({ result: 0 })).toBeNull();
+    expect(parseGrowattWeather({
+      result: 1,
+      obj: {
+        radiant: "--",
+        data: { HeWeather6: [{ now: { tmp: "10", cond_txt: "Cloudy" } }] },
+      },
+    })).toEqual({
+      temperature: 10,
+      condition: "Cloudy",
+    });
   });
 });
 
@@ -255,6 +369,9 @@ describe("growatt session credentials", () => {
       if (u.includes("getStorageTotalData")) {
         return Response.json({ result: 1, obj: { epvToday: "8.3" } });
       }
+      if (u.includes("getWeatherByPlantId")) {
+        return Response.json({ result: 0 });
+      }
       throw new Error(`Unexpected fetch: ${u}`);
     });
 
@@ -293,6 +410,9 @@ describe("growatt session credentials", () => {
       }
       if (u.includes("getStorageTotalData")) {
         return Response.json({ result: 1, obj: { epvToday: "8.3" } });
+      }
+      if (u.includes("getWeatherByPlantId")) {
+        return Response.json({ result: 0 });
       }
       throw new Error(`Unexpected fetch: ${u}`);
     });
@@ -350,6 +470,9 @@ describe("growatt session credentials", () => {
       if (u.includes("getStorageStatusData")) return Response.json(statusPayload);
       if (u.includes("getStorageTotalData")) {
         return Response.json({ result: 1, obj: { epvToday: "8.3" } });
+      }
+      if (u.includes("getWeatherByPlantId")) {
+        return Response.json({ result: 0 });
       }
       throw new Error(`Unexpected fetch: ${u}`);
     });

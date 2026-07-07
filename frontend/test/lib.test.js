@@ -24,6 +24,7 @@ import {
   isEditableElement,
   matchesDashboardRefreshShortcut,
   DEFAULT_POLL_INTERVAL_SEC,
+  formatWeatherStrip,
   findLowestSocIds,
   normalizeTheme,
   resolveInitialTheme,
@@ -259,6 +260,28 @@ describe("poll interval helpers", () => {
     expect(formatPollIntervalLabel(30)).toBe("30 seconds");
     expect(formatPollIntervalLabel(60)).toBe("60 seconds");
     expect(formatPollIntervalLabel(120)).toBe("2 minutes");
+  });
+});
+
+describe("formatWeatherStrip", () => {
+  it("returns null when weather is missing or empty", () => {
+    expect(formatWeatherStrip(null)).toBeNull();
+    expect(formatWeatherStrip({})).toBeNull();
+    expect(formatWeatherStrip({ city: "Test" })).toBeNull();
+  });
+
+  it("formats temperature, condition, and irradiance", () => {
+    expect(
+      formatWeatherStrip({
+        temperature: 11.4,
+        condition: "Shower Rain",
+        irradiance: 450,
+      }),
+    ).toBe("11°C · Shower Rain · 450 W/m²");
+  });
+
+  it("omits missing optional fields", () => {
+    expect(formatWeatherStrip({ temperature: 22, condition: "Clear" })).toBe("22°C · Clear");
   });
 });
 

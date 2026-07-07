@@ -18,6 +18,7 @@ import {
   normalizePollIntervalSec,
   pollIntervalSecToMs,
   POLL_INTERVAL_OPTIONS_SEC,
+  formatWeatherStrip,
   findLowestSocIds,
   THEME_STORAGE_KEY,
   THEME_LABELS,
@@ -126,6 +127,8 @@ const els = {
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
   inverterStatus: $("inverter-status"),
+  weatherStrip: $("weather-strip"),
+  weatherText: $("weather-text"),
   pollErrorToast: $("poll-error-toast"),
   pollErrorMsg: $("poll-error-msg"),
   pollRetryBtn: $("poll-retry-btn"),
@@ -521,10 +524,22 @@ function renderSystemTabs() {
 }
 
 /* ── Render normalized data ── */
+function renderWeatherStrip(weather) {
+  if (!els.weatherStrip || !els.weatherText) return;
+  const label = formatWeatherStrip(weather);
+  if (!label) {
+    els.weatherStrip.hidden = true;
+    return;
+  }
+  els.weatherText.textContent = label;
+  els.weatherStrip.hidden = false;
+}
+
 function renderData(d) {
   if (!d || d.error) {
     setInverterStatus("--");
     setStatus(false);
+    renderWeatherStrip(null);
     return;
   }
 
@@ -539,6 +554,7 @@ function renderData(d) {
   const inv = d.inverter || {};
 
   setInverterStatus(d.status);
+  renderWeatherStrip(d.weather);
 
   /* Battery */
   const soc = bat.soc ?? 0;

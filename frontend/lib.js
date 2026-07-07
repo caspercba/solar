@@ -141,6 +141,24 @@ export function formatPollIntervalLabel(sec) {
   return `${sec} seconds`;
 }
 
+/** Compact cards-view label from optional normalized weather object. */
+export function formatWeatherStrip(weather) {
+  if (!weather || typeof weather !== "object") return null;
+
+  const parts = [];
+  if (Number.isFinite(weather.temperature)) {
+    parts.push(`${Math.round(weather.temperature)}°C`);
+  }
+  if (weather.condition) {
+    parts.push(String(weather.condition));
+  }
+  if (Number.isFinite(weather.irradiance)) {
+    parts.push(`${weather.irradiance} W/m²`);
+  }
+
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /** System IDs with the lowest finite battery SOC (ties included). Skips error entries. */
 export function findLowestSocIds(items) {
   let minSoc = Infinity;
