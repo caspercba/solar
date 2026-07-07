@@ -1230,6 +1230,98 @@ addForm.addEventListener("submit", async (e) => {
 $("add-cancel").addEventListener("click", closeAddModal);
 
 /* ── Manage Systems ── */
+function renderCredentialForm(sys) {
+  const form = document.createElement("div");
+  form.className = "manage-credentials";
+  form.innerHTML = `
+    <p class="manage-section-title">Portal credentials</p>
+    <label>Username</label>
+    <input type="text" class="cred-user" required value="${escapeAttr(sys.username || "")}">
+    <label>Password</label>
+    <input type="password" class="cred-pass" required placeholder="New password">
+    <div class="cred-plant-group" hidden>
+      <label>Plant</label>
+      <select class="cred-plant"></select>
+    </div>
+    <button type="button" class="cred-save">Save credentials</button>
+    <p class="cred-msg" hidden></p>
+  `;
+
+  const msg = form.querySelector(".cred-msg");
+  const plantGroup = form.querySelector(".cred-plant-group");
+  const plantSelect = form.querySelector(".cred-plant");
+
+  function hidePlantPicker() {
+    plantGroup.hidden = true;
+    plantSelect.innerHTML = "";
+    plantSelect.required = false;
+  }
+
+  function showPlantPicker(plants) {
+    plantSelect.innerHTML = "";
+    for (const p of plants) {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      plantSelect.appendChild(opt);
+    }
+    plantGroup.hidden = false;
+    plantSelect.required = true;
+  }
+
+  form.querySelector(".cred-save").addEventListener("click", async () => {
+    msg.hidden = true;
+    const btn = form.querySelector(".cred-save");
+    const userInput = form.querySelector(".cred-user");
+    const passInput = form.querySelector(".cred-pass");
+
+    if (!userInput.value.trim() || !passInput.value) {
+      msg.textContent = "Username and password are required";
+      msg.className = "cred-msg cred-err";
+      msg.hidden = false;
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    const body = {
+      user: userInput.value.trim(),
+      password: passInput.value,
+    };
+    if (!plantGroup.hidden && plantSelect.value) {
+      body.plantId = plantSelect.value;
+    }
+
+    try {
+      const result = await api("PUT", `/api/systems/${sys.id}/credentials`, body);
+      if (result.requiresPlantSelection) {
+        showPlantPicker(result.plants);
+        msg.textContent = "Select a plant and save again";
+        msg.className = "cred-msg cred-ok";
+        msg.hidden = false;
+        return;
+      }
+      sys.username = result.username || body.user;
+      passInput.value = "";
+      hidePlantPicker();
+      msg.textContent = "Credentials updated";
+      msg.className = "cred-msg cred-ok";
+      msg.hidden = false;
+      startPolling();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "cred-msg cred-err";
+      msg.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Save credentials";
+    }
+  });
+
+  return form;
+}
+
 function renderAlertForm(sys) {
   const alerts = sys.alerts || {};
   const form = document.createElement("div");
@@ -1331,6 +1423,7 @@ function openManageModal() {
     top.appendChild(info);
     top.appendChild(del);
     row.appendChild(top);
+    row.appendChild(renderCredentialForm(sys));
     row.appendChild(renderAlertForm(sys));
     manageList.appendChild(row);
   }

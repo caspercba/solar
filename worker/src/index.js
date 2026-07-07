@@ -84,11 +84,12 @@ export default {
     if (path === "/api/systems" && request.method === "GET") {
       const index = await listSystems(env);
       const safe = await Promise.all(index.map(async (s) => {
-        const raw = await env.SYSTEMS.get(`system:${s.id}`, "json");
+        const raw = await loadSystemConfig(env, s.id);
         return {
           id: s.id,
           name: s.name,
           service: s.service,
+          username: raw?.credentials?.user || "",
           alerts: publicAlerts(raw?.alerts || DEFAULT_ALERTS),
         };
       }));
@@ -159,6 +160,63 @@ export default {
       await saveIndex(env, index);
 
       return jsonResponse({ id, name: systemName, service, discovered }, 201, origin);
+    }
+
+    // PUT /api/systems/:id/credentials — rotate portal username/password and re-discover
+    const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
+    if (credentialsMatch && request.method === "PUT") {
+      const id = credentialsMatch[1];
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const body = await request.json();
+      const { user, password, plantId: bodyPlantId } = body;
+
+      if (!user || !password) {
+        return errorResponse("Missing required fields: user, password", 400, origin);
+      }
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter) {
+        return errorResponse(`No adapter for service: ${raw.service}`, 500, origin);
+      }
+
+      const plantId = bodyPlantId || raw.credentials?.plantId || null;
+
+      let discovered;
+      try {
+        discovered = await adapter.discover({ user, password }, plantId);
+      } catch (err) {
+        logAdapterError(env, "adapter_discover_failed", {
+          service: raw.service,
+          systemId: id,
+          route: "PUT /api/systems/:id/credentials",
+          error: err,
+        });
+        return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
+      }
+
+      if (discovered.requiresPlantSelection) {
+        return jsonResponse({
+          requiresPlantSelection: true,
+          plants: discovered.plants,
+        }, 200, origin);
+      }
+
+      const updatedConfig = {
+        ...raw,
+        credentials: { user, ...buildCredentials(raw.service, password, discovered) },
+      };
+
+      await saveSystemConfig(env, updatedConfig);
+
+      return jsonResponse({
+        id: raw.id,
+        name: raw.name,
+        service: raw.service,
+        username: user,
+        discovered,
+      }, 200, origin);
     }
 
     // PUT /api/systems/:id/alerts — update alert thresholds and webhook
