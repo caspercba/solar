@@ -44,6 +44,24 @@ async function apiAuth(user, pwdSha1) {
   return { ...json.dat, ts: Date.now() };
 }
 
+/** Thrown when the vendor rejects token/secret — triggers one re-login retry. */
+export class ShineMonitorAuthError extends Error {
+  constructor(message, errCode = null) {
+    super(message);
+    this.name = "ShineMonitorAuthError";
+    this.errCode = errCode;
+  }
+}
+
+/** Detect expired/invalid token or sign failures from vendor JSON or HTTP status. */
+export function isAuthFailure(json, httpStatus = 200) {
+  if (httpStatus === 401 || httpStatus === 403) return true;
+  if (!json || json.err === 0) return false;
+  const desc = String(json.desc || "").toUpperCase();
+  if (/TOKEN|SIGN|AUTH|LOGIN|EXPIR|SESSION|UNAUTHORIZED/.test(desc)) return true;
+  return false;
+}
+
 async function apiGet(session, actionCore) {
   const action = `${actionCore}&i18n=en_US&lang=en_US`;
   const salt = Date.now();
@@ -52,7 +70,11 @@ async function apiGet(session, actionCore) {
   const url = `${API_BASE}?sign=${sign}&salt=${salt}&token=${session.token}${enc}`;
   const resp = await fetch(url);
   const json = await resp.json();
-  if (json.err !== 0) throw new Error(json.desc || `API error ${json.err}`);
+  if (json.err !== 0) {
+    const message = json.desc || `API error ${json.err}`;
+    if (isAuthFailure(json, resp.status)) throw new ShineMonitorAuthError(message, json.err);
+    throw new Error(message);
+  }
   return json.dat;
 }
 
@@ -61,14 +83,49 @@ async function apiGet(session, actionCore) {
 const sessionCache = new Map();
 const SESSION_TTL = 300_000; // 5 min
 
+function invalidateSession(systemConfig) {
+  sessionCache.delete(systemConfig.id);
+}
+
+/** @internal Test helper — clears in-memory session cache between test cases. */
+export function _clearSessionCacheForTests() {
+  sessionCache.clear();
+}
+
+async function loginSession(systemConfig) {
+  const sess = await apiAuth(systemConfig.credentials.user, systemConfig.credentials.pwdSha1);
+  sessionCache.set(systemConfig.id, sess);
+  return sess;
+}
+
 async function getSession(systemConfig) {
   const key = systemConfig.id;
   const cached = sessionCache.get(key);
   if (cached && Date.now() - cached.ts < SESSION_TTL) return cached;
+  return loginSession(systemConfig);
+}
 
-  const sess = await apiAuth(systemConfig.credentials.user, systemConfig.credentials.pwdSha1);
-  sessionCache.set(key, sess);
-  return sess;
+/**
+ * Run an operation with a cached session; on auth failure, re-login once and retry.
+ * Persistent auth failure surfaces as a clear Error for 502 mapping upstream.
+ */
+async function withAuthRetry(systemConfig, operation) {
+  let session = await getSession(systemConfig);
+  try {
+    return await operation(session);
+  } catch (err) {
+    if (!(err instanceof ShineMonitorAuthError)) throw err;
+    invalidateSession(systemConfig);
+    session = await loginSession(systemConfig);
+    try {
+      return await operation(session);
+    } catch (retryErr) {
+      if (retryErr instanceof ShineMonitorAuthError) {
+        throw new Error(`ShineMonitor authentication failed: ${retryErr.message}`);
+      }
+      throw retryErr;
+    }
+  }
 }
 
 /* ── Discovery: find plant + device info on first setup ── */
@@ -234,32 +291,33 @@ async function fetchAllDeviceData(sess, device, date) {
 }
 
 export async function fetchHistory(systemConfig, date) {
-  const sess = await getSession(systemConfig);
-  const { device, timezone } = systemConfig.credentials;
-  const tzOffset = timezone ?? 0;
-  const today = localDate(tzOffset);
-  let queryDate = date || today;
+  return withAuthRetry(systemConfig, async (sess) => {
+    const { device, timezone } = systemConfig.credentials;
+    const tzOffset = timezone ?? 0;
+    const today = localDate(tzOffset);
+    let queryDate = date || today;
 
-  let { titles, rows } = await fetchAllDeviceData(sess, device, queryDate);
+    let { titles, rows } = await fetchAllDeviceData(sess, device, queryDate);
 
-  // When no explicit date, fall back to yesterday if today's series is not ready yet.
-  if (!rows.length && !date && queryDate === today) {
-    queryDate = localDate(tzOffset - 86400);
-    ({ titles, rows } = await fetchAllDeviceData(sess, device, queryDate));
-  }
+    // When no explicit date, fall back to yesterday if today's series is not ready yet.
+    if (!rows.length && !date && queryDate === today) {
+      queryDate = localDate(tzOffset - 86400);
+      ({ titles, rows } = await fetchAllDeviceData(sess, device, queryDate));
+    }
 
-  const { points, socSource } = parseHistoryRows(titles, rows);
+    const { points, socSource } = parseHistoryRows(titles, rows);
 
-  return {
-    systemId: systemConfig.id,
-    name: systemConfig.name,
-    service: "shinemonitor",
-    date: queryDate,
-    timezoneOffset: tzOffset,
-    intervalMinutes: 5,
-    points,
-    socSource,
-  };
+    return {
+      systemId: systemConfig.id,
+      name: systemConfig.name,
+      service: "shinemonitor",
+      date: queryDate,
+      timezoneOffset: tzOffset,
+      intervalMinutes: 5,
+      points,
+      socSource,
+    };
+  });
 }
 
 function emptySummaryDay(date) {
@@ -310,70 +368,72 @@ export async function fetchHistorySummary(systemConfig, days = 7, endDate = null
 }
 
 export async function fetchData(systemConfig) {
-  const sess = await getSession(systemConfig);
-  const { plantId, device, timezone } = systemConfig.credentials;
-  const tzOffset = timezone ?? 0;
-  const today = localDate(tzOffset);
+  return withAuthRetry(systemConfig, async (sess) => {
+    const { plantId, device, timezone } = systemConfig.credentials;
+    const tzOffset = timezone ?? 0;
+    const today = localDate(tzOffset);
 
-  async function fetchDeviceData(date) {
-    return apiGet(sess, `&action=queryDeviceDataOneDayPaging&pn=${device.pn}&devcode=${device.devcode}&sn=${device.sn}&devaddr=${device.devaddr}&date=${date}&page=0&pagesize=1`);
-  }
+    async function fetchDeviceData(date) {
+      return apiGet(sess, `&action=queryDeviceDataOneDayPaging&pn=${device.pn}&devcode=${device.devcode}&sn=${device.sn}&devaddr=${device.devaddr}&date=${date}&page=0&pagesize=1`);
+    }
 
-  const plantCurrentPromise = apiGet(sess, `&action=queryPlantCurrentData&plantid=${plantId}&par=CURRENT_POWER,ENERGY_TODAY,BATTERY_SOC`);
+    const plantCurrentPromise = apiGet(sess, `&action=queryPlantCurrentData&plantid=${plantId}&par=CURRENT_POWER,ENERGY_TODAY,BATTERY_SOC`);
 
-  let devData;
-  try {
-    devData = await fetchDeviceData(today);
-  } catch {
-    const yesterday = localDate(tzOffset - 86400);
-    devData = await fetchDeviceData(yesterday);
-  }
+    let devData;
+    try {
+      devData = await fetchDeviceData(today);
+    } catch (err) {
+      if (err instanceof ShineMonitorAuthError) throw err;
+      const yesterday = localDate(tzOffset - 86400);
+      devData = await fetchDeviceData(yesterday);
+    }
 
-  const plantCurrent = await plantCurrentPromise;
+    const plantCurrent = await plantCurrentPromise;
 
-  const titles = devData?.title || [];
-  const fields = devData?.row?.[0]?.field || [];
+    const titles = devData?.title || [];
+    const fields = devData?.row?.[0]?.field || [];
 
-  function fieldVal(name) {
-    const i = titles.findIndex(t => t.title === name);
-    return i >= 0 ? fields[i] : null;
-  }
+    function fieldVal(name) {
+      const i = titles.findIndex(t => t.title === name);
+      return i >= 0 ? fields[i] : null;
+    }
 
-  const batV = parseFloat(fieldVal("Battery Voltage")) || 0;
-  const batA = parseFloat(fieldVal("Batt Current")) || 0;
-  const solarW = parseFloat(fieldVal("Charger Power")) || 0;
-  const pvV = parseFloat(fieldVal("PV Voltage")) || 0;
-  const loadW = parseFloat(fieldVal("PLoad")) || 0;
-  const gridW = parseFloat(fieldVal("PGrid")) || 0;
-  const gridV = parseFloat(fieldVal("Grid Voltage")) || 0;
-  const ratedW = parseFloat(fieldVal("rated power")) || 0;
-  const workState = fieldVal("work state") || "";
-  const ts = fieldVal("Timestamp") || "";
+    const batV = parseFloat(fieldVal("Battery Voltage")) || 0;
+    const batA = parseFloat(fieldVal("Batt Current")) || 0;
+    const solarW = parseFloat(fieldVal("Charger Power")) || 0;
+    const pvV = parseFloat(fieldVal("PV Voltage")) || 0;
+    const loadW = parseFloat(fieldVal("PLoad")) || 0;
+    const gridW = parseFloat(fieldVal("PGrid")) || 0;
+    const gridV = parseFloat(fieldVal("Grid Voltage")) || 0;
+    const ratedW = parseFloat(fieldVal("rated power")) || 0;
+    const workState = fieldVal("work state") || "";
+    const ts = fieldVal("Timestamp") || "";
 
-  const nominalPV = systemConfig.credentials.nominalPower || 5000;
-  const ratedPower = ratedW || 5000;
+    const nominalPV = systemConfig.credentials.nominalPower || 5000;
+    const ratedPower = ratedW || 5000;
 
-  const { soc, socSource } = resolveBatterySoc(plantCurrent, batV);
+    const { soc, socSource } = resolveBatterySoc(plantCurrent, batV);
 
-  const genOn = gridV > 30 && Math.abs(gridW) > 5;
+    const genOn = gridV > 30 && Math.abs(gridW) > 5;
 
-  let energyToday = null;
-  if (Array.isArray(plantCurrent)) {
-    const item = plantCurrent.find(i => i.key === "ENERGY_TODAY");
-    if (item) energyToday = parseFloat(item.val);
-  }
+    let energyToday = null;
+    if (Array.isArray(plantCurrent)) {
+      const item = plantCurrent.find(i => i.key === "ENERGY_TODAY");
+      if (item) energyToday = parseFloat(item.val);
+    }
 
-  return {
-    systemId: systemConfig.id,
-    name: systemConfig.name,
-    service: "shinemonitor",
-    timestamp: ts,
-    battery: { voltage: batV, soc, socSource, current: batA, power: Math.round(batV * batA) },
-    solar: { power: solarW, voltage: pvV },
-    load: { power: loadW, percent: Math.round((loadW / ratedPower) * 100) },
-    grid: { power: gridW, voltage: gridV, active: genOn },
-    inverter: { ratedPower, nominalPV },
-    status: workState,
-    energyToday,
-  };
+    return {
+      systemId: systemConfig.id,
+      name: systemConfig.name,
+      service: "shinemonitor",
+      timestamp: ts,
+      battery: { voltage: batV, soc, socSource, current: batA, power: Math.round(batV * batA) },
+      solar: { power: solarW, voltage: pvV },
+      load: { power: loadW, percent: Math.round((loadW / ratedPower) * 100) },
+      grid: { power: gridW, voltage: gridV, active: genOn },
+      inverter: { ratedPower, nominalPV },
+      status: workState,
+      energyToday,
+    };
+  });
 }
