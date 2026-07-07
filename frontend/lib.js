@@ -141,6 +141,42 @@ export function formatPollIntervalLabel(sec) {
   return `${sec} seconds`;
 }
 
+export const THEME_STORAGE_KEY = "solar_theme";
+export const VALID_THEMES = ["dark", "light", "high-contrast"];
+
+export const THEME_LABELS = {
+  dark: "Dark",
+  light: "Light",
+  "high-contrast": "High contrast",
+};
+
+export const THEME_META_COLORS = {
+  dark: "#0f1117",
+  light: "#f0f2f5",
+  "high-contrast": "#000000",
+};
+
+/** Normalize a stored theme value; returns null when invalid or absent. */
+export function normalizeTheme(value) {
+  return VALID_THEMES.includes(value) ? value : null;
+}
+
+/** Pick initial theme from saved preference or system settings. */
+export function resolveInitialTheme(stored, { prefersLight = false, prefersHighContrast = false } = {}) {
+  const saved = normalizeTheme(stored);
+  if (saved) return saved;
+  if (prefersHighContrast) return "high-contrast";
+  if (prefersLight) return "light";
+  return "dark";
+}
+
+/** Cycle dark → light → high-contrast → dark. */
+export function getNextTheme(current) {
+  const theme = normalizeTheme(current) || "dark";
+  const idx = VALID_THEMES.indexOf(theme);
+  return VALID_THEMES[(idx + 1) % VALID_THEMES.length];
+}
+
 /** True when the element accepts text entry (skip refresh shortcuts). */
 export function isEditableElement(el) {
   if (!el) return false;

@@ -24,6 +24,10 @@ import {
   isEditableElement,
   matchesDashboardRefreshShortcut,
   DEFAULT_POLL_INTERVAL_SEC,
+  normalizeTheme,
+  resolveInitialTheme,
+  getNextTheme,
+  VALID_THEMES,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -254,6 +258,34 @@ describe("poll interval helpers", () => {
     expect(formatPollIntervalLabel(30)).toBe("30 seconds");
     expect(formatPollIntervalLabel(60)).toBe("60 seconds");
     expect(formatPollIntervalLabel(120)).toBe("2 minutes");
+  });
+});
+
+describe("theme helpers", () => {
+  it("normalizes valid theme names", () => {
+    for (const theme of VALID_THEMES) {
+      expect(normalizeTheme(theme)).toBe(theme);
+    }
+    expect(normalizeTheme("invalid")).toBeNull();
+    expect(normalizeTheme(null)).toBeNull();
+  });
+
+  it("resolves initial theme from saved preference first", () => {
+    expect(resolveInitialTheme("light", { prefersLight: false })).toBe("light");
+    expect(resolveInitialTheme("high-contrast", { prefersLight: true })).toBe("high-contrast");
+  });
+
+  it("falls back to system preferences when nothing is saved", () => {
+    expect(resolveInitialTheme(null, { prefersHighContrast: true })).toBe("high-contrast");
+    expect(resolveInitialTheme("", { prefersLight: true })).toBe("light");
+    expect(resolveInitialTheme(undefined, {})).toBe("dark");
+  });
+
+  it("cycles dark → light → high-contrast → dark", () => {
+    expect(getNextTheme("dark")).toBe("light");
+    expect(getNextTheme("light")).toBe("high-contrast");
+    expect(getNextTheme("high-contrast")).toBe("dark");
+    expect(getNextTheme("invalid")).toBe("light");
   });
 });
 
