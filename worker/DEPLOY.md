@@ -347,21 +347,23 @@ Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 | `deploy-worker` | Valid release tag | `npx wrangler deploy` after tests pass |
 | `deploy-frontend` | Valid release tag | `wrangler pages deploy` after tests pass |
 
-### 8.1 One-time GitHub secret
+### 8.1 One-time GitHub secrets
 
 Add under **Repository → Settings → Secrets and variables → Actions**:
 
 | Secret | Purpose |
 |--------|---------|
 | `CLOUDFLARE_API_TOKEN` | Authenticates `wrangler deploy` in CI |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID (Dashboard → Workers & Pages → right sidebar); required for Pages deploy and some Wrangler commands |
 
 Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with:
 
 - **Account** — Workers Scripts: **Edit**
 - **Account** — Workers KV Storage: **Edit** (for the `SYSTEMS` namespace)
+- **Account** — Cloudflare Pages: **Edit** (frontend deploy on release tags)
 - **Account** — Account Settings: **Read** (optional, for account scoping)
 
-Use a custom token template or “Edit Cloudflare Workers” and ensure KV permissions are included.
+Use a custom token template or “Edit Cloudflare Workers” and ensure KV and Pages permissions are included.
 
 ### 8.2 Release procedure
 

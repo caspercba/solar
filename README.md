@@ -33,6 +33,8 @@ flowchart LR
 
 ## Deploy the Worker
 
+> **First-time production deploy:** follow the step-by-step runbook at **[worker/DEPLOY.md](./worker/DEPLOY.md)** — KV namespace binding, all three secrets (`API_TOKEN`, `CREDENTIALS_KEY`, `ALLOWED_ORIGINS`), optional alert webhooks, cron verification, production checklist, and tag-based CI releases.
+
 1. **Install dependencies**
 
    ```bash
