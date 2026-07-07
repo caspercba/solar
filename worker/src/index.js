@@ -1,4 +1,5 @@
 import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
+import { toHaPayload } from "./ha.js";
 import { logAdapterError } from "./logger.js";
 import { checkDataRateLimit, getRateLimitKey, rateLimitResponse } from "./rateLimit.js";
 import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
@@ -206,6 +207,33 @@ export default {
       });
 
       return jsonResponse(data, 200, origin);
+    }
+
+    // GET /api/systems/:id/ha — flat JSON for Home Assistant REST sensors
+    const haMatch = path.match(/^\/api\/systems\/([^/]+)\/ha$/);
+    if (haMatch && request.method === "GET") {
+      const limited = enforceDataRateLimit(request, env, origin);
+      if (limited) return limited;
+
+      const id = haMatch[1];
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter) return errorResponse(`No adapter for service: ${raw.service}`, 500, origin);
+
+      try {
+        const data = await adapter.fetchData(forAdapter(raw, env));
+        return jsonResponse(toHaPayload(data), 200, origin);
+      } catch (err) {
+        logAdapterError(env, "adapter_fetch_failed", {
+          systemId: id,
+          service: raw.service,
+          route: "GET /api/systems/:id/ha",
+          error: err,
+        });
+        return errorResponse(`Fetch failed: ${err.message}`, 502, origin);
+      }
     }
 
     // GET /api/systems/:id/data — fetch real-time data for one system

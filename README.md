@@ -333,13 +333,129 @@ Use only on trusted devices — the token appears in the URL and browser history
 | `POST` | `/api/systems` | Add system (`service`, `user`, `password`, optional `name`) |
 | `DELETE` | `/api/systems/:id` | Remove a system |
 | `GET` | `/api/systems/:id/data` | Normalized real-time data for one system |
+| `GET` | `/api/systems/:id/ha` | Flat JSON for Home Assistant REST sensors (same data as `/data`) |
 | `GET` | `/api/systems/all/data` | Data for all systems |
 | `GET` | `/api/systems/:id/history?date=` | Intraday power series (vendor fetch on demand) |
 | `GET` | `/api/systems/:id/history/summary?days=7` | Daily energy totals for bar chart (vendor fetch on demand) |
 
 All routes require `Authorization: Bearer <API_TOKEN>` when the secret is configured.
 
-**Rate limits:** Real-time data routes (`GET /api/systems/:id/data` and `GET /api/systems/all/data`) are limited to **60 requests per minute per bearer token** (in-memory per Worker isolate). Exceeding the limit returns **429 Too Many Requests** with a `Retry-After` header (seconds until the window resets). Normal dashboard polling at 60 s intervals is well below this limit. Rate limiting is disabled when `API_TOKEN` is unset (dev open mode).
+**Rate limits:** Real-time data routes (`GET /api/systems/:id/data`, `GET /api/systems/:id/ha`, and `GET /api/systems/all/data`) are limited to **60 requests per minute per bearer token** (in-memory per Worker isolate). Exceeding the limit returns **429 Too Many Requests** with a `Retry-After` header (seconds until the window resets). Normal dashboard polling at 60 s intervals is well below this limit. Rate limiting is disabled when `API_TOKEN` is unset (dev open mode).
+
+## Home Assistant integration
+
+Expose inverter metrics in [Home Assistant](https://www.home-assistant.io/) via the **`GET /api/systems/:id/ha`** endpoint. It returns the same realtime snapshot as `/data`, flattened into a **stable snake_case schema** (`schema_version: 1`) so REST sensors can use simple `value_template` paths without nested JSON.
+
+### Prerequisites
+
+1. Deploy the Worker and add at least one system (dashboard setup or `POST /api/systems`).
+2. Note the **system UUID** from `GET /api/systems` (e.g. `a1b2c3d4-...`).
+3. Use the same **Worker URL** and **`API_TOKEN`** as the dashboard.
+
+### Response schema (v1)
+
+```json
+{
+  "schema_version": 1,
+  "system_id": "uuid",
+  "name": "Cabin Solar",
+  "service": "growatt",
+  "timestamp": "2026-07-03 14:32:00",
+  "battery_soc": 72,
+  "battery_voltage": 48.2,
+  "battery_current": -15,
+  "battery_power": -723,
+  "solar_power": 1200,
+  "solar_voltage": 95,
+  "load_power": 850,
+  "load_percent": 24,
+  "grid_power": 0,
+  "grid_voltage": 0,
+  "grid_active": false,
+  "inverter_rated_power": 3500,
+  "inverter_nominal_pv": 5000,
+  "status": "PV Charging",
+  "energy_today_kwh": 12.4
+}
+```
+
+| Field | Unit / type | Notes |
+|-------|-------------|-------|
+| `battery_current` | A | Negative = charging, positive = discharging |
+| `battery_power` | W | Same sign convention as current |
+| `grid_active` | boolean | Generator/grid input detected |
+| `energy_today_kwh` | kWh | Today's PV production when available |
+
+Breaking changes to this shape will increment `schema_version`. Poll at **60 s or slower** to stay within rate limits and avoid stressing vendor APIs.
+
+### Example: REST sensors (`configuration.yaml`)
+
+Store secrets in [secrets.yaml](https://www.home-assistant.io/docs/configuration/secrets/):
+
+```yaml
+solar_ha_url: https://solar-proxy.example.workers.dev/api/systems/your-system-uuid/ha
+solar_api_token: your-long-random-token
+```
+
+Add sensors (one per metric, or pick the fields you need):
+
+```yaml
+rest:
+  - resource: !secret solar_ha_url
+    scan_interval: 60
+    headers:
+      Authorization: "Bearer !secret solar_api_token"
+    sensor:
+      - name: Solar Battery SOC
+        unique_id: solar_battery_soc
+        value_template: "{{ value_json.battery_soc }}"
+        unit_of_measurement: "%"
+        device_class: battery
+        json_attributes_path: "$"
+        json_attributes:
+          - battery_voltage
+          - battery_power
+          - solar_power
+          - load_power
+          - status
+
+      - name: Solar Production
+        unique_id: solar_production_w
+        value_template: "{{ value_json.solar_power }}"
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+
+      - name: Solar Load
+        unique_id: solar_load_w
+        value_template: "{{ value_json.load_power }}"
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+
+      - name: Solar Generator Active
+        unique_id: solar_generator_active
+        value_template: "{{ value_json.grid_active }}"
+        device_class: power
+```
+
+### Example: REST command-line test
+
+```bash
+curl -sS -H "Authorization: Bearer $API_TOKEN" \
+  "https://solar-proxy.example.workers.dev/api/systems/$SYSTEM_ID/ha" | jq .
+```
+
+### Alternatives
+
+| Approach | When to use |
+|----------|-------------|
+| **`/ha` endpoint** (recommended) | Stable flat schema; easiest REST sensor templates |
+| **`/data` endpoint** | Custom automations that already consume nested JSON (`value_json.battery.soc`) |
+| **Alert webhooks** | Push notifications on low SOC or generator start (Worker cron + `PUT /api/systems/:id/alerts`) — not a continuous sensor feed |
+| **MQTT** | Out of scope for the Worker; use an external bridge (e.g. Node-RED or a small script polling `/ha` and publishing to your broker) |
+
+Home Assistant runs server-side and is not subject to browser CORS. You do not need to add the HA host to `ALLOWED_ORIGINS` unless you also open the Worker from a browser on that host.
 
 ## Normalized Data Contract
 
@@ -395,7 +511,7 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 - **Frontend token storage** — The access token is kept in `localStorage` (and optionally URL params for bookmarks). Anyone with the token can call your Worker API. Rotate the token if it is exposed.
 - **HTTPS only** — Use HTTPS for both the Worker and frontend in production.
 - **Dev mode** — If `API_TOKEN` is unset, the Worker accepts unauthenticated requests. Never deploy to production without the secret.
-- **Rate limiting** — Data routes are capped at 60 requests/minute per bearer token (per isolate). Returns 429 with `Retry-After` when exceeded. Protects upstream inverter APIs from burst polling or scripted clients.
+- **Rate limiting** — Data routes (`/data`, `/ha`, `/all/data`) are capped at 60 requests/minute per bearer token (per isolate). Returns 429 with `Retry-After` when exceeded. Protects upstream inverter APIs from burst polling or scripted clients.
 
 ## Documentation
 
