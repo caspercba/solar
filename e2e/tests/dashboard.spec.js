@@ -206,6 +206,57 @@ test.describe("Keyboard refresh", () => {
   });
 });
 
+test.describe("Poll interval settings", () => {
+  async function openManageModal(page) {
+    await page.locator("#manage-btn").click();
+    await expect(page.locator("#manage-modal")).toBeVisible();
+  }
+
+  test("shows refresh interval selector with supported options", async ({ page }) => {
+    await openManageModal(page);
+
+    const select = page.locator("#poll-interval");
+    await expect(select).toBeVisible();
+    await expect(select.locator("option")).toHaveText(["30 seconds", "60 seconds", "2 minutes"]);
+    await expect(select).toHaveValue("60");
+  });
+
+  test("persists chosen poll interval across reload", async ({ page }) => {
+    await openManageModal(page);
+    await page.locator("#poll-interval").selectOption("120");
+
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem("solar_poll_interval")))
+      .toBe("120");
+
+    await page.locator("#manage-close").click();
+    await page.reload();
+    await waitForDashboardData(page);
+
+    await openManageModal(page);
+    await expect(page.locator("#poll-interval")).toHaveValue("120");
+  });
+
+  test("restarts polling immediately when refresh interval changes", async ({ page }) => {
+    let dataRequestCount = 0;
+    await page.route("**/api/systems/*/data", async (route) => {
+      dataRequestCount += 1;
+      await route.continue();
+    });
+
+    await waitForDashboardData(page);
+    const before = dataRequestCount;
+
+    await openManageModal(page);
+    await page.locator("#poll-interval").selectOption("30");
+
+    await expect.poll(() => dataRequestCount, { timeout: 10_000 }).toBeGreaterThan(before);
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem("solar_poll_interval")))
+      .toBe("30");
+  });
+});
+
 test.describe("Poll error toast", () => {
   async function failNextDataPoll(page, message = "Fetch failed: vendor offline") {
     await page.route("**/api/systems/*/data", async (route) => {
