@@ -7,10 +7,10 @@ export function fmtW(w) {
   return Math.round(w) + " W";
 }
 
-export function fmtChartDate(dateStr) {
+export function fmtChartDate(dateStr, locale) {
   const d = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr.slice(5);
-  return d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+  return d.toLocaleDateString(locale || undefined, { month: "numeric", day: "numeric" });
 }
 
 export function sanitizeExportName(name) {
@@ -100,10 +100,10 @@ export function buildWeekStripDates(selectedDate, count = 7) {
   return dates;
 }
 
-export function fmtWeekStripWeekday(dateStr) {
+export function fmtWeekStripWeekday(dateStr, locale) {
   const d = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { weekday: "short" });
+  return d.toLocaleDateString(locale || undefined, { weekday: "short" });
 }
 
 export function fmtWeekStripDay(dateStr) {
@@ -158,4 +158,59 @@ export function findLowestSocIds(items) {
     }
   }
   return ids;
+}
+
+export const THEME_STORAGE_KEY = "solar_theme";
+export const VALID_THEMES = ["dark", "light", "high-contrast"];
+
+export const THEME_LABELS = {
+  dark: "Dark",
+  light: "Light",
+  "high-contrast": "High contrast",
+};
+
+export const THEME_META_COLORS = {
+  dark: "#0f1117",
+  light: "#f0f2f5",
+  "high-contrast": "#000000",
+};
+
+/** Normalize a stored theme value; returns null when invalid or absent. */
+export function normalizeTheme(value) {
+  return VALID_THEMES.includes(value) ? value : null;
+}
+
+/** Pick initial theme from saved preference or system settings. */
+export function resolveInitialTheme(stored, { prefersLight = false, prefersHighContrast = false } = {}) {
+  const saved = normalizeTheme(stored);
+  if (saved) return saved;
+  if (prefersHighContrast) return "high-contrast";
+  if (prefersLight) return "light";
+  return "dark";
+}
+
+/** Cycle dark → light → high-contrast → dark. */
+export function getNextTheme(current) {
+  const theme = normalizeTheme(current) || "dark";
+  const idx = VALID_THEMES.indexOf(theme);
+  return VALID_THEMES[(idx + 1) % VALID_THEMES.length];
+}
+
+/** True when the element accepts text entry (skip refresh shortcuts). */
+export function isEditableElement(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag === "INPUT") {
+    const type = (el.type || "text").toLowerCase();
+    return !["button", "submit", "reset", "checkbox", "radio", "file", "hidden", "range", "color"].includes(type);
+  }
+  return !!el.isContentEditable;
+}
+
+/** F5 or Ctrl/Cmd+R — same keys users expect for refresh. */
+export function matchesDashboardRefreshShortcut({ key, ctrlKey, metaKey, shiftKey, altKey }) {
+  if (key === "F5") return true;
+  if ((ctrlKey || metaKey) && !shiftKey && !altKey && key.toLowerCase() === "r") return true;
+  return false;
 }

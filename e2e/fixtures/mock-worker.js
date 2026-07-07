@@ -24,6 +24,7 @@ import {
 export { EMPTY_HISTORY_DATE };
 
 export const MOCK_PORT = Number(process.env.MOCK_WORKER_PORT) || 8790;
+export const MOCK_HOST = process.env.MOCK_WORKER_HOST || "127.0.0.1";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -86,6 +87,37 @@ export async function handleMockWorkerRequest(request) {
 
   if (path === "/api/systems/all/data" && request.method === "GET") {
     return json(systems.map((s) => realtimeData(s.id)), 200, origin);
+  }
+
+  const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
+  if (credentialsMatch && request.method === "PUT") {
+    const id = credentialsMatch[1];
+    const sys = systems.find((s) => s.id === id);
+    if (!sys) return error("System not found", 404, origin);
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+
+    const { user, password } = body || {};
+    if (!user || !password) {
+      return error("Missing required fields: user, password", 400, origin);
+    }
+    if (password === "bad-password") {
+      return error("Discovery failed: Invalid credentials", 502, origin);
+    }
+
+    sys.username = user;
+    return json({
+      id: sys.id,
+      name: sys.name,
+      service: sys.service,
+      username: user,
+      discovered: { plantId: "mock-plant-1" },
+    }, 200, origin);
   }
 
   const dataMatch = path.match(/^\/api\/systems\/([^/]+)\/data$/);
@@ -170,9 +202,10 @@ export function startMockWorker(port = MOCK_PORT) {
     }
   });
 
-  server.listen(port, "127.0.0.1", () => {
+  server.listen(port, MOCK_HOST, () => {
     const token = process.env.MOCK_WORKER_TOKEN || MOCK_TOKEN;
-    console.log(`[mock-worker] listening on http://127.0.0.1:${port}`);
+    const displayHost = MOCK_HOST === "0.0.0.0" ? "localhost" : MOCK_HOST;
+    console.log(`[mock-worker] listening on http://${displayHost}:${port}`);
     console.log(`[mock-worker] Bearer token: ${token}`);
     console.log(`[mock-worker] mock system id: ${MOCK_SYSTEM_ID}`);
   });

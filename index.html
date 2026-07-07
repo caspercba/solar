@@ -9,21 +9,42 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <script>
+    (function () {
+      var k = "solar_theme";
+      var valid = { dark: 1, light: 1, "high-contrast": 1 };
+      var t = localStorage.getItem(k);
+      if (!valid[t]) {
+        if (window.matchMedia && window.matchMedia("(prefers-contrast: more)").matches) t = "high-contrast";
+        else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) t = "light";
+        else t = "dark";
+      }
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
   <link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
   <!-- Setup screen (first-time: enter proxy token) -->
   <div id="setup-screen" class="screen" hidden>
+    <div class="setup-theme-wrap">
+      <button type="button" id="setup-theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
+    </div>
     <div class="login-card">
       <div class="login-icon">&#9728;</div>
-      <h1>Solar Dashboard</h1>
-      <p class="login-subtitle">Connect to your proxy</p>
+      <h1 data-i18n="appTitle">Solar Dashboard</h1>
+      <p class="login-subtitle" data-i18n="setupSubtitle">Connect to your proxy</p>
+      <div class="lang-toggle" role="group" aria-labelledby="setup-lang-label">
+        <span id="setup-lang-label" class="lang-label" data-i18n="language">Language</span>
+        <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
+      </div>
       <form id="setup-form" autocomplete="on">
-        <input type="url" id="setup-url" placeholder="Proxy URL" autocomplete="url" required
+        <input type="url" id="setup-url" data-i18n-placeholder="proxyUrl" placeholder="Proxy URL" autocomplete="url" required
                value="https://solar-proxy.gaspar-solar.workers.dev">
-        <input type="password" id="setup-token" placeholder="Access Token" autocomplete="current-password" required>
-        <button type="submit" id="setup-btn">Connect</button>
+        <input type="password" id="setup-token" data-i18n-placeholder="accessToken" placeholder="Access Token" autocomplete="current-password" required>
+        <button type="submit" id="setup-btn" data-i18n="connect">Connect</button>
       </form>
       <p id="setup-error" class="error" hidden></p>
     </div>
@@ -33,11 +54,16 @@
   <div id="dashboard-screen" class="screen" hidden>
     <div id="ptr" class="ptr"><div class="ptr-arrow">&#x2193;</div></div>
     <header>
-      <h1 id="header-title">Solar Dashboard</h1>
+      <h1 id="header-title" data-i18n="appTitle">Solar Dashboard</h1>
       <div class="header-right">
-        <span id="status-dot" class="dot dot-ok" title="Connected"></span>
-        <button id="manage-btn" title="Manage systems">&#x2699;</button>
-        <button id="disconnect-btn" title="Disconnect">&#x2715;</button>
+        <div class="lang-toggle lang-toggle-compact" role="group" aria-label="Language">
+          <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
+          <button type="button" class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
+        </div>
+        <span id="status-dot" class="dot dot-ok" data-i18n-title="statusConnected" title="Connected"></span>
+        <button type="button" id="theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
+        <button id="manage-btn" data-i18n-title="manageSystems" title="Manage systems">&#x2699;</button>
+        <button id="disconnect-btn" data-i18n-title="disconnect" title="Disconnect">&#x2715;</button>
       </div>
     </header>
 
@@ -45,10 +71,10 @@
     <nav id="system-tabs" class="system-tabs" hidden></nav>
 
     <nav class="view-toggle">
-      <button class="vtab active" id="tab-cards">Cards</button>
-      <button class="vtab" id="tab-flow">Flow</button>
-      <button class="vtab" id="tab-chart">Chart</button>
-      <button class="vtab" id="tab-compare" hidden>Compare</button>
+      <button class="vtab active" id="tab-cards" data-i18n="tabCards">Cards</button>
+      <button class="vtab" id="tab-flow" data-i18n="tabFlow">Flow</button>
+      <button class="vtab" id="tab-chart" data-i18n="tabChart">Chart</button>
+      <button class="vtab" id="tab-compare" hidden data-i18n="tabCompare">Compare</button>
     </nav>
 
     <main id="cards-view" class="cards">
@@ -60,7 +86,7 @@
       <div class="card card-battery">
         <div class="card-header">
           <span class="card-icon">&#x1F50B;</span>
-          <span class="card-title">Battery</span>
+          <span class="card-title" data-i18n="cardBattery">Battery</span>
         </div>
         <div class="card-value">
           <span id="bat-pct" class="big-number">--</span><span class="unit">%</span>
@@ -83,7 +109,7 @@
       <div class="card card-solar">
         <div class="card-header">
           <span class="card-icon">&#9728;</span>
-          <span class="card-title">Solar</span>
+          <span class="card-title" data-i18n="cardSolar">Solar</span>
         </div>
         <div class="card-value">
           <span id="sol-pct" class="big-number">--</span><span class="unit">%</span>
@@ -102,7 +128,7 @@
       <div class="card card-load">
         <div class="card-header">
           <span class="card-icon">&#9889;</span>
-          <span class="card-title">Load</span>
+          <span class="card-title" data-i18n="cardLoad">Load</span>
         </div>
         <div class="card-value">
           <span id="load-pct" class="big-number">--</span><span class="unit">%</span>
@@ -119,7 +145,7 @@
       <div id="card-gen" class="card card-gen">
         <div class="card-header">
           <span class="card-icon">&#x2699;</span>
-          <span class="card-title">Generator</span>
+          <span class="card-title" data-i18n="cardGenerator">Generator</span>
         </div>
         <div class="gen-status-row">
           <span id="gen-status" class="gen-badge gen-off">OFF</span>
@@ -145,12 +171,12 @@
         <text id="fl-bat"   class="fl" x="268" y="290" text-anchor="start"></text>
 
         <circle id="fn-solar-bg" cx="250" cy="58" r="42" class="fn-bg"/>
-        <text x="250" y="38" class="fn-lbl" text-anchor="middle">SOLAR</text>
+        <text x="250" y="38" class="fn-lbl" text-anchor="middle" data-i18n="flowSolar">SOLAR</text>
         <text x="250" y="60" class="fn-icon" text-anchor="middle">&#9728;&#65039;</text>
         <text id="fn-solar-v" x="250" y="82" class="fn-val" text-anchor="middle">--</text>
 
         <circle id="fn-gen-bg" cx="58" cy="215" r="42" class="fn-bg"/>
-        <text x="58" y="195" class="fn-lbl" text-anchor="middle">GEN</text>
+        <text x="58" y="195" class="fn-lbl" text-anchor="middle" data-i18n="flowGen">GEN</text>
         <text x="58" y="218" class="fn-icon" text-anchor="middle">&#x2699;&#65039;</text>
         <text id="fn-gen-v" x="58" y="240" class="fn-val" text-anchor="middle">OFF</text>
 
@@ -158,12 +184,12 @@
         <text x="250" y="219" class="fn-icon fn-icon-sm" text-anchor="middle">&#9889;</text>
 
         <circle id="fn-house-bg" cx="442" cy="215" r="42" class="fn-bg"/>
-        <text x="442" y="195" class="fn-lbl" text-anchor="middle">HOUSE</text>
+        <text x="442" y="195" class="fn-lbl" text-anchor="middle" data-i18n="flowHouse">HOUSE</text>
         <text x="442" y="218" class="fn-icon" text-anchor="middle">&#127968;</text>
         <text id="fn-house-v" x="442" y="240" class="fn-val" text-anchor="middle">--</text>
 
         <circle id="fn-bat-bg" cx="250" cy="382" r="42" class="fn-bg"/>
-        <text x="250" y="362" class="fn-lbl" text-anchor="middle">BATTERY</text>
+        <text x="250" y="362" class="fn-lbl" text-anchor="middle" data-i18n="flowBattery">BATTERY</text>
         <text x="250" y="385" class="fn-icon" text-anchor="middle">&#128267;</text>
         <text id="fn-bat-v" x="250" y="407" class="fn-val" text-anchor="middle">--</text>
 
@@ -177,49 +203,49 @@
 
     <section id="chart-view" class="chart-view" hidden>
       <div class="chart-date-nav">
-        <button type="button" id="chart-prev-day" class="chart-day-btn" aria-label="Previous day">&#8249;</button>
-        <div id="chart-week-strip" class="chart-week-strip" role="tablist" aria-label="Select day"></div>
-        <button type="button" id="chart-next-day" class="chart-day-btn" aria-label="Next day">&#8250;</button>
+        <button type="button" id="chart-prev-day" class="chart-day-btn" data-i18n-aria="chartPrevDay" aria-label="Previous day">&#8249;</button>
+        <div id="chart-week-strip" class="chart-week-strip" role="tablist" data-i18n-aria="chartSelectDay" aria-label="Select day"></div>
+        <button type="button" id="chart-next-day" class="chart-day-btn" data-i18n-aria="chartNextDay" aria-label="Next day">&#8250;</button>
       </div>
       <div class="chart-controls">
-        <label for="chart-date" class="chart-date-label">Date</label>
+        <label for="chart-date" class="chart-date-label" data-i18n="chartDate">Date</label>
         <input type="date" id="chart-date" class="chart-date-input">
-        <button type="button" id="chart-export-btn" class="chart-export-btn" disabled>Export CSV</button>
+        <button type="button" id="chart-export-btn" class="chart-export-btn" disabled data-i18n="chartExportCsv">Export CSV</button>
       </div>
       <div class="chart-wrap" id="chart-swipe-area">
         <canvas id="power-chart" width="500" height="220"></canvas>
         <div id="chart-empty" class="chart-empty" hidden>
-          <p id="chart-empty-msg" class="chart-empty-msg">No power data for this date</p>
-          <button type="button" id="chart-retry-btn" class="chart-retry-btn" hidden>Retry</button>
+          <p id="chart-empty-msg" class="chart-empty-msg" data-i18n="chartEmpty">No power data for this date</p>
+          <button type="button" id="chart-retry-btn" class="chart-retry-btn" hidden data-i18n="retry">Retry</button>
         </div>
-        <div id="chart-loading" class="chart-loading" hidden>Loading chart…</div>
+        <div id="chart-loading" class="chart-loading" hidden data-i18n="chartLoading">Loading chart…</div>
       </div>
       <div class="chart-legend">
-        <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar (W)</span>
-        <span class="legend-item"><span class="legend-swatch legend-load"></span>Load (W)</span>
-        <span class="legend-item"><span class="legend-swatch legend-battery"></span>Battery (W)</span>
-        <span class="legend-item legend-soc-item" hidden><span class="legend-swatch legend-soc"></span>SOC (%)<span id="soc-estimated-badge" class="soc-estimated-badge" hidden title="SOC estimated from battery voltage">Estimated</span></span>
+        <span class="legend-item"><span class="legend-swatch legend-solar"></span><span data-i18n="legendSolarW">Solar (W)</span></span>
+        <span class="legend-item"><span class="legend-swatch legend-load"></span><span data-i18n="legendLoadW">Load (W)</span></span>
+        <span class="legend-item"><span class="legend-swatch legend-battery"></span><span data-i18n="legendBatteryW">Battery (W)</span></span>
+        <span class="legend-item legend-soc-item" hidden><span class="legend-swatch legend-soc"></span><span data-i18n="legendSocPct">SOC (%)</span><span id="soc-estimated-badge" class="soc-estimated-badge" hidden data-i18n="socEstimated" data-i18n-title="socEstimatedTitle" title="SOC estimated from battery voltage">Estimated</span></span>
       </div>
 
-      <h3 class="energy-summary-title">7-Day Energy</h3>
+      <h3 class="energy-summary-title" data-i18n="energySummaryTitle">7-Day Energy</h3>
       <div class="chart-wrap energy-chart-wrap">
         <canvas id="energy-chart" width="500" height="180"></canvas>
         <div id="energy-empty" class="chart-empty" hidden>
-          <p id="energy-empty-msg" class="chart-empty-msg">No energy data for the last 7 days</p>
-          <button type="button" id="energy-retry-btn" class="chart-retry-btn" hidden>Retry</button>
+          <p id="energy-empty-msg" class="chart-empty-msg" data-i18n="energyEmpty">No energy data for the last 7 days</p>
+          <button type="button" id="energy-retry-btn" class="chart-retry-btn" hidden data-i18n="retry">Retry</button>
         </div>
-        <div id="energy-loading" class="chart-loading" hidden>Loading summary…</div>
+        <div id="energy-loading" class="chart-loading" hidden data-i18n="energyLoading">Loading summary…</div>
       </div>
       <div class="chart-legend energy-legend">
-        <span class="legend-item"><span class="legend-swatch legend-solar"></span>Solar kWh</span>
-        <span class="legend-item"><span class="legend-swatch legend-load"></span>Load kWh</span>
-        <span class="legend-item legend-soc-range-item" hidden><span class="legend-swatch legend-soc legend-soc-range"></span>SOC min–max</span>
+        <span class="legend-item"><span class="legend-swatch legend-solar"></span><span data-i18n="legendSolarKwh">Solar kWh</span></span>
+        <span class="legend-item"><span class="legend-swatch legend-load"></span><span data-i18n="legendLoadKwh">Load kWh</span></span>
+        <span class="legend-item legend-soc-range-item" hidden><span class="legend-swatch legend-soc legend-soc-range"></span><span data-i18n="legendSocRange">SOC min–max</span></span>
       </div>
     </section>
 
     <div id="poll-error-toast" class="poll-error-toast" role="alert" aria-live="polite" hidden>
       <p id="poll-error-msg" class="poll-error-msg"></p>
-      <button type="button" id="poll-retry-btn" class="poll-retry-btn">Retry</button>
+      <button type="button" id="poll-retry-btn" class="poll-retry-btn" data-i18n="retry">Retry</button>
     </div>
 
     <footer>
@@ -231,27 +257,31 @@
   <!-- Add System modal -->
   <div id="add-system-modal" class="modal-overlay" hidden>
     <div class="modal">
-      <h2>Add System</h2>
+      <h2 data-i18n="addSystem">Add System</h2>
       <form id="add-system-form">
-        <label>Service</label>
+        <label data-i18n="addService">Service</label>
         <select id="add-service" required>
-          <option value="">Select service...</option>
+          <option value="" data-i18n="selectService">Select service...</option>
           <option value="shinemonitor">ShineMonitor</option>
           <option value="growatt">Growatt</option>
         </select>
-        <label>Name (optional)</label>
-        <input type="text" id="add-name" placeholder="e.g. My Home Solar">
-        <label>Username</label>
+        <label data-i18n="addNameOptional">Name (optional)</label>
+        <input type="text" id="add-name" data-i18n-placeholder="addNamePlaceholder" placeholder="e.g. My Home Solar">
+        <label data-i18n="username">Username</label>
         <input type="text" id="add-user" required>
-        <label>Password</label>
+        <label data-i18n="password">Password</label>
         <input type="password" id="add-pass" required>
         <div id="add-plant-group" hidden>
-          <label for="add-plant">Plant</label>
+          <label for="add-plant" data-i18n="plant">Plant</label>
           <select id="add-plant"></select>
         </div>
+        <div id="add-device-group" hidden>
+          <label for="add-device">Inverter</label>
+          <select id="add-device"></select>
+        </div>
         <div class="modal-actions">
-          <button type="button" id="add-cancel" class="btn-secondary">Cancel</button>
-          <button type="submit" id="add-submit">Add System</button>
+          <button type="button" id="add-cancel" class="btn-secondary" data-i18n="cancel">Cancel</button>
+          <button type="submit" id="add-submit" data-i18n="addSystem">Add System</button>
         </div>
       </form>
       <p id="add-error" class="error" hidden></p>
@@ -261,15 +291,21 @@
   <!-- Manage Systems modal -->
   <div id="manage-modal" class="modal-overlay" hidden>
     <div class="modal modal-wide">
-      <h2>Systems</h2>
+      <h2 data-i18n="systems">Systems</h2>
       <div class="manage-settings">
-        <label for="poll-interval">Refresh interval</label>
-        <select id="poll-interval" aria-label="Data refresh interval"></select>
+        <label for="theme-select" data-i18n="theme">Theme</label>
+        <select id="theme-select" data-i18n-aria="themeAria" aria-label="Color theme">
+          <option value="dark" data-i18n="themeDark">Dark</option>
+          <option value="light" data-i18n="themeLight">Light</option>
+          <option value="high-contrast" data-i18n="themeHighContrast">High contrast</option>
+        </select>
+        <label for="poll-interval" data-i18n="refreshInterval">Refresh interval</label>
+        <select id="poll-interval" data-i18n-aria="refreshIntervalAria" aria-label="Data refresh interval"></select>
       </div>
       <div id="manage-list" class="manage-list"></div>
       <div class="modal-actions">
-        <button type="button" id="manage-add" class="btn-secondary">+ Add System</button>
-        <button type="button" id="manage-close">Close</button>
+        <button type="button" id="manage-add" class="btn-secondary" data-i18n="addSystemBtn">+ Add System</button>
+        <button type="button" id="manage-close" data-i18n="close">Close</button>
       </div>
     </div>
   </div>

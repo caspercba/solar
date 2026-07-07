@@ -159,6 +159,53 @@ test.describe("Compare view", () => {
   });
 });
 
+test.describe("Keyboard refresh", () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+
+  test("F5 refreshes data without reloading the page", async ({ page }) => {
+    let dataRequestCount = 0;
+    await page.route("**/api/systems/*/data", async (route) => {
+      dataRequestCount += 1;
+      await route.continue();
+    });
+
+    await page.locator("#cards-view").click();
+    const before = dataRequestCount;
+
+    const navigated = page.waitForEvent("framenavigated", { timeout: 2000 }).catch(() => null);
+    await page.keyboard.press("F5");
+
+    await expect.poll(() => dataRequestCount, { timeout: 10_000 }).toBeGreaterThan(before);
+    expect(await navigated).toBeNull();
+  });
+
+  test("Ctrl+R refreshes data without reloading the page", async ({ page }) => {
+    let dataRequestCount = 0;
+    await page.route("**/api/systems/*/data", async (route) => {
+      dataRequestCount += 1;
+      await route.continue();
+    });
+
+    await page.locator("#cards-view").click();
+    const before = dataRequestCount;
+
+    const navigated = page.waitForEvent("framenavigated", { timeout: 2000 }).catch(() => null);
+    await page.keyboard.press("Control+r");
+
+    await expect.poll(() => dataRequestCount, { timeout: 10_000 }).toBeGreaterThan(before);
+    expect(await navigated).toBeNull();
+  });
+
+  test("does not intercept F5 when a text input is focused", async ({ page }) => {
+    await switchView(page, "chart");
+    await page.locator("#chart-date").focus();
+
+    const navigated = page.waitForEvent("framenavigated");
+    await page.keyboard.press("F5");
+    await navigated;
+  });
+});
+
 test.describe("Poll error toast", () => {
   async function failNextDataPoll(page, message = "Fetch failed: vendor offline") {
     await page.route("**/api/systems/*/data", async (route) => {

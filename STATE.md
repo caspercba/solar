@@ -39,6 +39,7 @@ _Last updated: 2026-07-07_
 - HTTP fixtures for vendor parser regression (`worker/test/fixtures/`)
 - **SOC threshold alerts** — Worker cron (`wrangler.toml`), webhook dispatch, manage-systems UI
 - **Adapter development guide** — [discovery/ADAPTER_GUIDE.md](./discovery/ADAPTER_GUIDE.md) (discovery → adapter → tests → CI)
+- **Worker deployment runbook** — [worker/DEPLOY.md](./worker/DEPLOY.md) (KV, secrets, alerts/cron, production checklist, tag-based CI)
 
 ## In Progress
 
@@ -55,17 +56,16 @@ _Priority order — finish v1.2.0 chart polish, then productization and UX (PLAN
 
 **Documentation & ops:**
 
-3. Worker deployment runbook (`wrangler secret put`, KV setup, alert cron, production checklist)
-4. Always-on `API_TOKEN` and `CREDENTIALS_KEY` in production (ops/config)
-5. Cloudflare Pages auto-deploy for frontend from `main`
-6. Staging worker environment
+3. Always-on `API_TOKEN` and `CREDENTIALS_KEY` in production (ops/config)
+4. Cloudflare Pages auto-deploy for frontend from `main`
+5. Staging worker environment
 
 **UX & resilience:**
 
-7. Configurable poll interval
-8. Error toast / retry UI when poll fails
-9. Desktop keyboard shortcut for refresh
-10. Light theme / high-contrast mode
+6. Configurable poll interval
+7. Error toast / retry UI when poll fails
+8. Desktop keyboard shortcut for refresh
+9. Light theme / high-contrast mode
 
 **Security & hardening:**
 

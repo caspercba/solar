@@ -72,6 +72,7 @@ describe("worker routes", () => {
         id: "a",
         name: "Alpha",
         service: "shinemonitor",
+        username: "",
         alerts: {
           enabled: false,
           webhookUrl: "",
@@ -140,6 +141,118 @@ describe("worker routes", () => {
     expect(stored.credentials.pwdSha1).toMatch(/^[a-f0-9]{40}$/);
   });
 
+  it("POST /api/systems returns requiresDeviceSelection for multi-inverter ShineMonitor plants", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 9, pname: "Dual Inverter" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Dual Inverter", nominalPower: "8", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            collector: [{
+              pn: "P1",
+              alias: "RTU",
+              device: [
+                { devcode: 1, sn: "SN-A", devaddr: 1 },
+                { devcode: 1, sn: "SN-B", devaddr: 2 },
+              ],
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "shinemonitor",
+          user: "user@test.com",
+          password: "password",
+          plantId: "9",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.requiresDeviceSelection).toBe(true);
+    expect(json.devices).toHaveLength(2);
+    expect(json.devices[0].key).toBe("P1|SN-A|1");
+  });
+
+  it("POST /api/systems stores aggregate multi-device ShineMonitor config", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 9, pname: "Dual Inverter" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Dual Inverter", nominalPower: "8", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            collector: [{
+              pn: "P1",
+              alias: "RTU",
+              device: [
+                { devcode: 1, sn: "SN-A", devaddr: 1 },
+                { devcode: 1, sn: "SN-B", devaddr: 2 },
+              ],
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "shinemonitor",
+          name: "Dual",
+          user: "user@test.com",
+          password: "password",
+          plantId: "9",
+          deviceMode: "aggregate",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    const stored = await systems.SYSTEMS.get(`system:${json.id}`, "json");
+    expect(stored.credentials.deviceMode).toBe("aggregate");
+    expect(stored.credentials.devices).toHaveLength(2);
+  });
+
   it("POST /api/systems discovers Growatt and stores sessionCookies instead of password", async () => {
     globalThis.fetch = vi.fn(async (url, init) => {
       const u = String(url);
@@ -189,6 +302,184 @@ describe("worker routes", () => {
     expect(stored.credentials.sessionCookies).toEqual({ JSESSIONID: "growatt-sess" });
     expect(stored.credentials.plantId).toBe("42");
     expect(stored.credentials.storageSn).toBe("SN1");
+  });
+
+  it("PUT /api/systems/:id/credentials updates credentials after re-discovery", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 1, pname: "Solar Farm" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Solar Farm", nominalPower: "5", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: { collector: [{ pn: "P1", device: [{ devcode: 2, sn: "SN", devaddr: 3 }] }] },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Cabin", service: "shinemonitor" },
+    ]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Cabin",
+      service: "shinemonitor",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      credentials: {
+        user: "old@test.com",
+        pwdSha1: "oldhash",
+        plantId: "1",
+        device: { pn: "P0", devcode: "1", sn: "OLD", devaddr: "1" },
+        timezone: 0,
+      },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/credentials", {
+        method: "PUT",
+        headers: AUTH,
+        body: {
+          user: "new@test.com",
+          password: "new-password",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.username).toBe("new@test.com");
+    expect(json.id).toBe("s1");
+    expect(json.name).toBe("Cabin");
+
+    const stored = await systems.SYSTEMS.get("system:s1", "json");
+    expect(stored.credentials.user).toBe("new@test.com");
+    expect(stored.credentials.pwdSha1).toMatch(/^[a-f0-9]{40}$/);
+    expect(stored.credentials.pwdSha1).not.toBe("oldhash");
+    expect(stored.credentials.plantId).toBe("1");
+    expect(stored.createdAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("PUT /api/systems/:id/credentials returns 502 and leaves system unchanged on auth failure", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 1, desc: "Invalid credentials" });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Cabin", service: "shinemonitor" },
+    ]));
+    const original = {
+      id: "s1",
+      name: "Cabin",
+      service: "shinemonitor",
+      credentials: {
+        user: "old@test.com",
+        pwdSha1: "keep-me",
+        plantId: "1",
+      },
+    };
+    await systems.SYSTEMS.put("system:s1", JSON.stringify(original));
+
+    const res = await call(
+      request("/api/systems/s1/credentials", {
+        method: "PUT",
+        headers: AUTH,
+        body: {
+          user: "bad@test.com",
+          password: "wrong",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: expect.stringContaining("Discovery failed") });
+
+    const stored = await systems.SYSTEMS.get("system:s1", "json");
+    expect(stored.credentials.user).toBe("old@test.com");
+    expect(stored.credentials.pwdSha1).toBe("keep-me");
+  });
+
+  it("PUT /api/systems/:id/credentials returns plant picker without updating system", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            info: [
+              { pid: 1, pname: "Farm A" },
+              { pid: 2, pname: "Farm B" },
+            ],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Cabin", service: "shinemonitor" },
+    ]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Cabin",
+      service: "shinemonitor",
+      credentials: { user: "old@test.com", pwdSha1: "keep-me" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/credentials", {
+        method: "PUT",
+        headers: AUTH,
+        body: {
+          user: "new@test.com",
+          password: "new-password",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.requiresPlantSelection).toBe(true);
+    expect(json.plants).toHaveLength(2);
+
+    const stored = await systems.SYSTEMS.get("system:s1", "json");
+    expect(stored.credentials.user).toBe("old@test.com");
+    expect(stored.credentials.pwdSha1).toBe("keep-me");
+  });
+
+  it("PUT /api/systems/:id/credentials returns 404 for unknown system", async () => {
+    const res = await call(
+      request("/api/systems/missing/credentials", {
+        method: "PUT",
+        headers: AUTH,
+        body: { user: "u", password: "p" },
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "System not found" });
   });
 
   it("PUT /api/systems/:id/alerts updates alert settings", async () => {
@@ -598,6 +889,68 @@ describe("worker routes", () => {
   it("GET /api/systems/:id/history returns 404 for unknown system", async () => {
     const res = await call(
       request("/api/systems/missing/history", { headers: AUTH }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "System not found" });
+  });
+
+  it("GET /api/systems/:id/ha returns flat JSON for Home Assistant", async () => {
+    vi.spyOn(growatt, "fetchData").mockResolvedValue({
+      systemId: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery: { voltage: 48, soc: 72, current: -10, power: -480 },
+      solar: { power: 1200, voltage: 95 },
+      load: { power: 850, percent: 24 },
+      grid: { power: 0, voltage: 0, active: false },
+      inverter: { ratedPower: 5000, nominalPV: 5000 },
+      status: "PV Charging",
+      energyToday: 12.4,
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "p", plantId: "42", storageSn: "SN1" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/ha", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      schema_version: 1,
+      system_id: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery_soc: 72,
+      battery_voltage: 48,
+      battery_current: -10,
+      battery_power: -480,
+      solar_power: 1200,
+      solar_voltage: 95,
+      load_power: 850,
+      load_percent: 24,
+      grid_power: 0,
+      grid_voltage: 0,
+      grid_active: false,
+      inverter_rated_power: 5000,
+      inverter_nominal_pv: 5000,
+      status: "PV Charging",
+      energy_today_kwh: 12.4,
+    });
+  });
+
+  it("GET /api/systems/:id/ha returns 404 for unknown system", async () => {
+    const res = await call(
+      request("/api/systems/missing/ha", { headers: AUTH }),
     );
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "System not found" });

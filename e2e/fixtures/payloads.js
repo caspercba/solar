@@ -31,12 +31,14 @@ export const systems = [
     id: MOCK_SYSTEM_ID,
     name: "Mock Home Solar",
     service: "shinemonitor",
+    username: "mock-user@example.com",
     alerts: { ...defaultAlerts },
   },
   {
     id: MOCK_SYSTEM_ID_2,
     name: "Mock Cabin",
     service: "growatt",
+    username: "growatt-mock@example.com",
     alerts: { ...defaultAlerts },
   },
 ];
