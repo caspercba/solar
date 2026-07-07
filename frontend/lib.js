@@ -140,3 +140,84 @@ export function formatPollIntervalLabel(sec) {
   }
   return `${sec} seconds`;
 }
+
+/** 48V off-grid voltage endpoints (matches shinemonitor adapter voltage-SOC curve). */
+export const BAT_LOW_V = 42.0;
+export const BAT_HIGH_V = 53.5;
+
+/** Default implied Ah for a 48V-class bank when no nominal capacity is configured. */
+export const DEFAULT_BATTERY_AH = 200;
+
+/**
+ * Implied battery capacity (Wh) from pack voltage and optional nominal config.
+ * Uses nominalCapacityAh when provided; otherwise defaults by voltage tier
+ * (48V → 200 Ah, 24V → 100 Ah, 12V → 50 Ah) anchored to the BAT_LOW_V..BAT_HIGH_V span.
+ */
+export function impliedBatteryCapacityWh(voltage, nominalCapacityAh) {
+  const v = voltage ?? 48;
+  let ah = nominalCapacityAh;
+  if (!Number.isFinite(ah) || ah <= 0) {
+    if (v >= 40) ah = DEFAULT_BATTERY_AH;
+    else if (v >= 22) ah = DEFAULT_BATTERY_AH / 2;
+    else ah = DEFAULT_BATTERY_AH / 4;
+  }
+  const nominalV = (BAT_LOW_V + BAT_HIGH_V) / 2;
+  return ah * nominalV;
+}
+
+/**
+ * Format hours until empty as a compact label (e.g. "4h 5m", "45m", "<1m").
+ */
+export function formatTimeToEmpty(hours) {
+  if (!Number.isFinite(hours) || hours <= 0) return "";
+  const totalMin = Math.round(hours * 60);
+  if (totalMin < 1) return "<1m";
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h <= 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+/**
+ * Estimate time until battery empty while discharging.
+ *
+ * Formula (energy balance):
+ *   remaining_Wh = (soc / 100) × impliedCapacityWh(voltage)
+ *   discharge_W = positive battery power, or voltage × positive current
+ *   hours = remaining_Wh / discharge_W
+ *
+ * impliedCapacityWh uses battery.nominalCapacityAh when set, otherwise defaults
+ * by voltage tier using the 42.0–53.5 V curve midpoint as nominal pack voltage.
+ *
+ * Returns null when charging, grid active, SOC unavailable, load ≤ 0, or discharge ≤ 0.
+ * @returns {{ hours: number, label: string } | null}
+ */
+export function estimateBatteryTimeToEmpty(battery, grid, { load } = {}) {
+  if (grid?.active) return null;
+
+  const soc = battery?.soc;
+  if (!Number.isFinite(soc) || soc <= 0) return null;
+
+  const loadW = load?.power;
+  if (!Number.isFinite(loadW) || loadW <= 0) return null;
+
+  const current = battery?.current ?? 0;
+  const voltage = battery?.voltage ?? 0;
+  const power = battery?.power;
+
+  const charging = (Number.isFinite(power) && power < -5) || current < -2;
+  const discharging = (Number.isFinite(power) && power > 5) || current > 2;
+  if (charging || !discharging) return null;
+
+  let dischargeW = 0;
+  if (Number.isFinite(power) && power > 0) dischargeW = power;
+  else if (current > 0 && voltage > 0) dischargeW = voltage * current;
+  if (dischargeW <= 0) return null;
+
+  const capacityWh = impliedBatteryCapacityWh(voltage, battery?.nominalCapacityAh);
+  const hours = ((soc / 100) * capacityWh) / dischargeW;
+  if (!Number.isFinite(hours) || hours <= 0) return null;
+
+  return { hours, label: `~${formatTimeToEmpty(hours)} left` };
+}

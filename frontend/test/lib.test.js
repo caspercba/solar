@@ -22,6 +22,12 @@ import {
   formatPollIntervalLabel,
   POLL_INTERVAL_OPTIONS_SEC,
   DEFAULT_POLL_INTERVAL_SEC,
+  impliedBatteryCapacityWh,
+  formatTimeToEmpty,
+  estimateBatteryTimeToEmpty,
+  DEFAULT_BATTERY_AH,
+  BAT_LOW_V,
+  BAT_HIGH_V,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -252,5 +258,89 @@ describe("poll interval helpers", () => {
     expect(formatPollIntervalLabel(30)).toBe("30 seconds");
     expect(formatPollIntervalLabel(60)).toBe("60 seconds");
     expect(formatPollIntervalLabel(120)).toBe("2 minutes");
+  });
+});
+
+describe("impliedBatteryCapacityWh", () => {
+  it("uses nominal Ah when provided", () => {
+    const nominalV = (BAT_LOW_V + BAT_HIGH_V) / 2;
+    expect(impliedBatteryCapacityWh(48.2, 100)).toBeCloseTo(100 * nominalV);
+  });
+
+  it("defaults by voltage tier when nominal Ah is absent", () => {
+    const nominalV = (BAT_LOW_V + BAT_HIGH_V) / 2;
+    expect(impliedBatteryCapacityWh(48.2)).toBeCloseTo(DEFAULT_BATTERY_AH * nominalV);
+    expect(impliedBatteryCapacityWh(24)).toBeCloseTo((DEFAULT_BATTERY_AH / 2) * nominalV);
+    expect(impliedBatteryCapacityWh(12)).toBeCloseTo((DEFAULT_BATTERY_AH / 4) * nominalV);
+  });
+});
+
+describe("formatTimeToEmpty", () => {
+  it("formats sub-hour and multi-hour durations", () => {
+    expect(formatTimeToEmpty(0.5)).toBe("30m");
+    expect(formatTimeToEmpty(4 + 5 / 60)).toBe("4h 5m");
+    expect(formatTimeToEmpty(2)).toBe("2h");
+    expect(formatTimeToEmpty(0.005)).toBe("<1m");
+  });
+
+  it("returns empty string for invalid values", () => {
+    expect(formatTimeToEmpty(0)).toBe("");
+    expect(formatTimeToEmpty(-1)).toBe("");
+    expect(formatTimeToEmpty(NaN)).toBe("");
+  });
+});
+
+describe("estimateBatteryTimeToEmpty", () => {
+  const dischargingBattery = {
+    soc: 45,
+    voltage: 48.2,
+    current: 22,
+    power: 1056,
+  };
+  const activeLoad = { power: 850 };
+  const idleGrid = { active: false, power: 0 };
+
+  it("returns a label when discharging with finite load and no grid", () => {
+    const result = estimateBatteryTimeToEmpty(dischargingBattery, idleGrid, { load: activeLoad });
+    expect(result).not.toBeNull();
+    expect(result.hours).toBeGreaterThan(0);
+    expect(result.label).toMatch(/^~\d/);
+    expect(result.label).toContain("left");
+  });
+
+  it("hides when charging", () => {
+    expect(
+      estimateBatteryTimeToEmpty(
+        { soc: 72, voltage: 48.2, current: -15, power: -723 },
+        idleGrid,
+        { load: activeLoad },
+      ),
+    ).toBeNull();
+  });
+
+  it("hides when grid is active", () => {
+    expect(
+      estimateBatteryTimeToEmpty(dischargingBattery, { active: true, power: 500 }, { load: activeLoad }),
+    ).toBeNull();
+  });
+
+  it("hides when SOC is unavailable or zero", () => {
+    expect(estimateBatteryTimeToEmpty({ ...dischargingBattery, soc: null }, idleGrid, { load: activeLoad })).toBeNull();
+    expect(estimateBatteryTimeToEmpty({ ...dischargingBattery, soc: 0 }, idleGrid, { load: activeLoad })).toBeNull();
+  });
+
+  it("hides when load is missing or non-positive", () => {
+    expect(estimateBatteryTimeToEmpty(dischargingBattery, idleGrid, { load: { power: 0 } })).toBeNull();
+    expect(estimateBatteryTimeToEmpty(dischargingBattery, idleGrid, {})).toBeNull();
+  });
+
+  it("hides when battery is idle", () => {
+    expect(
+      estimateBatteryTimeToEmpty(
+        { soc: 60, voltage: 48, current: 0, power: 0 },
+        idleGrid,
+        { load: activeLoad },
+      ),
+    ).toBeNull();
   });
 });
