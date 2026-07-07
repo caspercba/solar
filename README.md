@@ -168,7 +168,7 @@ Staging is a separate Cloudflare Worker (`solar-proxy-staging`) with its **own K
 npx wrangler dev --env staging
 ```
 
-Production and staging deploys are **tag-only** in CI (see [CI/CD](#cicd)). Deploy staging manually when needed:
+Production Worker deploys are **tag-only** in CI; the frontend auto-deploys on every push to `main` (see [CI/CD](#cicd)). Deploy staging manually when needed:
 
 ### Historical data (vendor APIs)
 
@@ -210,9 +210,10 @@ npm test
 GitHub Actions runs on every push to `main`, on version tags, and on pull requests (`.github/workflows/ci.yml`):
 
 1. **Test** — worker unit tests, frontend unit tests, and Playwright E2E (runs on PRs and all pushes).
-2. **Deploy (production)** — only when you push a semver tag `vMAJOR.MINOR.PATCH` (e.g. `v1.2.0`). After tests pass, CI deploys **both** the static frontend to [Cloudflare Pages](https://developers.cloudflare.com/pages/) (**https://solar-dashboard.pages.dev**) and the production Worker (`wrangler deploy`).
+2. **Deploy frontend** — on every push to `main`, after tests pass, CI stages static assets (`scripts/stage-frontend.sh`) and deploys to [Cloudflare Pages](https://developers.cloudflare.com/pages/) (**https://solar-dashboard.pages.dev**).
+3. **Deploy Worker (production)** — only when you push a semver tag `vMAJOR.MINOR.PATCH` (e.g. `v1.2.0`). After tests pass, CI deploys the production Worker (`wrangler deploy`).
 
-Merges to `main` run tests only — nothing goes live until you cut a release tag.
+Merges to `main` update the live frontend automatically. Cut a release tag when you want to promote Worker API changes to production.
 
 ### Release a version
 
@@ -225,13 +226,13 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-CI validates the tag format, runs the full test suite, then deploys frontend + Worker from that tag's snapshot. Each new tag you push becomes the live site/API.
+CI validates the tag format, runs the full test suite, then deploys the production Worker from that tag's snapshot. The frontend is already live if the tagged commit is on `main`.
 
 ### Required GitHub secrets
 
 | Secret | Purpose |
 |--------|---------|
-| `CLOUDFLARE_API_TOKEN` | Authenticates Wrangler for Worker and Pages deploy on release tags. Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for production and staging `SYSTEMS` namespaces) plus **Cloudflare Pages — Edit**. |
+| `CLOUDFLARE_API_TOKEN` | Authenticates Wrangler for Pages deploy on pushes to `main` and Worker deploy on release tags. Create a [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) with **Edit Cloudflare Workers** (and KV read/write for production and staging `SYSTEMS` namespaces) plus **Cloudflare Pages — Edit**. |
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID (Dashboard → Workers & Pages → right sidebar). Required for Pages deploy. |
 
 Add secrets under **Repository → Settings → Secrets and variables → Actions → New repository secret**.
@@ -289,12 +290,12 @@ The frontend is static — no build step. Serve `index.html`, `app.js`, `style.c
 
 **Production URL:** https://solar-dashboard.pages.dev
 
-Production deploys happen when you push a release tag (see [CI/CD](#cicd) above). The workflow runs `scripts/stage-frontend.sh` to copy only static assets into `dist/`, then `wrangler pages deploy`.
+Production deploys happen on every push to `main` (see [CI/CD](#cicd) above). The workflow runs `scripts/stage-frontend.sh` to copy only static assets into `dist/`, then `wrangler pages deploy`.
 
 **One-time setup** (if not already configured):
 
 1. Add GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (see table above).
-2. Push a release tag (e.g. `v1.0.0`) — the first deploy creates the `solar-dashboard` Pages project if it does not exist.
+2. Merge to `main` — the first deploy creates the `solar-dashboard` Pages project if it does not exist.
 3. Configure Worker CORS (below) so the browser can call the proxy from the Pages origin.
 
 **Manual deploy** (optional):
