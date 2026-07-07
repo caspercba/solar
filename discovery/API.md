@@ -34,7 +34,7 @@ Some dashboard calls are loaded as **JSONP** (`callback=jQuery…`); the HTTP bo
 |------|------|
 | `https://www.shinemonitor.com/` | Web UI (HTML/JS) |
 | `https://web.shinemonitor.com/public/` | **This API** (signed GET) |
-| `https://ws.shinemonitor.com/` | Legacy/alternate **WebSocket** API (`ws?sign=…`) used by some `http_normal_oper` code paths in `libhttp.js` |
+| `https://ws.shinemonitor.com/` | Legacy **HTTP** API gateway (`/ws?sign=…` path prefix — not RFC 6455 WebSocket). See [WEBSOCKET_REALTIME.md](./WEBSOCKET_REALTIME.md). |
 | `https://hmi.eybond.com/`, `https://aam.eybond.com/`, … | Domain checks, app config, tasks (supporting calls from the login page) |
 
 This document focuses on **`web.shinemonitor.com/public/`**.
@@ -754,7 +754,7 @@ These go through the same signing rules when called via `http_async_request_publ
 | `editPlant` | Edit plant metadata (from `plant.html`) |
 | `getWeatherByPlant` | Weather widget for plant |
 
-The **WebSocket** API on `https://ws.shinemonitor.com/` uses different paths (e.g. `plantCurrentData`, `plantDeviceStatus` with `par` like `ENERGY_TODAY,CURRENT_POWER`) and signs with `salt + pwd_sha1 + action` or `salt + secret + token + action` depending on the function—see `libhttp.js` if you need that transport.
+The **legacy HTTP** API on `https://ws.shinemonitor.com/` (path prefix `ws`, not WebSocket frames) exposes actions such as `plantCurrentData` and `plantDeviceStatus` with `par` like `ENERGY_TODAY,CURRENT_POWER`. Signing matches the public API (`salt + secret + token + action`). The modern dashboard uses `web.shinemonitor.com/public/` instead; see `libhttp.js` `http_normal_oper` vs `http_async_request_public`. Push/stream feasibility: [WEBSOCKET_REALTIME.md](./WEBSOCKET_REALTIME.md).
 
 ---
 
