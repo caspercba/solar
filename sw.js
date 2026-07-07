@@ -4,7 +4,7 @@ const SHELL = [
   "/",
   "/index.html",
   "/style.css",
-  "/style.css?v=12",
+  "/style.css?v=15",
   "/app.js",
   "/app.js?v=15",
   "/frontend/lib.js",

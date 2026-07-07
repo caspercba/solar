@@ -109,6 +109,9 @@ const els = {
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
   inverterStatus: $("inverter-status"),
+  pollErrorToast: $("poll-error-toast"),
+  pollErrorMsg: $("poll-error-msg"),
+  pollRetryBtn: $("poll-retry-btn"),
 };
 
 const fEls = {
@@ -165,6 +168,7 @@ const manageList = $("manage-list");
 let systems = [];
 let activeSystemId = null;
 let pollTimer = null;
+let pollRetrying = false;
 let hasData = false;
 let currentView = "cards";
 let historyLoading = false;
@@ -281,6 +285,29 @@ function showDash() {
 
 function setStatus(ok) {
   els.statusDot.className = ok ? "dot dot-ok" : "dot dot-err";
+}
+
+function showPollError(message) {
+  if (!els.pollErrorToast || !els.pollErrorMsg) return;
+  els.pollErrorMsg.textContent = message;
+  els.pollErrorToast.hidden = false;
+}
+
+function hidePollError() {
+  if (!els.pollErrorToast) return;
+  els.pollErrorToast.hidden = true;
+  if (els.pollRetryBtn) {
+    els.pollRetryBtn.disabled = false;
+    els.pollRetryBtn.textContent = "Retry";
+  }
+  pollRetrying = false;
+}
+
+function setPollRetrying(retrying) {
+  pollRetrying = retrying;
+  if (!els.pollRetryBtn) return;
+  els.pollRetryBtn.disabled = retrying;
+  els.pollRetryBtn.textContent = retrying ? "Retrying…" : "Retry";
 }
 
 /* ── System tabs ── */
@@ -1028,11 +1055,21 @@ async function pollNow() {
   try {
     const data = await api("GET", `/api/systems/${activeSystemId}/data`);
     renderData(data);
+    hidePollError();
   } catch (err) {
     console.error("poll error:", err);
     setLoading(false);
     setStatus(false);
+    showPollError(chartErrorMessage(err, "Could not load system data."));
+  } finally {
+    setPollRetrying(false);
   }
+}
+
+async function retryPollNow() {
+  if (!activeSystemId || pollRetrying) return;
+  setPollRetrying(true);
+  await pollNow();
 }
 
 function startPolling() {
@@ -1046,6 +1083,7 @@ function startPolling() {
 
 function stopPolling() {
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  hidePollError();
 }
 
 /* ── Load systems list ── */
@@ -1298,6 +1336,10 @@ els.disconnectBtn.addEventListener("click", () => {
   stopPolling();
   showSetup();
 });
+
+if (els.pollRetryBtn) {
+  els.pollRetryBtn.addEventListener("click", () => retryPollNow());
+}
 
 /* ── Pull to refresh ── */
 {
