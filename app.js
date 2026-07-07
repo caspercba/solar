@@ -122,8 +122,8 @@ const fEls = {
   tabFlow: $("tab-flow"),
   tabChart: $("tab-chart"),
   chartDate: $("chart-date"),
-  chartPrevDay: $("chart-prev-day"),
-  chartNextDay: $("chart-next-day"),
+  chartPrev: $("chart-prev"),
+  chartNext: $("chart-next"),
   chartWeekStrip: $("chart-week-strip"),
   chartSwipeArea: $("chart-swipe-area"),
   chartExportBtn: $("chart-export-btn"),
@@ -227,11 +227,11 @@ fEls.tabCards.addEventListener("click", () => setView("cards"));
 fEls.tabFlow.addEventListener("click", () => setView("flow"));
 fEls.tabChart.addEventListener("click", () => setView("chart"));
 fEls.chartDate.addEventListener("change", () => selectChartDate(fEls.chartDate.value));
-if (fEls.chartPrevDay) {
-  fEls.chartPrevDay.addEventListener("click", () => navigateChartDay(-1));
+if (fEls.chartPrev) {
+  fEls.chartPrev.addEventListener("click", () => navigateChartDay(-1));
 }
-if (fEls.chartNextDay) {
-  fEls.chartNextDay.addEventListener("click", () => navigateChartDay(1));
+if (fEls.chartNext) {
+  fEls.chartNext.addEventListener("click", () => navigateChartDay(1));
 }
 if (fEls.chartExportBtn) fEls.chartExportBtn.addEventListener("click", exportChartCsv);
 if (fEls.chartRetryBtn) {
@@ -895,7 +895,7 @@ function renderChartWeekStrip(selectedDate, today = todayIsoDate()) {
   for (const date of dates) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "chart-day-pill";
+    btn.className = "chart-day-btn";
     if (date === selectedDate) btn.classList.add("active");
     if (date === today) btn.classList.add("is-today");
     btn.dataset.date = date;
@@ -919,9 +919,9 @@ function renderChartWeekStrip(selectedDate, today = todayIsoDate()) {
     strip.appendChild(btn);
   }
 
-  if (fEls.chartPrevDay) fEls.chartPrevDay.disabled = historyLoading;
-  if (fEls.chartNextDay) {
-    fEls.chartNextDay.disabled = historyLoading || selectedDate >= today;
+  if (fEls.chartPrev) fEls.chartPrev.disabled = historyLoading;
+  if (fEls.chartNext) {
+    fEls.chartNext.disabled = historyLoading || selectedDate >= today;
   }
 }
 

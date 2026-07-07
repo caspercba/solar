@@ -47,7 +47,29 @@ export async function switchView(page, view) {
   await page.locator(tabId).click();
 }
 
-/** Simulate a downward pull on the dashboard (requires hasTouch / mobile project). */
+/** Simulate a horizontal swipe on the chart area (requires hasTouch / mobile project). */
+export async function swipeChartDay(page, { direction = "prev", distance = 120 } = {}) {
+  const area = page.locator("#chart-swipe-area");
+  const box = await area.boundingBox();
+  if (!box) throw new Error("chart-swipe-area not visible");
+  const y = Math.round(box.y + box.height / 2);
+  const centerX = Math.round(box.x + box.width / 2);
+  const endX = direction === "prev" ? centerX + distance : centerX - distance;
+
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type, x) =>
+    cdp.send("Input.dispatchTouchEvent", {
+      type,
+      touchPoints: x == null ? [] : [{ x, y }],
+    });
+
+  await touch("touchStart", centerX);
+  for (let x = centerX; direction === "prev" ? x <= endX : x >= endX; x += direction === "prev" ? 10 : -10) {
+    await touch("touchMove", x);
+  }
+  await touch("touchEnd");
+}
+
 export async function pullToRefresh(page, { pullDistance = 120 } = {}) {
   await page.evaluate(() => window.scrollTo(0, 0));
   const box = await page.locator("#dashboard-screen").boundingBox();
