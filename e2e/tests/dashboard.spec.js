@@ -105,3 +105,52 @@ test.describe("View toggle persistence", () => {
     await expect(page.locator("#chart-view")).toBeVisible();
   });
 });
+
+test.describe("Poll error toast", () => {
+  async function failNextDataPoll(page, message = "Fetch failed: vendor offline") {
+    await page.route("**/api/systems/*/data", async (route) => {
+      await route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({ error: message }),
+      });
+    });
+  }
+
+  async function restoreDataPoll(page) {
+    await page.unroute("**/api/systems/*/data");
+  }
+
+  test("shows toast with retry on cards view and clears after success", async ({ page }) => {
+    await failNextDataPoll(page);
+    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
+
+    const toast = page.locator("#poll-error-toast");
+    await expect(toast).toBeVisible();
+    await expect(page.locator("#poll-error-msg")).toHaveText("Fetch failed: vendor offline");
+    await expect(page.locator("#status-dot")).toHaveClass(/dot-err/);
+    await expect(page.locator("#cards-view")).toBeVisible();
+
+    await restoreDataPoll(page);
+    await page.locator("#poll-retry-btn").click();
+
+    await expect(toast).toBeHidden();
+    await expect(page.locator("#bat-pct")).toHaveText("45");
+    await expect(page.locator("#status-dot")).toHaveClass(/dot-ok/);
+  });
+
+  test("shows toast on flow view", async ({ page }) => {
+    await switchView(page, "flow");
+    await failNextDataPoll(page);
+    await page.locator("#system-tabs button", { hasText: "Mock Home Solar" }).click();
+
+    await expect(page.locator("#poll-error-toast")).toBeVisible();
+    await expect(page.locator("#flow-view")).toBeVisible();
+    await expect(page.locator("#poll-error-msg")).toContainText("Fetch failed");
+
+    await restoreDataPoll(page);
+    await page.locator("#poll-retry-btn").click();
+    await waitForDashboardData(page);
+    await expect(page.locator("#poll-error-toast")).toBeHidden();
+  });
+});

@@ -9,7 +9,7 @@
   <title>Solar Dashboard</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=12">
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
 
@@ -212,6 +212,11 @@
       </div>
     </section>
 
+    <div id="poll-error-toast" class="poll-error-toast" role="alert" aria-live="polite" hidden>
+      <p id="poll-error-msg" class="poll-error-msg"></p>
+      <button type="button" id="poll-retry-btn" class="poll-retry-btn">Retry</button>
+    </div>
+
     <footer>
       <span id="last-update">Last update: --</span>
       <span id="energy-today"></span>
@@ -260,6 +265,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=14"></script>
+  <script type="module" src="app.js?v=15"></script>
 </body>
 </html>
