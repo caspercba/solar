@@ -437,6 +437,16 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .bat-direction.dir-discharging { color: var(--accent-sol); }
 .bat-direction.dir-idle        { color: var(--text-dim); }
 
+.bat-empty-in {
+  margin-top: .35rem;
+  font-size: .75rem;
+  font-weight: 600;
+  color: #f59e0b;
+  letter-spacing: .02em;
+}
+
+.bat-empty-in[hidden] { display: none; }
+
 .card-detail {
   font-size: .85rem;
   color: var(--text-dim);

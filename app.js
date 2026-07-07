@@ -18,6 +18,7 @@ import {
   normalizePollIntervalSec,
   pollIntervalSecToMs,
   POLL_INTERVAL_OPTIONS_SEC,
+  estimateBatteryTimeToEmpty,
   formatWeatherStrip,
   findLowestSocIds,
   THEME_STORAGE_KEY,
@@ -111,6 +112,7 @@ const els = {
   batBar: $("bat-bar"),
   batDirection: $("bat-direction"),
   batRate: $("bat-rate"),
+  batEmptyIn: $("bat-empty-in"),
   batVolts: $("bat-volts"),
   batCurrent: $("bat-current"),
   solPct: $("sol-pct"),
@@ -224,6 +226,10 @@ function setLoading(on) {
     if (!el) continue;
     el.classList.toggle(cls, on);
     if (on) el.textContent = "\u00A0";
+  }
+  if (els.batEmptyIn) {
+    els.batEmptyIn.hidden = true;
+    if (on) els.batEmptyIn.textContent = "";
   }
   for (const bar of skeletonBars()) {
     if (!bar) continue;
@@ -580,6 +586,17 @@ function renderData(d) {
     setBatRate(absA);
   }
 
+  const timeToEmpty = estimateBatteryTimeToEmpty(bat, grid, { load });
+  if (els.batEmptyIn) {
+    if (timeToEmpty) {
+      els.batEmptyIn.textContent = timeToEmpty.label;
+      els.batEmptyIn.hidden = false;
+    } else {
+      els.batEmptyIn.textContent = "";
+      els.batEmptyIn.hidden = true;
+    }
+  }
+
   /* Solar */
   const solPct = solarPctFromPower(sol.power, inv.nominalPV || 5000);
   els.solPct.textContent = solPct;
@@ -670,7 +687,10 @@ function renderFlow(d) {
 
   fEls.fnBatV.textContent = soc + "%";
   const batState = charging ? t("batCharging") : discharging ? t("batDischarging") : t("batIdle");
-  fEls.fnBatDetail.textContent = batV.toFixed(1) + "V \u00B7 " + batState;
+  let batDetail = batV.toFixed(1) + "V \u00B7 " + batState;
+  const timeToEmpty = estimateBatteryTimeToEmpty(d.battery, d.grid, { load: d.load });
+  if (timeToEmpty) batDetail += " \u00B7 " + timeToEmpty.label;
+  fEls.fnBatDetail.textContent = batDetail;
 }
 
 /* ── Theme ── */
