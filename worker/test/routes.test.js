@@ -140,6 +140,118 @@ describe("worker routes", () => {
     expect(stored.credentials.pwdSha1).toMatch(/^[a-f0-9]{40}$/);
   });
 
+  it("POST /api/systems returns requiresDeviceSelection for multi-inverter ShineMonitor plants", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 9, pname: "Dual Inverter" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Dual Inverter", nominalPower: "8", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            collector: [{
+              pn: "P1",
+              alias: "RTU",
+              device: [
+                { devcode: 1, sn: "SN-A", devaddr: 1 },
+                { devcode: 1, sn: "SN-B", devaddr: 2 },
+              ],
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "shinemonitor",
+          user: "user@test.com",
+          password: "password",
+          plantId: "9",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.requiresDeviceSelection).toBe(true);
+    expect(json.devices).toHaveLength(2);
+    expect(json.devices[0].key).toBe("P1|SN-A|1");
+  });
+
+  it("POST /api/systems stores aggregate multi-device ShineMonitor config", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 9, pname: "Dual Inverter" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Dual Inverter", nominalPower: "8", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            collector: [{
+              pn: "P1",
+              alias: "RTU",
+              device: [
+                { devcode: 1, sn: "SN-A", devaddr: 1 },
+                { devcode: 1, sn: "SN-B", devaddr: 2 },
+              ],
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "shinemonitor",
+          name: "Dual",
+          user: "user@test.com",
+          password: "password",
+          plantId: "9",
+          deviceMode: "aggregate",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    const stored = await systems.SYSTEMS.get(`system:${json.id}`, "json");
+    expect(stored.credentials.deviceMode).toBe("aggregate");
+    expect(stored.credentials.devices).toHaveLength(2);
+  });
+
   it("PUT /api/systems/:id/alerts updates alert settings", async () => {
     const systems = env();
     await systems.SYSTEMS.put("_index", JSON.stringify([

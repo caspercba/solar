@@ -286,6 +286,27 @@ The following `action` values were observed in browser traffic or in portal scri
 
 Use **`pn`**, **`devcode`**, **`sn`**, **`devaddr`** when calling chart APIs that need per-device identifiers.
 
+**Multi-inverter plants:** A plant may have several collectors, each with one or more inverters. The Solar Dashboard adapter flattens every device from `collector[].device[]` during discovery.
+
+| Setup step | Behavior |
+|------------|----------|
+| Single inverter | Auto-selected; stored as `credentials.device` |
+| Multiple inverters | API returns `requiresDeviceSelection` with `{ key, label }` per device |
+| User picks one inverter | `deviceKey` on follow-up `POST /api/systems`; `deviceMode: "primary"` |
+| User picks “All inverters (combined)” | `deviceMode: "aggregate"`; all device IDs stored in `credentials.devices` |
+
+**Realtime (`fetchData`):**
+
+- **Primary mode** — latest row from the selected inverter; plant-level `BATTERY_SOC` and `ENERGY_TODAY` from `queryPlantCurrentData`.
+- **Aggregate mode** — fetches each inverter in parallel, sums solar/load/grid/rated power; battery voltage/current from the first (primary) device; SOC and today’s energy still from plant-level API.
+
+**History (`fetchHistory`):**
+
+- **Primary mode** — paginated day data for the selected inverter.
+- **Aggregate mode** — fetches each inverter’s day series and merges points by timestamp (power values summed).
+
+Device keys are `${pn}|${sn}|${devaddr}` and remain stable across discovery and storage.
+
 ---
 
 ### 4.4 `queryPlantCurrentData`

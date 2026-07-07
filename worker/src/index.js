@@ -92,7 +92,7 @@ export default {
     // POST /api/systems — add a new system
     if (path === "/api/systems" && request.method === "POST") {
       const body = await request.json();
-      const { service, name, user, password, plantId } = body;
+      const { service, name, user, password, plantId, deviceKey, deviceMode } = body;
 
       if (!service || !user || !password) {
         return errorResponse("Missing required fields: service, user, password", 400, origin);
@@ -105,7 +105,11 @@ export default {
 
       let discovered;
       try {
-        discovered = await adapter.discover({ user, password }, plantId || null);
+        discovered = await adapter.discover(
+          { user, password },
+          plantId || null,
+          service === "shinemonitor" ? { deviceKey: deviceKey || null, deviceMode: deviceMode || null } : undefined,
+        );
       } catch (err) {
         logAdapterError(env, "adapter_discover_failed", {
           service,
@@ -119,6 +123,15 @@ export default {
         return jsonResponse({
           requiresPlantSelection: true,
           plants: discovered.plants,
+        }, 200, origin);
+      }
+
+      if (discovered.requiresDeviceSelection) {
+        return jsonResponse({
+          requiresDeviceSelection: true,
+          plantId: discovered.plantId,
+          plantName: discovered.plantName,
+          devices: discovered.deviceOptions,
         }, 200, origin);
       }
 
@@ -311,6 +324,8 @@ function buildCredentials(service, password, discovered) {
       pwdSha1: discovered.pwdSha1,
       plantId: discovered.plantId,
       device: discovered.device,
+      devices: discovered.devices,
+      deviceMode: discovered.deviceMode || "primary",
       nominalPower: discovered.nominalPower,
       timezone: discovered.timezone,
     };

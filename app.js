@@ -1036,11 +1036,19 @@ async function loadSystems() {
 /* ── Add System ── */
 const addPlantGroup = $("add-plant-group");
 const addPlantSelect = $("add-plant");
+const addDeviceGroup = $("add-device-group");
+const addDeviceSelect = $("add-device");
 
 function hidePlantPicker() {
   addPlantGroup.hidden = true;
   addPlantSelect.innerHTML = "";
   addPlantSelect.required = false;
+}
+
+function hideDevicePicker() {
+  addDeviceGroup.hidden = true;
+  addDeviceSelect.innerHTML = "";
+  addDeviceSelect.required = false;
 }
 
 function showPlantPicker(plants) {
@@ -1055,11 +1063,28 @@ function showPlantPicker(plants) {
   addPlantSelect.required = true;
 }
 
+function showDevicePicker(devices) {
+  addDeviceSelect.innerHTML = "";
+  const aggregateOpt = document.createElement("option");
+  aggregateOpt.value = "__aggregate__";
+  aggregateOpt.textContent = "All inverters (combined)";
+  addDeviceSelect.appendChild(aggregateOpt);
+  for (const d of devices) {
+    const opt = document.createElement("option");
+    opt.value = d.key;
+    opt.textContent = d.label;
+    addDeviceSelect.appendChild(opt);
+  }
+  addDeviceGroup.hidden = false;
+  addDeviceSelect.required = true;
+}
+
 function openAddModal() {
   manageModal.hidden = true;
   addModal.hidden = false;
   addForm.reset();
   hidePlantPicker();
+  hideDevicePicker();
   addError.hidden = true;
 }
 
@@ -1082,6 +1107,13 @@ addForm.addEventListener("submit", async (e) => {
   if (!addPlantGroup.hidden && addPlantSelect.value) {
     body.plantId = addPlantSelect.value;
   }
+  if (!addDeviceGroup.hidden && addDeviceSelect.value) {
+    if (addDeviceSelect.value === "__aggregate__") {
+      body.deviceMode = "aggregate";
+    } else {
+      body.deviceKey = addDeviceSelect.value;
+    }
+  }
 
   try {
     const result = await api("POST", "/api/systems", body);
@@ -1089,8 +1121,13 @@ addForm.addEventListener("submit", async (e) => {
       showPlantPicker(result.plants);
       return;
     }
+    if (result.requiresDeviceSelection) {
+      showDevicePicker(result.devices);
+      return;
+    }
     closeAddModal();
     hidePlantPicker();
+    hideDevicePicker();
     await loadSystems();
     if (systems.length === 1) activeSystemId = systems[0].id;
     renderSystemTabs();
