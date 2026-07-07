@@ -43,8 +43,20 @@ export async function waitForDashboardData(page) {
 }
 
 export async function switchView(page, view) {
-  const tabId = view === "flow" ? "#tab-flow" : view === "chart" ? "#tab-chart" : "#tab-cards";
+  const tabId = view === "flow"
+    ? "#tab-flow"
+    : view === "chart"
+      ? "#tab-chart"
+      : view === "compare"
+        ? "#tab-compare"
+        : "#tab-cards";
   await page.locator(tabId).click();
+}
+
+export async function waitForCompareData(page) {
+  await expect(page.locator("#compare-view")).toBeVisible();
+  await expect(page.locator(".compare-card").first()).not.toHaveClass(/skeleton/);
+  await expect(page.locator(".compare-card .compare-value").first()).not.toHaveText("--%");
 }
 
 /** Simulate a downward pull on the dashboard (requires hasTouch / mobile project). */

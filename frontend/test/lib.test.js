@@ -21,8 +21,15 @@ import {
   pollIntervalSecToMs,
   formatPollIntervalLabel,
   POLL_INTERVAL_OPTIONS_SEC,
+  isEditableElement,
+  matchesDashboardRefreshShortcut,
   DEFAULT_POLL_INTERVAL_SEC,
   formatWeatherStrip,
+  findLowestSocIds,
+  normalizeTheme,
+  resolveInitialTheme,
+  getNextTheme,
+  VALID_THEMES,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -275,5 +282,103 @@ describe("formatWeatherStrip", () => {
 
   it("omits missing optional fields", () => {
     expect(formatWeatherStrip({ temperature: 22, condition: "Clear" })).toBe("22°C · Clear");
+  });
+});
+
+describe("findLowestSocIds", () => {
+  const home = { systemId: "home", battery: { soc: 72 } };
+  const cabin = { systemId: "cabin", battery: { soc: 45 } };
+
+  it("returns the system id with the lowest SOC", () => {
+    expect(findLowestSocIds([home, cabin])).toEqual(["cabin"]);
+  });
+
+  it("includes all tied lowest systems", () => {
+    const a = { systemId: "a", battery: { soc: 40 } };
+    const b = { systemId: "b", battery: { soc: 40 } };
+    expect(findLowestSocIds([home, a, b])).toEqual(["a", "b"]);
+  });
+
+  it("skips error entries and invalid SOC", () => {
+    const bad = { systemId: "bad", error: "offline" };
+    const noSoc = { systemId: "empty", battery: {} };
+    expect(findLowestSocIds([bad, noSoc, cabin, home])).toEqual(["cabin"]);
+  });
+
+  it("returns empty when no valid SOC values", () => {
+    expect(findLowestSocIds([])).toEqual([]);
+    expect(findLowestSocIds([{ systemId: "x", error: "fail" }])).toEqual([]);
+  });
+});
+
+describe("theme helpers", () => {
+  it("normalizes valid theme names", () => {
+    for (const theme of VALID_THEMES) {
+      expect(normalizeTheme(theme)).toBe(theme);
+    }
+    expect(normalizeTheme("invalid")).toBeNull();
+    expect(normalizeTheme(null)).toBeNull();
+  });
+
+  it("resolves initial theme from saved preference first", () => {
+    expect(resolveInitialTheme("light", { prefersLight: false })).toBe("light");
+    expect(resolveInitialTheme("high-contrast", { prefersLight: true })).toBe("high-contrast");
+  });
+
+  it("falls back to system preferences when nothing is saved", () => {
+    expect(resolveInitialTheme(null, { prefersHighContrast: true })).toBe("high-contrast");
+    expect(resolveInitialTheme("", { prefersLight: true })).toBe("light");
+    expect(resolveInitialTheme(undefined, {})).toBe("dark");
+  });
+
+  it("cycles dark → light → high-contrast → dark", () => {
+    expect(getNextTheme("dark")).toBe("light");
+    expect(getNextTheme("light")).toBe("high-contrast");
+    expect(getNextTheme("high-contrast")).toBe("dark");
+    expect(getNextTheme("invalid")).toBe("light");
+  });
+});
+
+describe("isEditableElement", () => {
+  it("returns false for null and non-editable elements", () => {
+    expect(isEditableElement(null)).toBe(false);
+    expect(isEditableElement({ tagName: "DIV" })).toBe(false);
+    expect(isEditableElement({ tagName: "BUTTON" })).toBe(false);
+  });
+
+  it("returns true for text inputs, textarea, and select", () => {
+    expect(isEditableElement({ tagName: "INPUT", type: "text" })).toBe(true);
+    expect(isEditableElement({ tagName: "INPUT", type: "password" })).toBe(true);
+    expect(isEditableElement({ tagName: "INPUT", type: "date" })).toBe(true);
+    expect(isEditableElement({ tagName: "TEXTAREA" })).toBe(true);
+    expect(isEditableElement({ tagName: "SELECT" })).toBe(true);
+  });
+
+  it("returns false for non-text input types", () => {
+    expect(isEditableElement({ tagName: "INPUT", type: "button" })).toBe(false);
+    expect(isEditableElement({ tagName: "INPUT", type: "checkbox" })).toBe(false);
+    expect(isEditableElement({ tagName: "INPUT", type: "hidden" })).toBe(false);
+  });
+
+  it("returns true for contenteditable elements", () => {
+    expect(isEditableElement({ tagName: "DIV", isContentEditable: true })).toBe(true);
+  });
+});
+
+describe("matchesDashboardRefreshShortcut", () => {
+  it("matches F5", () => {
+    expect(matchesDashboardRefreshShortcut({ key: "F5" })).toBe(true);
+  });
+
+  it("matches Ctrl+R and Cmd+R without modifiers", () => {
+    expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true })).toBe(true);
+    expect(matchesDashboardRefreshShortcut({ key: "R", metaKey: true })).toBe(true);
+  });
+
+  it("does not match plain R or modified variants", () => {
+    expect(matchesDashboardRefreshShortcut({ key: "r" })).toBe(false);
+    expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, shiftKey: true })).toBe(false);
+    expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, altKey: true })).toBe(false);
+    expect(matchesDashboardRefreshShortcut({ key: "F6" })).toBe(false);
   });
 });
