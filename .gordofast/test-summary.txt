@@ -1,0 +1,78 @@
+# Test Summary — Adapter Development Guide (task ede4a3f7)
+
+## Acceptance criteria verification
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| Guide lives in discovery/ or docs/ | PASS | `discovery/ADAPTER_GUIDE.md` |
+| Discovery folder layout | PASS | §2 — layout + Victron template |
+| Adapter interface (discover, fetchData, fetchHistory, fetchHistorySummary) | PASS | §3 — required/optional exports, inputs/outputs |
+| Normalized JSON contract (PLAN §3) | PASS | §4 — realtime, intraday, multi-day summary |
+| Registration in worker/src/index.js | PASS | §5–6 — ADAPTERS, buildCredentials, /api/services |
+| Fixture-based tests | PASS | §10 — fixtures/, mocking fetch, helpers.js |
+| CORS/auth constraints | PASS | §9 — auth.js, ALLOWED_ORIGINS, rateLimit.js, error mapping |
+| ShineMonitor & Growatt references | PASS | §1 table, §3 patterns, §12 comparison table |
+| Full lifecycle (reverse-engineering → CI) | PASS | §2.2 workflow, §10 CI pipeline, §11 checklist |
+| Linked from discovery index & root README | PASS | `discovery/README.md`, `README.md` Documentation table |
+
+Spot-checks against codebase: `ADAPTERS` / `buildCredentials` in `worker/src/index.js`; `history.js` exports (`computeDailySummary`, `dateRange`, etc.); `rateLimit.js` imported by router; `worker/test/helpers.js` `expectNormalizedShape` / `expectHistorySummaryShape`; e2e layout (`e2e/fixtures/mock-worker.js`, `e2e/tests/`).
+
+## Commands run
+
+### 1. `pnpm test` (repo root)
+
+**Status:** NOT RUN — `pnpm` not available in environment (`command not found`; corepack enable failed EACCES).
+
+Equivalent CI commands executed instead (see `.github/workflows/ci.yml`).
+
+### 2. Worker unit tests
+
+```bash
+cd worker && npm ci && npm test
+```
+
+**Status:** PASS
+
+```
+Test Files  13 passed (13)
+     Tests  137 passed (137)
+```
+
+### 3. Frontend unit tests
+
+```bash
+cd frontend && npm ci && npm test
+```
+
+**Status:** PASS
+
+```
+Test Files  2 passed (2)
+     Tests  71 passed (71)
+```
+
+### 4. E2E tests (Playwright)
+
+```bash
+cd e2e && npm ci
+npx playwright install chromium   # also tried --with-deps (blocked on sudo password)
+CI=1 npm run test:ci
+```
+
+**Status:** FAIL (environment — browser install)
+
+```
+Error: Download failed: server returned code 403
+URL: https://cdn.playwright.dev/builds/cft/149.0.7827.55/linux64/chrome-linux64.zip
+Failed to install browsers
+```
+
+E2E failure is infrastructure-related (Playwright Chromium CDN 403 in this runner), not a regression from the adapter guide (documentation-only change). Worker and frontend suites fully green.
+
+## Outcome
+
+- **Guide task:** ACCEPTED — `discovery/ADAPTER_GUIDE.md` meets all acceptance criteria.
+- **Automated tests:** Worker + frontend PASS; E2E blocked by environment.
+- **No `.gordofast/tasks.json` written** — no implementation test failures attributable to the guide change.
+- **No new tests added** — guide is documentation; existing adapter/route tests already cover referenced code paths.
+- **Git:** working tree clean on `worker/tester/3127a701`; guide already committed (merge 42866f6).
