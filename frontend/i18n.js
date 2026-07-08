@@ -113,6 +113,12 @@ const messages = {
     pollIntervalMinutes: "{mins} minutes",
 
     notConnected: "Not connected",
+
+    timeToEmptyLessThanMinute: "<1m",
+    timeToEmptyMinutes: "{m}m",
+    timeToEmptyHours: "{h}h",
+    timeToEmptyHoursMinutes: "{h}h {m}m",
+    timeToEmptyLabel: "~{duration} left",
   },
   es: {
     appTitle: "Panel Solar",
@@ -222,6 +228,12 @@ const messages = {
     pollIntervalMinutes: "{mins} minutos",
 
     notConnected: "Sin conexión",
+
+    timeToEmptyLessThanMinute: "<1 min",
+    timeToEmptyMinutes: "{m} min",
+    timeToEmptyHours: "{h} h",
+    timeToEmptyHoursMinutes: "{h} h {m} min",
+    timeToEmptyLabel: "~{duration} restante",
   },
 };
 

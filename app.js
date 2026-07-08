@@ -586,7 +586,7 @@ function renderData(d) {
     setBatRate(absA);
   }
 
-  const timeToEmpty = estimateBatteryTimeToEmpty(bat, grid, { load });
+  const timeToEmpty = estimateBatteryTimeToEmpty(bat, grid, { load, translate: t });
   if (els.batEmptyIn) {
     if (timeToEmpty) {
       els.batEmptyIn.textContent = timeToEmpty.label;
@@ -688,7 +688,7 @@ function renderFlow(d) {
   fEls.fnBatV.textContent = soc + "%";
   const batState = charging ? t("batCharging") : discharging ? t("batDischarging") : t("batIdle");
   let batDetail = batV.toFixed(1) + "V \u00B7 " + batState;
-  const timeToEmpty = estimateBatteryTimeToEmpty(d.battery, d.grid, { load: d.load });
+  const timeToEmpty = estimateBatteryTimeToEmpty(d.battery, d.grid, { load: d.load, translate: t });
   if (timeToEmpty) batDetail += " \u00B7 " + timeToEmpty.label;
   fEls.fnBatDetail.textContent = batDetail;
 }
