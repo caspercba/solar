@@ -59,6 +59,22 @@ describe("worker routes", () => {
     expect(await res.json()).toEqual({ error: "Unauthorized" });
   });
 
+  it("returns 503 on protected routes when PRODUCTION is enabled and API_TOKEN is unset", async () => {
+    const res = await call(request("/api/systems", { headers: AUTH }), {
+      API_TOKEN: undefined,
+      PRODUCTION: "true",
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({
+      error: "Service misconfigured: API_TOKEN is required in this environment",
+    });
+  });
+
+  it("GET /api/health still works when PRODUCTION is enabled and API_TOKEN is unset", async () => {
+    const res = await call(request("/api/health"), { API_TOKEN: undefined, PRODUCTION: "true" });
+    expect(res.status).toBe(200);
+  });
+
   it("GET /api/systems lists configured systems without credentials", async () => {
     const systems = env();
     await systems.SYSTEMS.put("_index", JSON.stringify([
