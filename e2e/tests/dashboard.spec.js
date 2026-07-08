@@ -197,12 +197,24 @@ test.describe("Keyboard refresh", () => {
   });
 
   test("does not intercept F5 when a text input is focused", async ({ page }) => {
+    // Headless Chromium never performs a real browser-chrome reload for a synthetic F5
+    // keypress (no "framenavigated" fires either way), so we can't observe the shortcut
+    // being *let through*. Instead assert the app's own effect of intercepting is absent:
+    // no extra /data poll fires when focus is in an editable field.
+    let dataRequestCount = 0;
+    await page.route("**/api/systems/*/data", async (route) => {
+      dataRequestCount += 1;
+      await route.continue();
+    });
+
     await switchView(page, "chart");
     await page.locator("#chart-date").focus();
+    const before = dataRequestCount;
 
-    const navigated = page.waitForEvent("framenavigated");
     await page.keyboard.press("F5");
-    await navigated;
+    await page.waitForTimeout(500);
+
+    expect(dataRequestCount).toBe(before);
   });
 });
 
@@ -242,7 +254,9 @@ test.describe("Poll error toast", () => {
   test("shows toast on flow view", async ({ page }) => {
     await switchView(page, "flow");
     await failNextDataPoll(page);
-    await page.locator("#system-tabs button", { hasText: "Mock Home Solar" }).click();
+    // "Mock Home Solar" is already the active system on load, so clicking it again is a
+    // no-op (app.js skips re-fetching); switch to the other system to trigger a real poll.
+    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
 
     await expect(page.locator("#poll-error-toast")).toBeVisible();
     await expect(page.locator("#flow-view")).toBeVisible();

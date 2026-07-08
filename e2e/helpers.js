@@ -6,6 +6,22 @@ export const FRONTEND_PORT = Number(process.env.FRONTEND_PORT) || 3456;
 export const MOCK_WORKER_URL = `http://127.0.0.1:${MOCK_WORKER_PORT}`;
 export { MOCK_TOKEN, EMPTY_HISTORY_DATE, ESTIMATED_SOC_HISTORY_DATE };
 
+/**
+ * ISO date (local calendar, matching frontend/lib.js todayIsoDate) N days before today.
+ * The chart week strip only ever shows the 7 days ending on the selected date, so tests
+ * that click a specific week-strip day must derive that date relative to "today" rather
+ * than hardcoding an absolute date — a fixed date falls out of the trailing window as
+ * real time passes.
+ */
+export function isoDaysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /** Avoid stale service-worker caches interfering with static assets in tests. */
 export async function disableServiceWorker(page) {
   await page.addInitScript(() => {

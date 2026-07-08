@@ -251,10 +251,10 @@ function updateCompareTabVisibility() {
   if (!show && currentView === "compare") setView("cards");
 }
 
-function setView(view) {
+function setView(view, persist = true) {
   if (view === "compare" && systems.length < 2) view = "cards";
   currentView = view;
-  localStorage.setItem(VIEW_KEY, view);
+  if (persist) localStorage.setItem(VIEW_KEY, view);
   const isFlow = view === "flow";
   const isChart = view === "chart";
   const isCompare = view === "compare";
@@ -1920,7 +1920,9 @@ loadStoredLocale();
 applyTranslations();
 syncLangToggle();
 initLangToggle();
-setView(localStorage.getItem(VIEW_KEY) || "cards");
+// systems isn't loaded yet here, so a stored "compare" view would be downgraded to
+// "cards" by setView's systems.length check — don't persist that premature downgrade.
+setView(localStorage.getItem(VIEW_KEY) || "cards", false);
 
 (async function boot() {
   const params = new URLSearchParams(location.search);
