@@ -1,0 +1,5 @@
+FROM gordofast-worker-base
+
+# Playwright browsers for the e2e suite, pinned to the version in e2e/package.json
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN npx -y playwright@1.53 install --with-deps chromium && chmod -R a+rwX /opt/playwright
