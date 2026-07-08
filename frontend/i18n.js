@@ -114,6 +114,14 @@ const messages = {
     alertsSaved: "Alerts saved",
     alertsOnBadge: "Alerts on",
 
+    credPortalTitle: "Portal credentials",
+    credNewPasswordPlaceholder: "New password",
+    credSave: "Save credentials",
+    credSaving: "Saving…",
+    credRequired: "Username and password are required",
+    credSelectPlant: "Select a plant and save again",
+    credUpdated: "Credentials updated",
+
     pollIntervalSeconds: "{sec} seconds",
     pollIntervalMinutes: "{mins} minutes",
 
@@ -233,6 +241,14 @@ const messages = {
     alertsSaving: "Guardando…",
     alertsSaved: "Alertas guardadas",
     alertsOnBadge: "Alertas activas",
+
+    credPortalTitle: "Credenciales del portal",
+    credNewPasswordPlaceholder: "Nueva contraseña",
+    credSave: "Guardar credenciales",
+    credSaving: "Guardando…",
+    credRequired: "El usuario y la contraseña son obligatorios",
+    credSelectPlant: "Selecciona una planta y guarda de nuevo",
+    credUpdated: "Credenciales actualizadas",
 
     pollIntervalSeconds: "{sec} segundos",
     pollIntervalMinutes: "{mins} minutos",

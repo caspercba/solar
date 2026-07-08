@@ -1546,16 +1546,16 @@ function renderCredentialForm(sys) {
   const form = document.createElement("div");
   form.className = "manage-credentials";
   form.innerHTML = `
-    <p class="manage-section-title">Portal credentials</p>
-    <label>Username</label>
+    <p class="manage-section-title">${escapeAttr(t("credPortalTitle"))}</p>
+    <label>${escapeAttr(t("username"))}</label>
     <input type="text" class="cred-user" required value="${escapeAttr(sys.username || "")}">
-    <label>Password</label>
-    <input type="password" class="cred-pass" required placeholder="New password">
+    <label>${escapeAttr(t("password"))}</label>
+    <input type="password" class="cred-pass" required placeholder="${escapeAttr(t("credNewPasswordPlaceholder"))}">
     <div class="cred-plant-group" hidden>
-      <label>Plant</label>
+      <label>${escapeAttr(t("plant"))}</label>
       <select class="cred-plant"></select>
     </div>
-    <button type="button" class="cred-save">Save credentials</button>
+    <button type="button" class="cred-save">${escapeAttr(t("credSave"))}</button>
     <p class="cred-msg" hidden></p>
   `;
 
@@ -1588,14 +1588,14 @@ function renderCredentialForm(sys) {
     const passInput = form.querySelector(".cred-pass");
 
     if (!userInput.value.trim() || !passInput.value) {
-      msg.textContent = "Username and password are required";
+      msg.textContent = t("credRequired");
       msg.className = "cred-msg cred-err";
       msg.hidden = false;
       return;
     }
 
     btn.disabled = true;
-    btn.textContent = "Saving...";
+    btn.textContent = t("credSaving");
 
     const body = {
       user: userInput.value.trim(),
@@ -1609,7 +1609,7 @@ function renderCredentialForm(sys) {
       const result = await api("PUT", `/api/systems/${sys.id}/credentials`, body);
       if (result.requiresPlantSelection) {
         showPlantPicker(result.plants);
-        msg.textContent = "Select a plant and save again";
+        msg.textContent = t("credSelectPlant");
         msg.className = "cred-msg cred-ok";
         msg.hidden = false;
         return;
@@ -1617,7 +1617,7 @@ function renderCredentialForm(sys) {
       sys.username = result.username || body.user;
       passInput.value = "";
       hidePlantPicker();
-      msg.textContent = "Credentials updated";
+      msg.textContent = t("credUpdated");
       msg.className = "cred-msg cred-ok";
       msg.hidden = false;
       startPolling();
@@ -1627,7 +1627,7 @@ function renderCredentialForm(sys) {
       msg.hidden = false;
     } finally {
       btn.disabled = false;
-      btn.textContent = "Save credentials";
+      btn.textContent = t("credSave");
     }
   });
 
