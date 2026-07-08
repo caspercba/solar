@@ -894,6 +894,80 @@ describe("worker routes", () => {
     expect(await res.json()).toEqual({ error: "System not found" });
   });
 
+  it("GET /api/systems/:id/history returns 502 JSON when adapter.fetchHistory throws", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(growatt, "fetchHistory").mockRejectedValue(new Error("vendor timeout"));
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "p", plantId: "42", storageSn: "SN1" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/history?date=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "History fetch failed: vendor timeout" });
+    expect(consoleError).toHaveBeenCalled();
+    const logLine = consoleError.mock.calls.find((c) => {
+      try {
+        const parsed = JSON.parse(c[0]);
+        return parsed.event === "adapter_history_failed";
+      } catch {
+        return false;
+      }
+    });
+    expect(logLine).toBeDefined();
+    const parsed = JSON.parse(logLine[0]);
+    expect(parsed).toMatchObject({
+      level: "error",
+      event: "adapter_history_failed",
+      systemId: "s1",
+      service: "growatt",
+      route: "GET /api/systems/:id/history",
+    });
+
+    consoleError.mockRestore();
+  });
+
+  it("OPTIONS preflight reflects the request origin with CORS headers when ALLOWED_ORIGINS is unset", async () => {
+    const res = await call(
+      request("/api/systems", { method: "OPTIONS", headers: { Origin: "https://app.example" } }),
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://app.example");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, PUT, DELETE, OPTIONS");
+    expect(res.headers.get("Access-Control-Allow-Headers")).toBe("Content-Type, Authorization");
+    expect(res.headers.get("Access-Control-Max-Age")).toBe("86400");
+    expect(res.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("OPTIONS preflight returns matching CORS headers when the origin is in ALLOWED_ORIGINS", async () => {
+    const res = await call(
+      request("/api/systems", { method: "OPTIONS", headers: { Origin: "https://allowed.example" } }),
+      { ALLOWED_ORIGINS: "https://allowed.example,https://other.example" },
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://allowed.example");
+    expect(res.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("OPTIONS preflight is rejected with 403 and no CORS headers when the origin is not allowed", async () => {
+    const res = await call(
+      request("/api/systems", { method: "OPTIONS", headers: { Origin: "https://evil.example" } }),
+      { ALLOWED_ORIGINS: "https://allowed.example" },
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(res.headers.get("Access-Control-Allow-Methods")).toBeNull();
+  });
+
   it("GET /api/systems/:id/ha returns flat JSON for Home Assistant", async () => {
     vi.spyOn(growatt, "fetchData").mockResolvedValue({
       systemId: "s1",
