@@ -6,11 +6,13 @@ import {
   waitForDashboardData,
   switchView,
   swipeChartDay,
+  mockToday,
 } from "../helpers.js";
 
 const CHART_DATE_KEY = "solar_chart_date";
 
 test.beforeEach(async ({ page }) => {
+  await mockToday(page);
   await disableServiceWorker(page);
   await page.goto("/");
   await clearAppStorage(page);

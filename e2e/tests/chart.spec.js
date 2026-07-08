@@ -7,9 +7,11 @@ import {
   switchView,
   EMPTY_HISTORY_DATE,
   ESTIMATED_SOC_HISTORY_DATE,
+  mockToday,
 } from "../helpers.js";
 
 test.beforeEach(async ({ page }) => {
+  await mockToday(page);
   await disableServiceWorker(page);
   await page.goto("/");
   await clearAppStorage(page);
