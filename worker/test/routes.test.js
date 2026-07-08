@@ -269,7 +269,7 @@ describe("worker routes", () => {
     expect(stored.credentials.devices).toHaveLength(2);
   });
 
-  it("POST /api/systems discovers Growatt and stores sessionCookies instead of password", async () => {
+  it("POST /api/systems discovers Growatt and stores sessionCookies alongside password", async () => {
     globalThis.fetch = vi.fn(async (url, init) => {
       const u = String(url);
       if (u.endsWith("/login") && init?.method === "POST") {
@@ -314,7 +314,7 @@ describe("worker routes", () => {
 
     const stored = await systems.SYSTEMS.get(`system:${json.id}`, "json");
     expect(stored.credentials.user).toBe("growatt@test.com");
-    expect(stored.credentials.password).toBeUndefined();
+    expect(stored.credentials.password).toBe("password");
     expect(stored.credentials.sessionCookies).toEqual({ JSESSIONID: "growatt-sess" });
     expect(stored.credentials.plantId).toBe("42");
     expect(stored.credentials.storageSn).toBe("SN1");

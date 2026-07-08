@@ -426,7 +426,7 @@ describe("growatt session credentials", () => {
     );
   });
 
-  it("migrates legacy password credentials to sessionCookies in KV on login", async () => {
+  it("persists sessionCookies in KV on login while keeping the password for future re-login", async () => {
     const systems = createMockKV({
       "system:growatt-migrate": JSON.stringify({
         id: "growatt-migrate",
@@ -481,8 +481,8 @@ describe("growatt session credentials", () => {
 
     const stored = await systems.get("system:growatt-migrate", "json");
     expect(stored.credentials.sessionCookies).toEqual({ JSESSIONID: "migrated789" });
-    expect(stored.credentials.password).toBeUndefined();
-    expect(systemConfig.credentials.password).toBeUndefined();
+    expect(stored.credentials.password).toBe("secret");
+    expect(systemConfig.credentials.password).toBe("secret");
     expect(systemConfig.credentials.sessionCookies).toEqual({ JSESSIONID: "migrated789" });
   });
 });
