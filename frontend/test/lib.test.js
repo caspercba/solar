@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
+import { t, setLocale, DEFAULT_LOCALE } from "../i18n.js";
 import {
   fmtW,
   fmtChartDate,
@@ -284,7 +285,12 @@ describe("impliedBatteryCapacityWh", () => {
 });
 
 describe("formatTimeToEmpty", () => {
-  it("formats sub-hour and multi-hour durations", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setLocale(DEFAULT_LOCALE);
+  });
+
+  it("formats sub-hour and multi-hour durations in English by default", () => {
     expect(formatTimeToEmpty(0.5)).toBe("30m");
     expect(formatTimeToEmpty(4 + 5 / 60)).toBe("4h 5m");
     expect(formatTimeToEmpty(2)).toBe("2h");
@@ -295,6 +301,14 @@ describe("formatTimeToEmpty", () => {
     expect(formatTimeToEmpty(0)).toBe("");
     expect(formatTimeToEmpty(-1)).toBe("");
     expect(formatTimeToEmpty(NaN)).toBe("");
+  });
+
+  it("localizes duration via the app's translate callback", () => {
+    setLocale("es");
+    expect(formatTimeToEmpty(0.5, t)).toBe("30 min");
+    expect(formatTimeToEmpty(4 + 5 / 60, t)).toBe("4 h 5 min");
+    expect(formatTimeToEmpty(2, t)).toBe("2 h");
+    expect(formatTimeToEmpty(0.005, t)).toBe("<1 min");
   });
 });
 
@@ -308,12 +322,26 @@ describe("estimateBatteryTimeToEmpty", () => {
   const activeLoad = { power: 850 };
   const idleGrid = { active: false, power: 0 };
 
+  beforeEach(() => {
+    localStorage.clear();
+    setLocale(DEFAULT_LOCALE);
+  });
+
   it("returns a label when discharging with finite load and no grid", () => {
     const result = estimateBatteryTimeToEmpty(dischargingBattery, idleGrid, { load: activeLoad });
     expect(result).not.toBeNull();
     expect(result.hours).toBeGreaterThan(0);
     expect(result.label).toMatch(/^~\d/);
     expect(result.label).toContain("left");
+  });
+
+  it("returns a Spanish label when passed the app's translate callback", () => {
+    setLocale("es");
+    const result = estimateBatteryTimeToEmpty(dischargingBattery, idleGrid, { load: activeLoad, translate: t });
+    expect(result).not.toBeNull();
+    expect(result.label).toMatch(/^~\d/);
+    expect(result.label).toContain("restante");
+    expect(result.label).not.toContain("left");
   });
 
   it("hides when charging", () => {
