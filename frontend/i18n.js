@@ -32,6 +32,11 @@ const messages = {
     cardLoad: "Load",
     cardGenerator: "Generator",
 
+    compareLowestSoc: "Lowest SOC",
+    compareGeneratorOn: "Generator ON",
+    compareUnavailable: "Unavailable",
+    compareLoadError: "Could not load comparison data.",
+
     batIdle: "Idle",
     batCharging: "Charging",
     batDischarging: "Discharging",
@@ -159,6 +164,11 @@ const messages = {
     cardSolar: "Solar",
     cardLoad: "Carga",
     cardGenerator: "Generador",
+
+    compareLowestSoc: "SOC más bajo",
+    compareGeneratorOn: "Generador ENCENDIDO",
+    compareUnavailable: "No disponible",
+    compareLoadError: "No se pudieron cargar los datos de comparación.",
 
     batIdle: "Inactiva",
     batCharging: "Cargando",
