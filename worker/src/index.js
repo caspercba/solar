@@ -428,6 +428,7 @@ function buildCredentials(service, password, discovered) {
   }
   if (service === "growatt") {
     return {
+      password,
       plantId: discovered.plantId,
       storageSn: discovered.storageSn,
       nominalPower: discovered.nominalPower,

@@ -1,9 +1,11 @@
 /**
  * Growatt service adapter.
  *
- * Auth flow: POST /login with plaintext password (HTTPS), receive JSESSIONID cookie.
- * Cookie-based session for all subsequent requests. Session cookies are persisted in KV;
- * password is used only for initial discover or re-login when the session expires.
+ * Auth flow: POST /login with password (HTTPS), receive JSESSIONID cookie.
+ * Cookie-based session for all subsequent requests. Session cookies are cached in KV
+ * alongside the password to skip a login round-trip on a cold isolate; the password
+ * is kept (encrypted at rest via CREDENTIALS_KEY) so re-login on real session expiry
+ * always succeeds.
  */
 
 import { saveSystemConfig } from "../credentials.js";
@@ -152,17 +154,13 @@ function sessionFromCookies(cookies) {
 
 async function persistSessionCredentials(systemConfig, cookies) {
   const creds = systemConfig.credentials;
-  const sameSession =
-    creds.sessionCookies?.JSESSIONID &&
-    creds.sessionCookies.JSESSIONID === cookies.JSESSIONID &&
-    !creds.password;
+  const sameSession = creds.sessionCookies?.JSESSIONID === cookies.JSESSIONID;
   if (sameSession) return;
 
   const nextCredentials = {
     ...creds,
     sessionCookies: cookies,
   };
-  delete nextCredentials.password;
 
   systemConfig.credentials = nextCredentials;
 
