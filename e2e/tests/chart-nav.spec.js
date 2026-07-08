@@ -10,7 +10,11 @@ import {
 
 const CHART_DATE_KEY = "solar_chart_date";
 
+/** Fixture data (mock realtime timestamp, week-strip dates) is anchored to this date. */
+const MOCK_TODAY = "2026-07-03T12:00:00";
+
 test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date(MOCK_TODAY));
   await disableServiceWorker(page);
   await page.goto("/");
   await clearAppStorage(page);

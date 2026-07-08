@@ -252,9 +252,10 @@ function updateCompareTabVisibility() {
 }
 
 function setView(view) {
+  const requested = view;
   if (view === "compare" && systems.length < 2) view = "cards";
   currentView = view;
-  localStorage.setItem(VIEW_KEY, view);
+  if (view === requested) localStorage.setItem(VIEW_KEY, view);
   const isFlow = view === "flow";
   const isChart = view === "chart";
   const isCompare = view === "compare";

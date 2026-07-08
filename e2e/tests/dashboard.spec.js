@@ -197,12 +197,19 @@ test.describe("Keyboard refresh", () => {
   });
 
   test("does not intercept F5 when a text input is focused", async ({ page }) => {
+    // Headless Chromium's synthetic key events never reach the browser's own
+    // reload accelerator (page.keyboard.press("F5") can't trigger a real
+    // navigation here), so we assert the app's guard directly: with an
+    // editable element focused, its keydown handler must not preventDefault.
     await switchView(page, "chart");
     await page.locator("#chart-date").focus();
 
-    const navigated = page.waitForEvent("framenavigated");
-    await page.keyboard.press("F5");
-    await navigated;
+    const defaultPrevented = await page.evaluate(() => {
+      const event = new KeyboardEvent("keydown", { key: "F5", bubbles: true, cancelable: true });
+      document.activeElement.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    expect(defaultPrevented).toBe(false);
   });
 });
 
@@ -242,7 +249,9 @@ test.describe("Poll error toast", () => {
   test("shows toast on flow view", async ({ page }) => {
     await switchView(page, "flow");
     await failNextDataPoll(page);
-    await page.locator("#system-tabs button", { hasText: "Mock Home Solar" }).click();
+    // "Mock Home Solar" is already the active tab on load, so clicking it again
+    // is a no-op (no new poll fires); switch to the other system to trigger one.
+    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
 
     await expect(page.locator("#poll-error-toast")).toBeVisible();
     await expect(page.locator("#flow-view")).toBeVisible();
