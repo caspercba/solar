@@ -205,6 +205,7 @@ let historyLoading = false;
 let chartHistory = null;
 let lastEnergySummary = null;
 let lastRenderData = null;
+let lastCompareData = null;
 
 /* ── Loading skeleton ── */
 const skeletonTargets = () => [
@@ -294,20 +295,20 @@ function setCompareLoading(on) {
       </div>
       <div class="compare-metrics">
         <div class="compare-metric compare-metric-soc">
-          <span class="compare-label">Battery</span>
+          <span class="compare-label">${t("cardBattery")}</span>
           <span class="compare-value">--%</span>
           <div class="compare-bar-wrap"><div class="compare-bar" style="width:0%"></div></div>
         </div>
         <div class="compare-metric compare-metric-solar">
-          <span class="compare-label">Solar</span>
+          <span class="compare-label">${t("cardSolar")}</span>
           <span class="compare-value">-- W</span>
         </div>
         <div class="compare-metric compare-metric-load">
-          <span class="compare-label">Load</span>
+          <span class="compare-label">${t("cardLoad")}</span>
           <span class="compare-value">-- W</span>
         </div>
         <div class="compare-metric compare-metric-gen">
-          <span class="compare-label">Generator</span>
+          <span class="compare-label">${t("cardGenerator")}</span>
           <span class="compare-value">--</span>
         </div>
       </div>
@@ -320,6 +321,7 @@ function setCompareLoading(on) {
 function renderComparison(allData) {
   if (!fEls.compareGrid) return;
   hasData = true;
+  lastCompareData = allData;
 
   const lowestIds = new Set(findLowestSocIds(allData));
   let latestTs = null;
@@ -341,7 +343,7 @@ function renderComparison(allData) {
         <div class="compare-card-header">
           <h3 class="compare-name">${escapeAttr(name)}</h3>
         </div>
-        <p class="compare-error">${escapeAttr(d?.error || "Unavailable")}</p>
+        <p class="compare-error">${escapeAttr(d?.error || t("compareUnavailable"))}</p>
       `;
       fEls.compareGrid.appendChild(card);
       continue;
@@ -352,10 +354,10 @@ function renderComparison(allData) {
     const loadW = Math.round(d.load?.power ?? 0);
     const badges = [];
     if (isLowest && lowestIds.size > 0) {
-      badges.push('<span class="compare-highlight compare-highlight-lowest">Lowest SOC</span>');
+      badges.push(`<span class="compare-highlight compare-highlight-lowest">${t("compareLowestSoc")}</span>`);
     }
     if (genOn) {
-      badges.push('<span class="compare-highlight compare-highlight-gen">Generator ON</span>');
+      badges.push(`<span class="compare-highlight compare-highlight-gen">${t("compareGeneratorOn")}</span>`);
     }
 
     card.innerHTML = `
@@ -365,21 +367,21 @@ function renderComparison(allData) {
       </div>
       <div class="compare-metrics">
         <div class="compare-metric compare-metric-soc">
-          <span class="compare-label">Battery</span>
+          <span class="compare-label">${t("cardBattery")}</span>
           <span class="compare-value">${soc}%</span>
           <div class="compare-bar-wrap"><div class="compare-bar" style="width:${clampPct(soc)}%"></div></div>
         </div>
         <div class="compare-metric compare-metric-solar">
-          <span class="compare-label">Solar</span>
+          <span class="compare-label">${t("cardSolar")}</span>
           <span class="compare-value">${solarW} W</span>
         </div>
         <div class="compare-metric compare-metric-load">
-          <span class="compare-label">Load</span>
+          <span class="compare-label">${t("cardLoad")}</span>
           <span class="compare-value">${loadW} W</span>
         </div>
         <div class="compare-metric compare-metric-gen">
-          <span class="compare-label">Generator</span>
-          <span class="gen-badge ${genOn ? "gen-on" : "gen-off"}">${genOn ? "ON" : "OFF"}</span>
+          <span class="compare-label">${t("cardGenerator")}</span>
+          <span class="gen-badge ${genOn ? "gen-on" : "gen-off"}">${genOn ? t("genOn") : t("genOff")}</span>
         </div>
       </div>
       <p class="compare-status">${escapeAttr(d.status || "--")}</p>
@@ -587,7 +589,7 @@ function renderData(d) {
     setBatRate(absA);
   }
 
-  const timeToEmpty = estimateBatteryTimeToEmpty(bat, grid, { load });
+  const timeToEmpty = estimateBatteryTimeToEmpty(bat, grid, { load, translate: t });
   if (els.batEmptyIn) {
     if (timeToEmpty) {
       els.batEmptyIn.textContent = timeToEmpty.label;
@@ -689,7 +691,7 @@ function renderFlow(d) {
   fEls.fnBatV.textContent = soc + "%";
   const batState = charging ? t("batCharging") : discharging ? t("batDischarging") : t("batIdle");
   let batDetail = batV.toFixed(1) + "V \u00B7 " + batState;
-  const timeToEmpty = estimateBatteryTimeToEmpty(d.battery, d.grid, { load: d.load });
+  const timeToEmpty = estimateBatteryTimeToEmpty(d.battery, d.grid, { load: d.load, translate: t });
   if (timeToEmpty) batDetail += " \u00B7 " + timeToEmpty.label;
   fEls.fnBatDetail.textContent = batDetail;
 }
@@ -1348,7 +1350,7 @@ async function pollNow() {
       console.error("compare poll error:", err);
       setCompareLoading(false);
       setStatus(false);
-      showPollError(chartErrorMessage(err, "Could not load comparison data."));
+      showPollError(chartErrorMessage(err, t("compareLoadError")));
     } finally {
       setPollRetrying(false);
     }
@@ -1542,16 +1544,16 @@ function renderCredentialForm(sys) {
   const form = document.createElement("div");
   form.className = "manage-credentials";
   form.innerHTML = `
-    <p class="manage-section-title">Portal credentials</p>
-    <label>Username</label>
+    <p class="manage-section-title">${escapeAttr(t("credPortalTitle"))}</p>
+    <label>${escapeAttr(t("username"))}</label>
     <input type="text" class="cred-user" required value="${escapeAttr(sys.username || "")}">
-    <label>Password</label>
-    <input type="password" class="cred-pass" required placeholder="New password">
+    <label>${escapeAttr(t("password"))}</label>
+    <input type="password" class="cred-pass" required placeholder="${escapeAttr(t("credNewPasswordPlaceholder"))}">
     <div class="cred-plant-group" hidden>
-      <label>Plant</label>
+      <label>${escapeAttr(t("plant"))}</label>
       <select class="cred-plant"></select>
     </div>
-    <button type="button" class="cred-save">Save credentials</button>
+    <button type="button" class="cred-save">${escapeAttr(t("credSave"))}</button>
     <p class="cred-msg" hidden></p>
   `;
 
@@ -1584,14 +1586,14 @@ function renderCredentialForm(sys) {
     const passInput = form.querySelector(".cred-pass");
 
     if (!userInput.value.trim() || !passInput.value) {
-      msg.textContent = "Username and password are required";
+      msg.textContent = t("credRequired");
       msg.className = "cred-msg cred-err";
       msg.hidden = false;
       return;
     }
 
     btn.disabled = true;
-    btn.textContent = "Saving...";
+    btn.textContent = t("credSaving");
 
     const body = {
       user: userInput.value.trim(),
@@ -1605,7 +1607,7 @@ function renderCredentialForm(sys) {
       const result = await api("PUT", `/api/systems/${sys.id}/credentials`, body);
       if (result.requiresPlantSelection) {
         showPlantPicker(result.plants);
-        msg.textContent = "Select a plant and save again";
+        msg.textContent = t("credSelectPlant");
         msg.className = "cred-msg cred-ok";
         msg.hidden = false;
         return;
@@ -1613,7 +1615,7 @@ function renderCredentialForm(sys) {
       sys.username = result.username || body.user;
       passInput.value = "";
       hidePlantPicker();
-      msg.textContent = "Credentials updated";
+      msg.textContent = t("credUpdated");
       msg.className = "cred-msg cred-ok";
       msg.hidden = false;
       startPolling();
@@ -1623,7 +1625,7 @@ function renderCredentialForm(sys) {
       msg.hidden = false;
     } finally {
       btn.disabled = false;
-      btn.textContent = "Save credentials";
+      btn.textContent = t("credSave");
     }
   });
 
@@ -1762,6 +1764,7 @@ function changeLocale(locale) {
   refreshPollIntervalOptions();
   renderSystemTabs();
   if (lastRenderData) renderData(lastRenderData);
+  if (currentView === "compare" && lastCompareData) renderComparison(lastCompareData);
   if (els.pollErrorToast && !els.pollErrorToast.hidden) {
     setPollRetrying(pollRetrying);
   }

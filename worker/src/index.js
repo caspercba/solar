@@ -1,4 +1,4 @@
-import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
+import { checkAuth, isAuthMisconfigured, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
 import { toHaPayload } from "./ha.js";
 import { logAdapterError } from "./logger.js";
 import { checkDataRateLimit, getRateLimitKey, rateLimitResponse } from "./rateLimit.js";
@@ -67,6 +67,10 @@ export default {
     // GET /api/health — lightweight uptime check (no auth required)
     if (path === "/api/health" && request.method === "GET") {
       return jsonResponse({ ok: true, version: "1.1.0" }, 200, origin);
+    }
+
+    if (isAuthMisconfigured(env)) {
+      return errorResponse("Service misconfigured: API_TOKEN is required in this environment", 503, origin);
     }
 
     if (!checkAuth(request, env)) {

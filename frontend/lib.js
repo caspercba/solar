@@ -171,18 +171,35 @@ export function impliedBatteryCapacityWh(voltage, nominalCapacityAh) {
   return ah * nominalV;
 }
 
+/** English fallback strings for time-to-empty i18n keys (used when no `translate` is passed). */
+const TIME_TO_EMPTY_EN = {
+  timeToEmptyLessThanMinute: "<1m",
+  timeToEmptyMinutes: "{m}m",
+  timeToEmptyHours: "{h}h",
+  timeToEmptyHoursMinutes: "{h}h {m}m",
+  timeToEmptyLabel: "~{duration} left",
+};
+
+function defaultTimeToEmptyTranslate(key, vars = {}) {
+  const template = TIME_TO_EMPTY_EN[key] || key;
+  return template.replace(/\{(\w+)\}/g, (_, name) => (vars[name] != null ? vars[name] : ""));
+}
+
 /**
- * Format hours until empty as a compact label (e.g. "4h 5m", "45m", "<1m").
+ * Format hours until empty as a compact, localized label (e.g. "4h 5m", "45m", "<1m").
+ * `translate(key, vars)` should behave like the app's `t()` i18n helper (falls back to
+ * English when omitted) and is called with one of: timeToEmptyLessThanMinute,
+ * timeToEmptyMinutes, timeToEmptyHours, timeToEmptyHoursMinutes.
  */
-export function formatTimeToEmpty(hours) {
+export function formatTimeToEmpty(hours, translate = defaultTimeToEmptyTranslate) {
   if (!Number.isFinite(hours) || hours <= 0) return "";
   const totalMin = Math.round(hours * 60);
-  if (totalMin < 1) return "<1m";
+  if (totalMin < 1) return translate("timeToEmptyLessThanMinute");
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  if (h <= 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+  if (h <= 0) return translate("timeToEmptyMinutes", { m });
+  if (m === 0) return translate("timeToEmptyHours", { h });
+  return translate("timeToEmptyHoursMinutes", { h, m });
 }
 
 /**
@@ -197,9 +214,10 @@ export function formatTimeToEmpty(hours) {
  * by voltage tier using the 42.0–53.5 V curve midpoint as nominal pack voltage.
  *
  * Returns null when charging, grid active, SOC unavailable, load ≤ 0, or discharge ≤ 0.
+ * `translate(key, vars)` defaults to English; pass the app's i18n `t()` for locale-aware labels.
  * @returns {{ hours: number, label: string } | null}
  */
-export function estimateBatteryTimeToEmpty(battery, grid, { load } = {}) {
+export function estimateBatteryTimeToEmpty(battery, grid, { load, translate = defaultTimeToEmptyTranslate } = {}) {
   if (grid?.active) return null;
 
   const soc = battery?.soc;
@@ -225,7 +243,8 @@ export function estimateBatteryTimeToEmpty(battery, grid, { load } = {}) {
   const hours = ((soc / 100) * capacityWh) / dischargeW;
   if (!Number.isFinite(hours) || hours <= 0) return null;
 
-  return { hours, label: `~${formatTimeToEmpty(hours)} left` };
+  const duration = formatTimeToEmpty(hours, translate);
+  return { hours, label: translate("timeToEmptyLabel", { duration }) };
 }
 
 /** Compact cards-view label from optional normalized weather object. */

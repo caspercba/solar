@@ -32,6 +32,11 @@ const messages = {
     cardLoad: "Load",
     cardGenerator: "Generator",
 
+    compareLowestSoc: "Lowest SOC",
+    compareGeneratorOn: "Generator ON",
+    compareUnavailable: "Unavailable",
+    compareLoadError: "Could not load comparison data.",
+
     batIdle: "Idle",
     batCharging: "Charging",
     batDischarging: "Discharging",
@@ -91,6 +96,11 @@ const messages = {
     systems: "Systems",
     refreshInterval: "Refresh interval",
     refreshIntervalAria: "Data refresh interval",
+    theme: "Theme",
+    themeAria: "Color theme",
+    themeDark: "Dark",
+    themeLight: "Light",
+    themeHighContrast: "High contrast",
     noSystems: "No systems configured.",
     remove: "Remove",
     removeConfirm: 'Remove "{name}"?',
@@ -109,10 +119,24 @@ const messages = {
     alertsSaved: "Alerts saved",
     alertsOnBadge: "Alerts on",
 
+    credPortalTitle: "Portal credentials",
+    credNewPasswordPlaceholder: "New password",
+    credSave: "Save credentials",
+    credSaving: "Saving…",
+    credRequired: "Username and password are required",
+    credSelectPlant: "Select a plant and save again",
+    credUpdated: "Credentials updated",
+
     pollIntervalSeconds: "{sec} seconds",
     pollIntervalMinutes: "{mins} minutes",
 
     notConnected: "Not connected",
+
+    timeToEmptyLessThanMinute: "<1m",
+    timeToEmptyMinutes: "{m}m",
+    timeToEmptyHours: "{h}h",
+    timeToEmptyHoursMinutes: "{h}h {m}m",
+    timeToEmptyLabel: "~{duration} left",
   },
   es: {
     appTitle: "Panel Solar",
@@ -140,6 +164,11 @@ const messages = {
     cardSolar: "Solar",
     cardLoad: "Carga",
     cardGenerator: "Generador",
+
+    compareLowestSoc: "SOC más bajo",
+    compareGeneratorOn: "Generador ENCENDIDO",
+    compareUnavailable: "No disponible",
+    compareLoadError: "No se pudieron cargar los datos de comparación.",
 
     batIdle: "Inactiva",
     batCharging: "Cargando",
@@ -200,6 +229,11 @@ const messages = {
     systems: "Sistemas",
     refreshInterval: "Intervalo de actualización",
     refreshIntervalAria: "Intervalo de actualización de datos",
+    theme: "Tema",
+    themeAria: "Tema de color",
+    themeDark: "Oscuro",
+    themeLight: "Claro",
+    themeHighContrast: "Alto contraste",
     noSystems: "No hay sistemas configurados.",
     remove: "Eliminar",
     removeConfirm: '¿Eliminar "{name}"?',
@@ -218,10 +252,24 @@ const messages = {
     alertsSaved: "Alertas guardadas",
     alertsOnBadge: "Alertas activas",
 
+    credPortalTitle: "Credenciales del portal",
+    credNewPasswordPlaceholder: "Nueva contraseña",
+    credSave: "Guardar credenciales",
+    credSaving: "Guardando…",
+    credRequired: "El usuario y la contraseña son obligatorios",
+    credSelectPlant: "Selecciona una planta y guarda de nuevo",
+    credUpdated: "Credenciales actualizadas",
+
     pollIntervalSeconds: "{sec} segundos",
     pollIntervalMinutes: "{mins} minutos",
 
     notConnected: "Sin conexión",
+
+    timeToEmptyLessThanMinute: "<1 min",
+    timeToEmptyMinutes: "{m} min",
+    timeToEmptyHours: "{h} h",
+    timeToEmptyHoursMinutes: "{h} h {m} min",
+    timeToEmptyLabel: "~{duration} restante",
   },
 };
 

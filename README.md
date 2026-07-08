@@ -103,6 +103,14 @@ Stop Docker services with `npm run dev:down`.
 
    Choose a long random string. The frontend sends this as `Authorization: Bearer <token>`. **Never commit the token to git.**
 
+3a. **Set the production guard** (required for production and staging)
+
+   ```bash
+   echo "true" | npx wrangler secret put PRODUCTION
+   ```
+
+   Without this, a deployed Worker that's missing `API_TOKEN` silently runs open (see step 5). With `PRODUCTION=true`, a missing `API_TOKEN` makes every route except `/api/health` return `503` instead. See [worker/DEPLOY.md §3.1a](./worker/DEPLOY.md#31a-production-required-on-every-real-deployment) for details.
+
 4. **Deploy**
 
    ```bash
@@ -117,7 +125,7 @@ Stop Docker services with `npm run dev:down`.
    npm run dev
    ```
 
-   If `API_TOKEN` is not set, the Worker runs in open mode (no auth) — useful for local testing only.
+   If `API_TOKEN` is not set, the Worker runs in open mode (no auth) — useful for local testing only. This only applies when `PRODUCTION` is also unset, which is the default for local `wrangler dev`.
 
 ### Staging environment
 
@@ -148,6 +156,7 @@ Staging is a separate Cloudflare Worker (`solar-proxy-staging`) with its **own K
 
    ```bash
    npx wrangler secret put API_TOKEN --env staging
+   echo "true" | npx wrangler secret put PRODUCTION --env staging   # fail closed, same as production
    npx wrangler secret put CREDENTIALS_KEY --env staging   # optional but recommended
    npx wrangler secret put ALLOWED_ORIGINS --env staging   # e.g. Pages preview URL, localhost
    ```
@@ -550,10 +559,11 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 ## Security
 
 - **`API_TOKEN`** — Set only via `wrangler secret put`. Do not commit tokens, inverter passwords, or `.env` files. The repo `.gitignore` excludes `.env`.
+- **`PRODUCTION`** — Set to `true` via `wrangler secret put PRODUCTION` on every deployed Worker (production and staging). Fails closed with `503` if `API_TOKEN` is ever missing on a real deployment, instead of silently running open. See [worker/DEPLOY.md §3.1a](./worker/DEPLOY.md#31a-production-required-on-every-real-deployment).
 - **Inverter credentials** — Stored encrypted in Workers KV when `CREDENTIALS_KEY` is set (`wrangler secret put CREDENTIALS_KEY`). Restrict Cloudflare account access; treat KV as sensitive.
 - **Frontend token storage** — The access token is kept in `localStorage` (and optionally URL params for bookmarks). Anyone with the token can call your Worker API. Rotate the token if it is exposed.
 - **HTTPS only** — Use HTTPS for both the Worker and frontend in production.
-- **Dev mode** — If `API_TOKEN` is unset, the Worker accepts unauthenticated requests. Never deploy to production without the secret.
+- **Dev mode** — If `API_TOKEN` is unset **and** `PRODUCTION` is unset, the Worker accepts unauthenticated requests. This is the default for local `wrangler dev` only — never deploy to production or staging without both `API_TOKEN` and `PRODUCTION` set.
 - **Rate limiting** — Data routes (`/data`, `/ha`, `/all/data`) are capped at 60 requests/minute per bearer token (per isolate). Returns 429 with `Retry-After` when exceeded. Protects upstream inverter APIs from burst polling or scripted clients.
 
 ## Documentation
