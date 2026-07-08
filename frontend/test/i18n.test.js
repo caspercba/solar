@@ -70,4 +70,19 @@ describe("i18n", () => {
     expect(t("themeLight")).toBe("Claro");
     expect(t("themeHighContrast")).toBe("Alto contraste");
   });
+
+  it("translates compare view keys in English", () => {
+    expect(t("compareLowestSoc")).toBe("Lowest SOC");
+    expect(t("compareGeneratorOn")).toBe("Generator ON");
+    expect(t("compareUnavailable")).toBe("Unavailable");
+    expect(t("compareLoadError")).toBe("Could not load comparison data.");
+  });
+
+  it("translates compare view keys in Spanish", () => {
+    setLocale("es");
+    expect(t("compareLowestSoc")).toBe("SOC más bajo");
+    expect(t("compareGeneratorOn")).toBe("Generador ENCENDIDO");
+    expect(t("compareUnavailable")).toBe("No disponible");
+    expect(t("compareLoadError")).toBe("No se pudieron cargar los datos de comparación.");
+  });
 });

@@ -204,6 +204,7 @@ let historyLoading = false;
 let chartHistory = null;
 let lastEnergySummary = null;
 let lastRenderData = null;
+let lastCompareData = null;
 
 /* ── Loading skeleton ── */
 const skeletonTargets = () => [
@@ -293,20 +294,20 @@ function setCompareLoading(on) {
       </div>
       <div class="compare-metrics">
         <div class="compare-metric compare-metric-soc">
-          <span class="compare-label">Battery</span>
+          <span class="compare-label">${t("cardBattery")}</span>
           <span class="compare-value">--%</span>
           <div class="compare-bar-wrap"><div class="compare-bar" style="width:0%"></div></div>
         </div>
         <div class="compare-metric compare-metric-solar">
-          <span class="compare-label">Solar</span>
+          <span class="compare-label">${t("cardSolar")}</span>
           <span class="compare-value">-- W</span>
         </div>
         <div class="compare-metric compare-metric-load">
-          <span class="compare-label">Load</span>
+          <span class="compare-label">${t("cardLoad")}</span>
           <span class="compare-value">-- W</span>
         </div>
         <div class="compare-metric compare-metric-gen">
-          <span class="compare-label">Generator</span>
+          <span class="compare-label">${t("cardGenerator")}</span>
           <span class="compare-value">--</span>
         </div>
       </div>
@@ -319,6 +320,7 @@ function setCompareLoading(on) {
 function renderComparison(allData) {
   if (!fEls.compareGrid) return;
   hasData = true;
+  lastCompareData = allData;
 
   const lowestIds = new Set(findLowestSocIds(allData));
   let latestTs = null;
@@ -340,7 +342,7 @@ function renderComparison(allData) {
         <div class="compare-card-header">
           <h3 class="compare-name">${escapeAttr(name)}</h3>
         </div>
-        <p class="compare-error">${escapeAttr(d?.error || "Unavailable")}</p>
+        <p class="compare-error">${escapeAttr(d?.error || t("compareUnavailable"))}</p>
       `;
       fEls.compareGrid.appendChild(card);
       continue;
@@ -351,10 +353,10 @@ function renderComparison(allData) {
     const loadW = Math.round(d.load?.power ?? 0);
     const badges = [];
     if (isLowest && lowestIds.size > 0) {
-      badges.push('<span class="compare-highlight compare-highlight-lowest">Lowest SOC</span>');
+      badges.push(`<span class="compare-highlight compare-highlight-lowest">${t("compareLowestSoc")}</span>`);
     }
     if (genOn) {
-      badges.push('<span class="compare-highlight compare-highlight-gen">Generator ON</span>');
+      badges.push(`<span class="compare-highlight compare-highlight-gen">${t("compareGeneratorOn")}</span>`);
     }
 
     card.innerHTML = `
@@ -364,21 +366,21 @@ function renderComparison(allData) {
       </div>
       <div class="compare-metrics">
         <div class="compare-metric compare-metric-soc">
-          <span class="compare-label">Battery</span>
+          <span class="compare-label">${t("cardBattery")}</span>
           <span class="compare-value">${soc}%</span>
           <div class="compare-bar-wrap"><div class="compare-bar" style="width:${clampPct(soc)}%"></div></div>
         </div>
         <div class="compare-metric compare-metric-solar">
-          <span class="compare-label">Solar</span>
+          <span class="compare-label">${t("cardSolar")}</span>
           <span class="compare-value">${solarW} W</span>
         </div>
         <div class="compare-metric compare-metric-load">
-          <span class="compare-label">Load</span>
+          <span class="compare-label">${t("cardLoad")}</span>
           <span class="compare-value">${loadW} W</span>
         </div>
         <div class="compare-metric compare-metric-gen">
-          <span class="compare-label">Generator</span>
-          <span class="gen-badge ${genOn ? "gen-on" : "gen-off"}">${genOn ? "ON" : "OFF"}</span>
+          <span class="compare-label">${t("cardGenerator")}</span>
+          <span class="gen-badge ${genOn ? "gen-on" : "gen-off"}">${genOn ? t("genOn") : t("genOff")}</span>
         </div>
       </div>
       <p class="compare-status">${escapeAttr(d.status || "--")}</p>
@@ -1352,7 +1354,7 @@ async function pollNow() {
       console.error("compare poll error:", err);
       setCompareLoading(false);
       setStatus(false);
-      showPollError(chartErrorMessage(err, "Could not load comparison data."));
+      showPollError(chartErrorMessage(err, t("compareLoadError")));
     } finally {
       setPollRetrying(false);
     }
@@ -1766,6 +1768,7 @@ function changeLocale(locale) {
   refreshPollIntervalOptions();
   renderSystemTabs();
   if (lastRenderData) renderData(lastRenderData);
+  if (currentView === "compare" && lastCompareData) renderComparison(lastCompareData);
   if (els.pollErrorToast && !els.pollErrorToast.hidden) {
     setPollRetrying(pollRetrying);
   }
