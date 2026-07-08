@@ -53,4 +53,21 @@ describe("i18n", () => {
   it("interpolate helper handles missing vars", () => {
     expect(interpolate("Hello {name}", {})).toBe("Hello ");
   });
+
+  it("translates theme keys in English", () => {
+    expect(t("theme")).toBe("Theme");
+    expect(t("themeAria")).toBe("Color theme");
+    expect(t("themeDark")).toBe("Dark");
+    expect(t("themeLight")).toBe("Light");
+    expect(t("themeHighContrast")).toBe("High contrast");
+  });
+
+  it("translates theme keys in Spanish", () => {
+    setLocale("es");
+    expect(t("theme")).toBe("Tema");
+    expect(t("themeAria")).toBe("Tema de color");
+    expect(t("themeDark")).toBe("Oscuro");
+    expect(t("themeLight")).toBe("Claro");
+    expect(t("themeHighContrast")).toBe("Alto contraste");
+  });
 });
