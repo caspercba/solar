@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import worker from "../src/index.js";
-import { createMockKV } from "./helpers.js";
+import * as growatt from "../src/services/growatt.js";
+import * as shinemonitor from "../src/services/shinemonitor.js";
+import { createMockKV, expectHistorySummaryShape } from "./helpers.js";
+import { resetRateLimitStore, DATA_RATE_LIMIT_MAX } from "../src/rateLimit.js";
+import smAuth from "./fixtures/shinemonitor/auth-success.json";
+import smDay0703 from "./fixtures/shinemonitor/device-day-2026-07-03.json";
+import growattEnergy0703 from "./fixtures/growatt/energy-day-2026-07-03.json";
+import growattLineChart from "./fixtures/growatt/line-chart.json";
+import growattBatChart0703 from "./fixtures/growatt/bat-chart-2026-07-03.json";
 
 const AUTH = { Authorization: "Bearer test-token" };
 
@@ -30,6 +38,7 @@ describe("worker routes", () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
+    resetRateLimitStore();
   });
 
   afterEach(() => {
@@ -50,6 +59,22 @@ describe("worker routes", () => {
     expect(await res.json()).toEqual({ error: "Unauthorized" });
   });
 
+  it("returns 503 on protected routes when PRODUCTION is enabled and API_TOKEN is unset", async () => {
+    const res = await call(request("/api/systems", { headers: AUTH }), {
+      API_TOKEN: undefined,
+      PRODUCTION: "true",
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({
+      error: "Service misconfigured: API_TOKEN is required in this environment",
+    });
+  });
+
+  it("GET /api/health still works when PRODUCTION is enabled and API_TOKEN is unset", async () => {
+    const res = await call(request("/api/health"), { API_TOKEN: undefined, PRODUCTION: "true" });
+    expect(res.status).toBe(200);
+  });
+
   it("GET /api/systems lists configured systems without credentials", async () => {
     const systems = env();
     await systems.SYSTEMS.put("_index", JSON.stringify([
@@ -63,6 +88,7 @@ describe("worker routes", () => {
         id: "a",
         name: "Alpha",
         service: "shinemonitor",
+        username: "",
         alerts: {
           enabled: false,
           webhookUrl: "",
@@ -131,6 +157,347 @@ describe("worker routes", () => {
     expect(stored.credentials.pwdSha1).toMatch(/^[a-f0-9]{40}$/);
   });
 
+  it("POST /api/systems returns requiresDeviceSelection for multi-inverter ShineMonitor plants", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 9, pname: "Dual Inverter" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Dual Inverter", nominalPower: "8", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            collector: [{
+              pn: "P1",
+              alias: "RTU",
+              device: [
+                { devcode: 1, sn: "SN-A", devaddr: 1 },
+                { devcode: 1, sn: "SN-B", devaddr: 2 },
+              ],
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "shinemonitor",
+          user: "user@test.com",
+          password: "password",
+          plantId: "9",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.requiresDeviceSelection).toBe(true);
+    expect(json.devices).toHaveLength(2);
+    expect(json.devices[0].key).toBe("P1|SN-A|1");
+  });
+
+  it("POST /api/systems stores aggregate multi-device ShineMonitor config", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 9, pname: "Dual Inverter" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Dual Inverter", nominalPower: "8", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            collector: [{
+              pn: "P1",
+              alias: "RTU",
+              device: [
+                { devcode: 1, sn: "SN-A", devaddr: 1 },
+                { devcode: 1, sn: "SN-B", devaddr: 2 },
+              ],
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "shinemonitor",
+          name: "Dual",
+          user: "user@test.com",
+          password: "password",
+          plantId: "9",
+          deviceMode: "aggregate",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    const stored = await systems.SYSTEMS.get(`system:${json.id}`, "json");
+    expect(stored.credentials.deviceMode).toBe("aggregate");
+    expect(stored.credentials.devices).toHaveLength(2);
+  });
+
+  it("POST /api/systems discovers Growatt and stores sessionCookies instead of password", async () => {
+    globalThis.fetch = vi.fn(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith("/login") && init?.method === "POST") {
+        return new Response(JSON.stringify({ result: 1 }), {
+          headers: { "set-cookie": "JSESSIONID=growatt-sess; Path=/" },
+        });
+      }
+      if (u.includes("getPlantListTitle")) {
+        return Response.json([{ id: 42, plantName: "Growatt Farm" }]);
+      }
+      if (u.includes("getDevicesByPlantList")) {
+        return Response.json({
+          result: 1,
+          obj: { datas: [{ sn: "SN1", nominalPower: "5000", deviceModel: "MOD" }] },
+        });
+      }
+      if (u.includes("getPlantData")) {
+        return Response.json({ result: 1, obj: { nominalPower: "6000" } });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "growatt",
+          name: "Growatt Site",
+          user: "growatt@test.com",
+          password: "password",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.service).toBe("growatt");
+    expect(json.name).toBe("Growatt Site");
+
+    const stored = await systems.SYSTEMS.get(`system:${json.id}`, "json");
+    expect(stored.credentials.user).toBe("growatt@test.com");
+    expect(stored.credentials.password).toBeUndefined();
+    expect(stored.credentials.sessionCookies).toEqual({ JSESSIONID: "growatt-sess" });
+    expect(stored.credentials.plantId).toBe("42");
+    expect(stored.credentials.storageSn).toBe("SN1");
+  });
+
+  it("PUT /api/systems/:id/credentials updates credentials after re-discovery", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 1, pname: "Solar Farm" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Solar Farm", nominalPower: "5", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: { collector: [{ pn: "P1", device: [{ devcode: 2, sn: "SN", devaddr: 3 }] }] },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Cabin", service: "shinemonitor" },
+    ]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Cabin",
+      service: "shinemonitor",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      credentials: {
+        user: "old@test.com",
+        pwdSha1: "oldhash",
+        plantId: "1",
+        device: { pn: "P0", devcode: "1", sn: "OLD", devaddr: "1" },
+        timezone: 0,
+      },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/credentials", {
+        method: "PUT",
+        headers: AUTH,
+        body: {
+          user: "new@test.com",
+          password: "new-password",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.username).toBe("new@test.com");
+    expect(json.id).toBe("s1");
+    expect(json.name).toBe("Cabin");
+
+    const stored = await systems.SYSTEMS.get("system:s1", "json");
+    expect(stored.credentials.user).toBe("new@test.com");
+    expect(stored.credentials.pwdSha1).toMatch(/^[a-f0-9]{40}$/);
+    expect(stored.credentials.pwdSha1).not.toBe("oldhash");
+    expect(stored.credentials.plantId).toBe("1");
+    expect(stored.createdAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("PUT /api/systems/:id/credentials returns 502 and leaves system unchanged on auth failure", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 1, desc: "Invalid credentials" });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Cabin", service: "shinemonitor" },
+    ]));
+    const original = {
+      id: "s1",
+      name: "Cabin",
+      service: "shinemonitor",
+      credentials: {
+        user: "old@test.com",
+        pwdSha1: "keep-me",
+        plantId: "1",
+      },
+    };
+    await systems.SYSTEMS.put("system:s1", JSON.stringify(original));
+
+    const res = await call(
+      request("/api/systems/s1/credentials", {
+        method: "PUT",
+        headers: AUTH,
+        body: {
+          user: "bad@test.com",
+          password: "wrong",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: expect.stringContaining("Discovery failed") });
+
+    const stored = await systems.SYSTEMS.get("system:s1", "json");
+    expect(stored.credentials.user).toBe("old@test.com");
+    expect(stored.credentials.pwdSha1).toBe("keep-me");
+  });
+
+  it("PUT /api/systems/:id/credentials returns plant picker without updating system", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            info: [
+              { pid: 1, pname: "Farm A" },
+              { pid: 2, pname: "Farm B" },
+            ],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Cabin", service: "shinemonitor" },
+    ]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Cabin",
+      service: "shinemonitor",
+      credentials: { user: "old@test.com", pwdSha1: "keep-me" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/credentials", {
+        method: "PUT",
+        headers: AUTH,
+        body: {
+          user: "new@test.com",
+          password: "new-password",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.requiresPlantSelection).toBe(true);
+    expect(json.plants).toHaveLength(2);
+
+    const stored = await systems.SYSTEMS.get("system:s1", "json");
+    expect(stored.credentials.user).toBe("old@test.com");
+    expect(stored.credentials.pwdSha1).toBe("keep-me");
+  });
+
+  it("PUT /api/systems/:id/credentials returns 404 for unknown system", async () => {
+    const res = await call(
+      request("/api/systems/missing/credentials", {
+        method: "PUT",
+        headers: AUTH,
+        body: { user: "u", password: "p" },
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "System not found" });
+  });
+
   it("PUT /api/systems/:id/alerts updates alert settings", async () => {
     const systems = env();
     await systems.SYSTEMS.put("_index", JSON.stringify([
@@ -173,11 +540,6 @@ describe("worker routes", () => {
       { id: "keep", name: "Stay", service: "growatt" },
     ]));
     await systems.SYSTEMS.put("system:del-me", JSON.stringify({ id: "del-me" }));
-    await systems.SYSTEMS.put(
-      "history:day:del-me:2026-07-03",
-      JSON.stringify({ systemId: "del-me", date: "2026-07-03", points: [] }),
-    );
-    await systems.SYSTEMS.put("history:index:del-me", JSON.stringify(["2026-07-03"]));
 
     const res = await call(
       request("/api/systems/del-me", { method: "DELETE", headers: AUTH }),
@@ -187,44 +549,628 @@ describe("worker routes", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(await systems.SYSTEMS.get("system:del-me")).toBeNull();
-    expect(await systems.SYSTEMS.get("history:day:del-me:2026-07-03")).toBeNull();
-    expect(await systems.SYSTEMS.get("history:index:del-me")).toBeNull();
     const index = await systems.SYSTEMS.get("_index", "json");
     expect(index).toEqual([{ id: "keep", name: "Stay", service: "growatt" }]);
   });
 
-  it("GET /api/systems/:id/history/summary returns daily energy totals", async () => {
+  it("GET /api/systems/:id/history/summary calls adapter.fetchHistorySummary directly", async () => {
+    const summarySpy = vi.spyOn(shinemonitor, "fetchHistorySummary");
+    summarySpy.mockResolvedValue({
+      systemId: "sm1",
+      name: "Cabin",
+      service: "shinemonitor",
+      days: 7,
+      endDate: "2026-07-03",
+      series: [
+        {
+          date: "2026-07-03",
+          solarKwh: 18.2,
+          loadKwh: 14.1,
+          peakSolarW: 3000,
+          minSoc: 45,
+          maxSoc: 98,
+          source: "vendor",
+        },
+      ],
+    });
+
     const systems = env();
-    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
-    await systems.SYSTEMS.put("system:s1", JSON.stringify({ id: "s1", service: "growatt" }));
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
     await systems.SYSTEMS.put(
-      "history:day:s1:2026-07-03",
+      "system:sm1",
       JSON.stringify({
-        systemId: "s1",
-        date: "2026-07-03",
-        source: "snapshot",
-        dailySummary: { solarKwh: 12.4, loadKwh: 9.1, peakSolarW: 2800, minSoc: 55, maxSoc: 98 },
-        points: [],
+        id: "sm1",
+        name: "Cabin",
+        service: "shinemonitor",
+        credentials: { user: "u", pwdSha1: "abc", plantId: "100" },
       }),
     );
 
     const res = await call(
-      request("/api/systems/s1/history/summary?days=2", { headers: AUTH }),
+      request("/api/systems/sm1/history/summary?days=7&end=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    expect(summarySpy).toHaveBeenCalledOnce();
+    expect(summarySpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "sm1", service: "shinemonitor" }),
+      7,
+      "2026-07-03",
+    );
+    const json = await res.json();
+    expectHistorySummaryShape(json);
+    expect(json.systemId).toBe("sm1");
+    expect(json.series[0].source).toBe("vendor");
+  });
+
+  it("GET /api/systems/:id/history/summary uses ShineMonitor fetchHistorySummary", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
+    await systems.SYSTEMS.put(
+      "system:sm1",
+      JSON.stringify({
+        id: "sm1",
+        name: "Cabin",
+        service: "shinemonitor",
+        credentials: {
+          user: "user@example.com",
+          pwdSha1: "5baa61e4c9b93f3f0682250b6cf8331b7ee68fd8",
+          plantId: "100",
+          device: { pn: "PN1", devcode: "1", sn: "SN1", devaddr: "1" },
+          timezone: 0,
+        },
+      }),
+    );
+
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json(smAuth);
+      }
+      if (u.includes("queryDeviceDataOneDayPaging")) {
+        return Response.json({
+          err: 0,
+          dat: {
+            title: [
+              { title: "Timestamp" },
+              { title: "Battery Voltage" },
+              { title: "Batt Current" },
+              { title: "Charger Power" },
+              { title: "PLoad" },
+            ],
+            total: 1,
+            row: [{
+              field: ["2026-07-03 10:00:00", "50.0", "0", "2400", "500"],
+            }],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const res = await call(
+      request("/api/systems/sm1/history/summary?days=1&end=2026-07-03", { headers: AUTH }),
       systems,
     );
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.systemId).toBe("s1");
-    expect(json.days).toBe(2);
-    expect(json.series).toHaveLength(2);
-    expect(json.series[1]).toMatchObject({ date: "2026-07-03", solarKwh: 12.4, loadKwh: 9.1, source: "snapshot" });
-    expect(json.series[0]).toMatchObject({ date: "2026-07-02", solarKwh: null, source: null });
+    expect(json.systemId).toBe("sm1");
+    expect(json.series).toHaveLength(1);
+    expect(json.series[0]).toMatchObject({
+      date: "2026-07-03",
+      solarKwh: 0.2,
+      loadKwh: 0,
+      peakSolarW: 2400,
+      source: "vendor",
+    });
+  });
+
+  it("GET /api/systems/:id/history/summary uses Growatt fetchHistorySummary", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "gw1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put(
+      "system:gw1",
+      JSON.stringify({
+        id: "gw1",
+        name: "Home",
+        service: "growatt",
+        credentials: {
+          user: "u",
+          password: "p",
+          plantId: "42",
+          storageSn: "SN1",
+        },
+      }),
+    );
+
+    globalThis.fetch = vi.fn(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith("/login") && init?.method === "POST") {
+        return new Response(JSON.stringify({ result: 1 }), {
+          headers: { "set-cookie": "JSESSIONID=abc123; Path=/" },
+        });
+      }
+      if (u.includes("getStorageEnergyDayChart")) {
+        return Response.json(growattEnergy0703);
+      }
+      if (u.includes("getStorageLineChartData")) {
+        return Response.json(growattLineChart);
+      }
+      if (u.includes("getStorageBatChart")) {
+        return Response.json(growattBatChart0703);
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const res = await call(
+      request("/api/systems/gw1/history/summary?days=1&end=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expectHistorySummaryShape(json);
+    expect(json.systemId).toBe("gw1");
+    expect(json.series).toHaveLength(1);
+    expect(json.series[0]).toMatchObject({
+      date: "2026-07-03",
+      solarKwh: 0.5,
+      loadKwh: 0.1,
+      peakSolarW: 3000,
+      source: "vendor",
+    });
+  });
+
+  it("GET /api/systems/:id/history/summary rejects invalid days param", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
+    await systems.SYSTEMS.put(
+      "system:sm1",
+      JSON.stringify({ id: "sm1", name: "Cabin", service: "shinemonitor", credentials: {} }),
+    );
+
+    for (const query of ["days=0", "days=91", "days=abc"]) {
+      const res = await call(
+        request(`/api/systems/sm1/history/summary?${query}`, { headers: AUTH }),
+        systems,
+      );
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "Invalid days (expected 1–90)" });
+    }
+  });
+
+  it("GET /api/systems/:id/history/summary accepts days at clamp boundaries", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "sm1", name: "Cabin", service: "shinemonitor" }]));
+    await systems.SYSTEMS.put(
+      "system:sm1",
+      JSON.stringify({
+        id: "sm1",
+        name: "Cabin",
+        service: "shinemonitor",
+        credentials: {
+          user: "user@example.com",
+          pwdSha1: "5baa61e4c9b93f3f0682250b6cf8331b7ee68fd8",
+          plantId: "100",
+          device: { pn: "PN1", devcode: "1", sn: "SN1", devaddr: "1" },
+          timezone: 0,
+        },
+      }),
+    );
+
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json(smAuth);
+      }
+      if (u.includes("queryDeviceDataOneDayPaging")) {
+        return Response.json(smDay0703);
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const res = await call(
+      request("/api/systems/sm1/history/summary?days=90&end=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.days).toBe(90);
+    expect(json.series).toHaveLength(90);
   });
 
   it("returns 404 for unknown routes", async () => {
     const res = await call(request("/api/unknown", { headers: AUTH }));
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
+  it("GET /api/systems/:id/history calls adapter.fetchHistory directly", async () => {
+    const fetchHistorySpy = vi.spyOn(growatt, "fetchHistory");
+    fetchHistorySpy.mockResolvedValue({
+      systemId: "s1",
+      name: "Home",
+      service: "growatt",
+      date: "2026-07-03",
+      timezoneOffset: -6,
+      intervalMinutes: 5,
+      points: [{ time: "00:00", solar: 1200, load: 850, battery: -723, soc: 72 }],
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: {
+        user: "u",
+        password: "p",
+        plantId: "42",
+        storageSn: "SN1",
+      },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/history?date=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    expect(fetchHistorySpy).toHaveBeenCalledOnce();
+    expect(fetchHistorySpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "s1", service: "growatt" }),
+      "2026-07-03",
+    );
+    const json = await res.json();
+    expect(json.systemId).toBe("s1");
+    expect(json.date).toBe("2026-07-03");
+    expect(json.points[0]).toMatchObject({ time: "00:00", solar: 1200, load: 850, battery: -723, soc: 72 });
+    expect(json.source).toBeUndefined();
+  });
+
+  it("GET /api/systems/:id/history returns vendor intraday data via Growatt adapter", async () => {
+    globalThis.fetch = vi.fn(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith("/login") && init?.method === "POST") {
+        return new Response(JSON.stringify({ result: 1 }), {
+          headers: { "set-cookie": "JSESSIONID=abc123; Path=/" },
+        });
+      }
+      if (u.includes("getStorageEnergyDayChart")) {
+        return Response.json({
+          result: 1,
+          obj: { ppv: ["1200"], userLoad: ["850"] },
+        });
+      }
+      if (u.includes("getStorageLineChartData")) {
+        return Response.json({
+          result: 1,
+          obj: { batPower: ["-723"] },
+        });
+      }
+      if (u.includes("getStorageBatChart")) {
+        return Response.json({
+          result: 1,
+          obj: { date: "2026-07-03", socChart: { capacity: ["72"] } },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: {
+        user: "u",
+        password: "p",
+        plantId: "42",
+        storageSn: "SN1",
+      },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/history?date=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.systemId).toBe("s1");
+    expect(json.date).toBe("2026-07-03");
+    expect(json.points[0]).toMatchObject({ time: "00:00", solar: 1200, load: 850, battery: -723, soc: 72 });
+    expect(json.source).toBeUndefined();
+  });
+
+  it("GET /api/systems/:id/history rejects invalid date", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({ id: "s1", service: "growatt", credentials: {} }));
+
+    const res = await call(
+      request("/api/systems/s1/history?date=not-a-date", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid date (expected YYYY-MM-DD)" });
+  });
+
+  it("GET /api/systems/:id/history returns 404 for unknown system", async () => {
+    const res = await call(
+      request("/api/systems/missing/history", { headers: AUTH }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "System not found" });
+  });
+
+  it("GET /api/systems/:id/history returns 502 JSON when adapter.fetchHistory throws", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(growatt, "fetchHistory").mockRejectedValue(new Error("vendor timeout"));
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "p", plantId: "42", storageSn: "SN1" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/history?date=2026-07-03", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "History fetch failed: vendor timeout" });
+    expect(consoleError).toHaveBeenCalled();
+    const logLine = consoleError.mock.calls.find((c) => {
+      try {
+        const parsed = JSON.parse(c[0]);
+        return parsed.event === "adapter_history_failed";
+      } catch {
+        return false;
+      }
+    });
+    expect(logLine).toBeDefined();
+    const parsed = JSON.parse(logLine[0]);
+    expect(parsed).toMatchObject({
+      level: "error",
+      event: "adapter_history_failed",
+      systemId: "s1",
+      service: "growatt",
+      route: "GET /api/systems/:id/history",
+    });
+
+    consoleError.mockRestore();
+  });
+
+  it("OPTIONS preflight reflects the request origin with CORS headers when ALLOWED_ORIGINS is unset", async () => {
+    const res = await call(
+      request("/api/systems", { method: "OPTIONS", headers: { Origin: "https://app.example" } }),
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://app.example");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, PUT, DELETE, OPTIONS");
+    expect(res.headers.get("Access-Control-Allow-Headers")).toBe("Content-Type, Authorization");
+    expect(res.headers.get("Access-Control-Max-Age")).toBe("86400");
+    expect(res.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("OPTIONS preflight returns matching CORS headers when the origin is in ALLOWED_ORIGINS", async () => {
+    const res = await call(
+      request("/api/systems", { method: "OPTIONS", headers: { Origin: "https://allowed.example" } }),
+      { ALLOWED_ORIGINS: "https://allowed.example,https://other.example" },
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://allowed.example");
+    expect(res.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("OPTIONS preflight is rejected with 403 and no CORS headers when the origin is not allowed", async () => {
+    const res = await call(
+      request("/api/systems", { method: "OPTIONS", headers: { Origin: "https://evil.example" } }),
+      { ALLOWED_ORIGINS: "https://allowed.example" },
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(res.headers.get("Access-Control-Allow-Methods")).toBeNull();
+  });
+
+  it("GET /api/systems/:id/ha returns flat JSON for Home Assistant", async () => {
+    vi.spyOn(growatt, "fetchData").mockResolvedValue({
+      systemId: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery: { voltage: 48, soc: 72, current: -10, power: -480 },
+      solar: { power: 1200, voltage: 95 },
+      load: { power: 850, percent: 24 },
+      grid: { power: 0, voltage: 0, active: false },
+      inverter: { ratedPower: 5000, nominalPV: 5000 },
+      status: "PV Charging",
+      energyToday: 12.4,
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "p", plantId: "42", storageSn: "SN1" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/ha", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      schema_version: 1,
+      system_id: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery_soc: 72,
+      battery_voltage: 48,
+      battery_current: -10,
+      battery_power: -480,
+      solar_power: 1200,
+      solar_voltage: 95,
+      load_power: 850,
+      load_percent: 24,
+      grid_power: 0,
+      grid_voltage: 0,
+      grid_active: false,
+      inverter_rated_power: 5000,
+      inverter_nominal_pv: 5000,
+      status: "PV Charging",
+      energy_today_kwh: 12.4,
+    });
+  });
+
+  it("GET /api/systems/:id/ha returns 404 for unknown system", async () => {
+    const res = await call(
+      request("/api/systems/missing/ha", { headers: AUTH }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "System not found" });
+  });
+
+  it("GET /api/systems/:id/data logs structured error on adapter failure", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    vi.spyOn(growatt, "fetchData").mockRejectedValue(new Error("vendor offline"));
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "secret-password" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/data", { headers: AUTH }),
+      systems,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Fetch failed: vendor offline" });
+    expect(consoleError).toHaveBeenCalled();
+    const logLine = consoleError.mock.calls.find((c) => {
+      try {
+        const parsed = JSON.parse(c[0]);
+        return parsed.event === "adapter_fetch_failed";
+      } catch {
+        return false;
+      }
+    });
+    expect(logLine).toBeDefined();
+    const parsed = JSON.parse(logLine[0]);
+    expect(parsed).toMatchObject({
+      level: "error",
+      event: "adapter_fetch_failed",
+      systemId: "s1",
+      service: "growatt",
+      route: "GET /api/systems/:id/data",
+    });
+    expect(JSON.stringify(parsed)).not.toContain("secret-password");
+
+    consoleError.mockRestore();
+  });
+
+  it("GET /api/systems/:id/data returns 429 when rate limit exceeded", async () => {
+    const fetchDataSpy = vi.spyOn(growatt, "fetchData");
+    fetchDataSpy.mockResolvedValue({
+      systemId: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery: { voltage: 48, soc: 50, current: 0, power: 0 },
+      solar: { power: 0, voltage: 0 },
+      load: { power: 0, percent: 0 },
+      grid: { power: 0, voltage: 0, active: false },
+      inverter: { ratedPower: 5000, nominalPV: 5000 },
+      status: "Idle",
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "p", plantId: "42", storageSn: "SN1" },
+    }));
+
+    for (let i = 0; i < DATA_RATE_LIMIT_MAX; i += 1) {
+      const res = await call(
+        request("/api/systems/s1/data", { headers: AUTH }),
+        systems,
+      );
+      expect(res.status).toBe(200);
+    }
+
+    const blocked = await call(
+      request("/api/systems/s1/data", { headers: AUTH }),
+      systems,
+    );
+    expect(blocked.status).toBe(429);
+    expect(await blocked.json()).toEqual({ error: "Too many requests" });
+    expect(blocked.headers.get("Retry-After")).toMatch(/^\d+$/);
+    expect(Number(blocked.headers.get("Retry-After"))).toBeGreaterThan(0);
+    expect(fetchDataSpy).toHaveBeenCalledTimes(DATA_RATE_LIMIT_MAX);
+  });
+
+  it("GET /api/systems/all/data shares the same per-token rate limit", async () => {
+    const fetchDataSpy = vi.spyOn(growatt, "fetchData");
+    fetchDataSpy.mockResolvedValue({
+      systemId: "s1",
+      name: "Home",
+      service: "growatt",
+      timestamp: "2026-07-03 12:00:00",
+      battery: { voltage: 48, soc: 50, current: 0, power: 0 },
+      solar: { power: 0, voltage: 0 },
+      load: { power: 0, percent: 0 },
+      grid: { power: 0, voltage: 0, active: false },
+      inverter: { ratedPower: 5000, nominalPV: 5000 },
+      status: "Idle",
+    });
+
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([{ id: "s1", name: "Home", service: "growatt" }]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Home",
+      service: "growatt",
+      credentials: { user: "u", password: "p", plantId: "42", storageSn: "SN1" },
+    }));
+
+    for (let i = 0; i < DATA_RATE_LIMIT_MAX - 1; i += 1) {
+      await call(request("/api/systems/s1/data", { headers: AUTH }), systems);
+    }
+
+    const allDataRes = await call(
+      request("/api/systems/all/data", { headers: AUTH }),
+      systems,
+    );
+    expect(allDataRes.status).toBe(200);
+
+    const blocked = await call(
+      request("/api/systems/s1/data", { headers: AUTH }),
+      systems,
+    );
+    expect(blocked.status).toBe(429);
   });
 });

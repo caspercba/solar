@@ -1,98 +1,29 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
-  appendPoint,
-  appendSnapshot,
   computeDailySummary,
+  computeSocExtrema,
   dateRange,
-  deleteHistory,
-  getDay,
-  getHistorySummary,
-  listDates,
-  parseDataTimestamp,
-  pointFromData,
-  pruneOld,
-  runScheduledSnapshots,
-  selectDatesToPrune,
-  upsertDateIndex,
+  mergeSocIntoPoints,
+  socMapFromPoints,
 } from "../src/history.js";
 import { parseHistoryRows, localDate } from "../src/services/shinemonitor.js";
-import { createMockKV } from "./helpers.js";
-
-const SAMPLE_DATA = {
-  systemId: "sys-1",
-  name: "Cabin",
-  service: "growatt",
-  timestamp: "2026-07-03 14:32:00",
-  credentials: { user: "secret", password: "hidden" },
-  battery: { voltage: 48.2, soc: 72, current: -15, power: -723 },
-  solar: { power: 1200, voltage: 95 },
-  load: { power: 850, percent: 24 },
-  grid: { power: 0, voltage: 0, active: false },
-  inverter: { ratedPower: 3500, nominalPV: 5000 },
-  status: "PV Charging",
-  energyToday: 12.4,
-};
-
-describe("parseDataTimestamp", () => {
-  it("floors minutes to 5-minute bucket", () => {
-    expect(parseDataTimestamp("2026-07-03 14:32:00")).toEqual({
-      date: "2026-07-03",
-      bucketTime: "14:30",
-    });
-    expect(parseDataTimestamp("2026-07-03 14:37:59").bucketTime).toBe("14:35");
-  });
-});
-
-describe("pointFromData", () => {
-  it("extracts only history fields without credentials", () => {
-    const point = pointFromData(SAMPLE_DATA, "14:30");
-    expect(point).toEqual({
-      time: "14:30",
-      solar: 1200,
-      load: 850,
-      battery: -723,
-      soc: 72,
-      energyToday: 12.4,
-    });
-    expect(point).not.toHaveProperty("credentials");
-    expect(point).not.toHaveProperty("password");
-  });
-});
-
-describe("appendPoint", () => {
-  it("appends points in chronological order", () => {
-    const points = appendPoint([], { time: "12:00", solar: 100, load: 50, battery: 0, soc: 80, energyToday: 5 });
-    const next = appendPoint(points, { time: "10:00", solar: 0, load: 40, battery: -100, soc: 75, energyToday: 2 });
-    expect(next.map((p) => p.time)).toEqual(["10:00", "12:00"]);
-  });
-
-  it("deduplicates by replacing the same 5-minute bucket", () => {
-    const first = { time: "14:30", solar: 1000, load: 500, battery: -200, soc: 70, energyToday: 10 };
-    const updated = { time: "14:30", solar: 1200, load: 850, battery: -723, soc: 72, energyToday: 12.4 };
-    const points = appendPoint([first], updated);
-    expect(points).toHaveLength(1);
-    expect(points[0].solar).toBe(1200);
-    expect(points[0].soc).toBe(72);
-  });
-});
 
 describe("computeDailySummary", () => {
-  it("integrates power over 5-minute intervals and tracks SOC extrema", () => {
+  it("integrates power samples over 5-minute intervals", () => {
     const points = [
-      { time: "10:00", solar: 2000, load: 400, battery: 0, soc: 90, energyToday: 1 },
-      { time: "10:05", solar: 3000, load: 600, battery: -500, soc: 85, energyToday: 2 },
-      { time: "10:10", solar: 1000, load: 800, battery: 200, soc: 80, energyToday: 3 },
+      { time: "10:00", solar: 2400, load: 500, soc: 85 },
+      { time: "10:05", solar: 2400, load: 500, soc: 84 },
     ];
     expect(computeDailySummary(points)).toEqual({
-      solarKwh: 0.5,
+      solarKwh: 0.4,
       loadKwh: 0.1,
-      peakSolarW: 3000,
-      minSoc: 80,
-      maxSoc: 90,
+      peakSolarW: 2400,
+      minSoc: 84,
+      maxSoc: 85,
     });
   });
 
-  it("returns zeros for empty day", () => {
+  it("returns zero totals and null SOC for empty points", () => {
     expect(computeDailySummary([])).toEqual({
       solarKwh: 0,
       loadKwh: 0,
@@ -103,195 +34,50 @@ describe("computeDailySummary", () => {
   });
 });
 
-describe("selectDatesToPrune", () => {
-  it("selects dates older than retention window", () => {
-    const dates = ["2026-07-01", "2026-06-01", "2026-04-01", "2026-03-01"];
-    // 90 days before 2026-07-03 is 2026-04-04
-    expect(selectDatesToPrune(dates, 90, "2026-07-03")).toEqual(["2026-04-01", "2026-03-01"]);
-  });
-});
-
-describe("upsertDateIndex", () => {
-  it("keeps newest dates first without duplicates", () => {
-    expect(upsertDateIndex(["2026-07-02", "2026-07-01"], "2026-07-03")).toEqual([
-      "2026-07-03",
-      "2026-07-02",
-      "2026-07-01",
-    ]);
-    expect(upsertDateIndex(["2026-07-03", "2026-07-01"], "2026-07-03")).toEqual([
-      "2026-07-03",
-      "2026-07-01",
-    ]);
-  });
-});
-
 describe("dateRange", () => {
-  it("returns consecutive dates ending on the given day", () => {
-    expect(dateRange("2026-07-03", 3)).toEqual(["2026-07-01", "2026-07-02", "2026-07-03"]);
+  it("returns inclusive dates ending on endDate, oldest first", () => {
+    expect(dateRange("2026-07-03", 3)).toEqual([
+      "2026-07-01",
+      "2026-07-02",
+      "2026-07-03",
+    ]);
+  });
+
+  it("returns a single date when days is 1", () => {
     expect(dateRange("2026-07-03", 1)).toEqual(["2026-07-03"]);
   });
 });
 
-describe("getHistorySummary", () => {
-  it("returns daily summaries from stored KV buckets", async () => {
-    const env = { SYSTEMS: createMockKV() };
-    await appendSnapshot(
-      env,
-      "sys-1",
-      { ...SAMPLE_DATA, timestamp: "2026-07-01 14:32:00" },
-      Date.parse("2026-07-01T14:32:00Z"),
-    );
-    await appendSnapshot(
-      env,
-      "sys-1",
-      { ...SAMPLE_DATA, timestamp: "2026-07-03 10:00:00", energyToday: 8.2 },
-      Date.parse("2026-07-03T10:00:00Z"),
-    );
+describe("mergeSocIntoPoints", () => {
+  it("fills missing SOC from supplement points by time", () => {
+    const vendor = [
+      { time: "10:00", solar: 100, load: 50, battery: 0 },
+      { time: "10:05", solar: 200, load: 60, battery: -100 },
+    ];
+    const supplement = [
+      { time: "10:00", soc: 80 },
+      { time: "10:05", soc: 78 },
+    ];
+    const merged = mergeSocIntoPoints(vendor, socMapFromPoints(supplement));
+    expect(merged[0].soc).toBe(80);
+    expect(merged[1].soc).toBe(78);
+  });
 
-    const summary = await getHistorySummary(env, "sys-1", 3, "2026-07-03");
-    expect(summary.systemId).toBe("sys-1");
-    expect(summary.days).toBe(3);
-    expect(summary.series).toHaveLength(3);
-    expect(summary.series[0]).toMatchObject({ date: "2026-07-01", source: "snapshot" });
-    expect(summary.series[0].solarKwh).toBeGreaterThan(0);
-    expect(summary.series[1]).toMatchObject({ date: "2026-07-02", solarKwh: null, source: null });
-    expect(summary.series[2].date).toBe("2026-07-03");
+  it("does not overwrite existing vendor SOC", () => {
+    const vendor = [{ time: "10:00", solar: 100, load: 50, battery: 0, soc: 90 }];
+    const supplement = [{ time: "10:00", soc: 80 }];
+    const merged = mergeSocIntoPoints(vendor, socMapFromPoints(supplement));
+    expect(merged[0].soc).toBe(90);
   });
 });
 
-describe("history KV storage", () => {
-  it("appendSnapshot stores day bucket and updates index", async () => {
-    const env = { SYSTEMS: createMockKV() };
-    const doc = await appendSnapshot(env, "sys-1", SAMPLE_DATA, Date.parse("2026-07-03T14:32:00Z"));
-
-    expect(doc.date).toBe("2026-07-03");
-    expect(doc.points).toHaveLength(1);
-    expect(doc.points[0].time).toBe("14:30");
-    expect(doc.dailySummary.peakSolarW).toBe(1200);
-
-    const stored = await getDay(env, "sys-1", "2026-07-03");
-    expect(stored.points[0]).not.toHaveProperty("credentials");
-    expect(await listDates(env, "sys-1")).toEqual(["2026-07-03"]);
+describe("computeSocExtrema", () => {
+  it("returns min and max from valid samples", () => {
+    expect(computeSocExtrema([90, 85, 80, -1, NaN])).toEqual({ minSoc: 80, maxSoc: 90 });
   });
 
-  it("appendSnapshot deduplicates within the same 5-minute bucket", async () => {
-    const env = { SYSTEMS: createMockKV() };
-    await appendSnapshot(env, "sys-1", SAMPLE_DATA, Date.parse("2026-07-03T14:32:00Z"));
-    await appendSnapshot(
-      env,
-      "sys-1",
-      { ...SAMPLE_DATA, timestamp: "2026-07-03 14:33:00", solar: { power: 1500, voltage: 96 }, battery: { ...SAMPLE_DATA.battery, soc: 75 } },
-      Date.parse("2026-07-03T14:33:00Z"),
-    );
-
-    const day = await getDay(env, "sys-1", "2026-07-03");
-    expect(day.points).toHaveLength(1);
-    expect(day.points[0].solar).toBe(1500);
-    expect(day.points[0].soc).toBe(75);
-  });
-
-  it("pruneOld removes expired day keys and index entries", async () => {
-    const env = { SYSTEMS: createMockKV() };
-    await env.SYSTEMS.put(
-      "history:day:sys-1:2026-03-01",
-      JSON.stringify({ systemId: "sys-1", date: "2026-03-01", points: [] }),
-    );
-    await env.SYSTEMS.put(
-      "history:day:sys-1:2026-07-01",
-      JSON.stringify({ systemId: "sys-1", date: "2026-07-01", points: [] }),
-    );
-    await env.SYSTEMS.put("history:index:sys-1", JSON.stringify(["2026-07-01", "2026-03-01"]));
-
-    const result = await pruneOld(env, "sys-1", 90, Date.parse("2026-07-03T00:00:00Z"));
-    expect(result.removed).toEqual(["2026-03-01"]);
-    expect(result.kept).toBe(1);
-    expect(await getDay(env, "sys-1", "2026-03-01")).toBeNull();
-    expect(await getDay(env, "sys-1", "2026-07-01")).not.toBeNull();
-    expect(await listDates(env, "sys-1")).toEqual(["2026-07-01"]);
-  });
-});
-
-describe("deleteHistory", () => {
-  it("removes all day keys and the date index for a system", async () => {
-    const env = { SYSTEMS: createMockKV() };
-    await appendSnapshot(env, "sys-1", SAMPLE_DATA, Date.parse("2026-07-03T14:32:00Z"));
-    await appendSnapshot(
-      env,
-      "sys-1",
-      { ...SAMPLE_DATA, timestamp: "2026-07-02 10:00:00" },
-      Date.parse("2026-07-02T10:00:00Z"),
-    );
-
-    const result = await deleteHistory(env, "sys-1");
-    expect(result.removed).toBe(2);
-    expect(await listDates(env, "sys-1")).toEqual([]);
-    expect(await getDay(env, "sys-1", "2026-07-03")).toBeNull();
-    expect(await getDay(env, "sys-1", "2026-07-02")).toBeNull();
-  });
-});
-
-describe("runScheduledSnapshots", () => {
-  it("appends a snapshot for each configured system", async () => {
-    const env = { SYSTEMS: createMockKV() };
-    await env.SYSTEMS.put("_index", JSON.stringify([
-      { id: "a", name: "Alpha", service: "growatt" },
-      { id: "b", name: "Beta", service: "shinemonitor" },
-    ]));
-    await env.SYSTEMS.put("system:a", JSON.stringify({
-      id: "a",
-      name: "Alpha",
-      service: "growatt",
-      credentials: {},
-    }));
-    await env.SYSTEMS.put("system:b", JSON.stringify({
-      id: "b",
-      name: "Beta",
-      service: "shinemonitor",
-      credentials: {},
-    }));
-
-    const adapters = {
-      growatt: {
-        fetchData: vi.fn(async () => ({ ...SAMPLE_DATA, systemId: "a", timestamp: "2026-07-03 14:32:00" })),
-      },
-      shinemonitor: {
-        fetchData: vi.fn(async () => ({ ...SAMPLE_DATA, systemId: "b", timestamp: "2026-07-03 14:33:00" })),
-      },
-    };
-
-    const result = await runScheduledSnapshots(env, adapters, Date.parse("2026-07-03T14:32:00Z"));
-    expect(result).toEqual({ checked: 2, appended: 2, failed: 0 });
-    expect(adapters.growatt.fetchData).toHaveBeenCalledOnce();
-    expect(adapters.shinemonitor.fetchData).toHaveBeenCalledOnce();
-    expect(await listDates(env, "a")).toEqual(["2026-07-03"]);
-    expect(await listDates(env, "b")).toEqual(["2026-07-03"]);
-  });
-
-  it("logs and counts failures without aborting other systems", async () => {
-    const env = { SYSTEMS: createMockKV() };
-    await env.SYSTEMS.put("_index", JSON.stringify([
-      { id: "ok", name: "OK", service: "growatt" },
-      { id: "bad", name: "Bad", service: "growatt" },
-    ]));
-    await env.SYSTEMS.put("system:ok", JSON.stringify({ id: "ok", service: "growatt", credentials: {} }));
-    await env.SYSTEMS.put("system:bad", JSON.stringify({ id: "bad", service: "growatt", credentials: {} }));
-
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const adapters = {
-      growatt: {
-        fetchData: vi.fn(async (cfg) => {
-          if (cfg.id === "bad") throw new Error("upstream timeout");
-          return { ...SAMPLE_DATA, systemId: cfg.id, timestamp: "2026-07-03 14:32:00" };
-        }),
-      },
-    };
-
-    const result = await runScheduledSnapshots(env, adapters, Date.parse("2026-07-03T14:32:00Z"));
-    expect(result).toEqual({ checked: 2, appended: 1, failed: 1 });
-    expect(await listDates(env, "ok")).toEqual(["2026-07-03"]);
-    expect(await listDates(env, "bad")).toEqual([]);
-    expect(errorSpy).toHaveBeenCalledWith("History snapshot failed for bad:", "upstream timeout");
-    errorSpy.mockRestore();
+  it("returns nulls for empty input", () => {
+    expect(computeSocExtrema([])).toEqual({ minSoc: null, maxSoc: null });
   });
 });
 
@@ -309,14 +95,71 @@ describe("parseHistoryRows", () => {
       { field: ["2026-04-04 18:19:48", "51.6", "-62", "110", "283"] },
       { field: ["2026-04-04 06:00:00", "50.0", "10", "0", "120"] },
     ];
-    expect(parseHistoryRows(titles, rows)).toEqual([
-      { time: "18:19", solar: 110, load: 283, battery: -3199 },
-      { time: "06:00", solar: 0, load: 120, battery: 500 },
+    const { points, socSource } = parseHistoryRows(titles, rows);
+    expect(points).toEqual([
+      { time: "18:19", solar: 110, load: 283, battery: -3199, soc: 83 },
+      { time: "06:00", solar: 0, load: 120, battery: 500, soc: 70 },
     ]);
+    expect(socSource).toBe("estimated");
+  });
+
+  it("includes BATTERY_SOC when present in titles", () => {
+    const socTitles = [
+      { title: "Timestamp" },
+      { title: "Battery Voltage" },
+      { title: "Batt Current" },
+      { title: "Charger Power" },
+      { title: "PLoad" },
+      { title: "BATTERY_SOC" },
+    ];
+    const rows = [
+      { field: ["2026-04-04 12:00:00", "51.0", "-10", "500", "200", "72"] },
+    ];
+    const { points, socSource } = parseHistoryRows(socTitles, rows);
+    expect(points).toEqual([
+      { time: "12:00", solar: 500, load: 200, battery: -510, soc: 72 },
+    ]);
+    expect(socSource).toBe("api");
+  });
+
+  it("estimates SOC from voltage when BATTERY_SOC is invalid", () => {
+    const socTitles = [
+      { title: "Timestamp" },
+      { title: "Battery Voltage" },
+      { title: "Batt Current" },
+      { title: "Charger Power" },
+      { title: "PLoad" },
+      { title: "BATTERY_SOC" },
+    ];
+    const rows = [
+      { field: ["2026-04-04 18:19:48", "51.6", "-62", "110", "283", "-1"] },
+    ];
+    const { points, socSource } = parseHistoryRows(socTitles, rows);
+    expect(points[0].soc).toBe(83);
+    expect(socSource).toBe("estimated");
+  });
+
+  it("returns mixed socSource when some points use API and others are estimated", () => {
+    const socTitles = [
+      { title: "Timestamp" },
+      { title: "Battery Voltage" },
+      { title: "Batt Current" },
+      { title: "Charger Power" },
+      { title: "PLoad" },
+      { title: "BATTERY_SOC" },
+    ];
+    const rows = [
+      { field: ["2026-04-04 12:00:00", "51.0", "-10", "500", "200", "72"] },
+      { field: ["2026-04-04 18:19:48", "51.6", "-62", "110", "283", "-1"] },
+    ];
+    const { socSource } = parseHistoryRows(socTitles, rows);
+    expect(socSource).toBe("mixed");
   });
 
   it("returns empty array for no rows", () => {
-    expect(parseHistoryRows(titles, [])).toEqual([]);
+    const { points, socSource } = parseHistoryRows(titles, []);
+    expect(points).toEqual([]);
+    expect(socSource).toBeNull();
   });
 });
 

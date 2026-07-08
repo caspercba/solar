@@ -161,6 +161,53 @@ describe("processSystemAlerts", () => {
     expect(payload.alertType).toBe("low_soc");
     expect(payload.text).toContain("Low battery");
   });
+
+  it("logs structured error when webhook delivery fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    globalThis.fetch = vi.fn(async () => new Response("fail", { status: 500 }));
+
+    const env = { SYSTEMS: createMockKV() };
+    const system = {
+      id: "sys-1",
+      name: "Home",
+      service: "growatt",
+      alerts: {
+        ...DEFAULT_ALERTS,
+        enabled: true,
+        webhookUrl: "https://discord.com/api/webhooks/123456/secret-token",
+        lowSocThreshold: 30,
+      },
+    };
+
+    const result = await processSystemAlerts(
+      env,
+      system,
+      async () => ({ ...BASE_DATA, battery: { ...BASE_DATA.battery, soc: 18 } }),
+      Date.parse("2026-07-03T14:00:00Z"),
+    );
+
+    expect(result.sent).toBe(0);
+    expect(consoleError).toHaveBeenCalled();
+    const logLine = consoleError.mock.calls.find((c) => {
+      try {
+        return JSON.parse(c[0]).event === "alert_webhook_failed";
+      } catch {
+        return false;
+      }
+    });
+    expect(logLine).toBeDefined();
+    const parsed = JSON.parse(logLine[0]);
+    expect(parsed).toMatchObject({
+      level: "error",
+      event: "alert_webhook_failed",
+      systemId: "sys-1",
+      service: "growatt",
+      alertType: "low_soc",
+    });
+    expect(JSON.stringify(parsed)).not.toContain("secret-token");
+
+    consoleError.mockRestore();
+  });
 });
 
 describe("updateSystemAlerts", () => {

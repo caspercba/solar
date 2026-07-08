@@ -1,17 +1,86 @@
+import {
+  fmtW,
+  fmtChartDate,
+  sanitizeExportName,
+  historyToCsv,
+  escapeAttr,
+  clampPct,
+  solarPctFromPower,
+  loadPercent,
+  todayIsoDate,
+  addIsoDays,
+  isIsoDateAfter,
+  clampIsoDateToToday,
+  buildWeekStripDates,
+  fmtWeekStripWeekday,
+  fmtWeekStripDay,
+  shouldShowEstimatedSocBadge,
+  normalizePollIntervalSec,
+  pollIntervalSecToMs,
+  POLL_INTERVAL_OPTIONS_SEC,
+  estimateBatteryTimeToEmpty,
+  formatWeatherStrip,
+  findLowestSocIds,
+  THEME_STORAGE_KEY,
+  THEME_LABELS,
+  THEME_META_COLORS,
+  normalizeTheme,
+  resolveInitialTheme,
+  getNextTheme,
+  isEditableElement,
+  matchesDashboardRefreshShortcut,
+} from "./frontend/lib.js";
+import {
+  loadStoredLocale,
+  setLocale,
+  getLocale,
+  t,
+  applyTranslations,
+  syncLangToggle,
+  formatPollIntervalLabelI18n,
+} from "./frontend/i18n.js";
+
 /* ── Config ── */
-const POLL_MS = 60_000;
+const POLL_INTERVAL_KEY = "solar_poll_interval";
 const CONN_KEY = "solar_conn";
 const VIEW_KEY = "solar_view";
 const ACTIVE_KEY = "solar_active";
+const CHART_DATE_KEY = "solar_chart_date";
+const CHART_SWIPE_THRESHOLD = 50;
 
 /* ── Proxy connection ── */
 function saveConn(data) { localStorage.setItem(CONN_KEY, JSON.stringify(data)); }
 function loadConn() { try { return JSON.parse(localStorage.getItem(CONN_KEY)); } catch { return null; } }
 function clearConn() { localStorage.removeItem(CONN_KEY); }
 
+function getPollIntervalSec() {
+  return normalizePollIntervalSec(localStorage.getItem(POLL_INTERVAL_KEY));
+}
+
+function getPollMs() {
+  return pollIntervalSecToMs(getPollIntervalSec());
+}
+
+function savePollIntervalSec(sec) {
+  localStorage.setItem(POLL_INTERVAL_KEY, String(normalizePollIntervalSec(sec)));
+}
+
+function syncPollIntervalSelect() {
+  const select = $("poll-interval");
+  if (!select) return;
+  select.value = String(getPollIntervalSec());
+}
+
+function restartPollingIfActive() {
+  if (pollTimer) {
+    stopPolling();
+    startPolling();
+  }
+}
+
 async function api(method, path, body) {
   const conn = loadConn();
-  if (!conn) throw new Error("Not connected");
+  if (!conn) throw new Error(t("notConnected"));
   const opts = {
     method,
     headers: { "Authorization": `Bearer ${conn.token}`, "Content-Type": "application/json" },
@@ -43,6 +112,7 @@ const els = {
   batBar: $("bat-bar"),
   batDirection: $("bat-direction"),
   batRate: $("bat-rate"),
+  batEmptyIn: $("bat-empty-in"),
   batVolts: $("bat-volts"),
   batCurrent: $("bat-current"),
   solPct: $("sol-pct"),
@@ -59,23 +129,43 @@ const els = {
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
   inverterStatus: $("inverter-status"),
+  weatherStrip: $("weather-strip"),
+  weatherText: $("weather-text"),
+  pollErrorToast: $("poll-error-toast"),
+  pollErrorMsg: $("poll-error-msg"),
+  pollRetryBtn: $("poll-retry-btn"),
+  themeBtn: $("theme-btn"),
+  setupThemeBtn: $("setup-theme-btn"),
+  themeSelect: $("theme-select"),
 };
 
 const fEls = {
   cardsView: $("cards-view"),
   flowView: $("flow-view"),
   chartView: $("chart-view"),
+  compareView: $("compare-view"),
+  compareGrid: $("compare-grid"),
   tabCards: $("tab-cards"),
   tabFlow: $("tab-flow"),
   tabChart: $("tab-chart"),
+  tabCompare: $("tab-compare"),
   chartDate: $("chart-date"),
+  chartPrev: $("chart-prev"),
+  chartNext: $("chart-next"),
+  chartWeekStrip: $("chart-week-strip"),
+  chartSwipeArea: $("chart-swipe-area"),
   chartExportBtn: $("chart-export-btn"),
   powerChart: $("power-chart"),
   chartEmpty: $("chart-empty"),
+  chartEmptyMsg: $("chart-empty-msg"),
+  chartRetryBtn: $("chart-retry-btn"),
   chartLoading: $("chart-loading"),
   energyChart: $("energy-chart"),
   energyEmpty: $("energy-empty"),
+  energyEmptyMsg: $("energy-empty-msg"),
+  energyRetryBtn: $("energy-retry-btn"),
   energyLoading: $("energy-loading"),
+  socEstimatedBadge: $("soc-estimated-badge"),
   fpSolar: $("fp-solar"),
   fpGen: $("fp-gen"),
   fpLoad: $("fp-load"),
@@ -106,10 +196,15 @@ const manageList = $("manage-list");
 let systems = [];
 let activeSystemId = null;
 let pollTimer = null;
+let pollRetrying = false;
+let dashboardRefreshing = false;
 let hasData = false;
 let currentView = "cards";
 let historyLoading = false;
 let chartHistory = null;
+let lastEnergySummary = null;
+let lastRenderData = null;
+let lastCompareData = null;
 
 /* ── Loading skeleton ── */
 const skeletonTargets = () => [
@@ -133,6 +228,10 @@ function setLoading(on) {
     el.classList.toggle(cls, on);
     if (on) el.textContent = "\u00A0";
   }
+  if (els.batEmptyIn) {
+    els.batEmptyIn.hidden = true;
+    if (on) els.batEmptyIn.textContent = "";
+  }
   for (const bar of skeletonBars()) {
     if (!bar) continue;
     bar.classList.toggle(cls, on);
@@ -146,36 +245,189 @@ function setLoading(on) {
 }
 
 /* ── View toggle ── */
+function updateCompareTabVisibility() {
+  const show = systems.length >= 2;
+  if (fEls.tabCompare) fEls.tabCompare.hidden = !show;
+  if (!show && currentView === "compare") setView("cards");
+}
+
 function setView(view) {
+  if (view === "compare" && systems.length < 2) view = "cards";
   currentView = view;
   localStorage.setItem(VIEW_KEY, view);
   const isFlow = view === "flow";
   const isChart = view === "chart";
-  fEls.cardsView.hidden = isFlow || isChart;
+  const isCompare = view === "compare";
+  fEls.cardsView.hidden = isFlow || isChart || isCompare;
   fEls.flowView.hidden = !isFlow;
   fEls.chartView.hidden = !isChart;
+  if (fEls.compareView) fEls.compareView.hidden = !isCompare;
   fEls.tabCards.classList.toggle("active", view === "cards");
   fEls.tabFlow.classList.toggle("active", isFlow);
   fEls.tabChart.classList.toggle("active", isChart);
+  if (fEls.tabCompare) fEls.tabCompare.classList.toggle("active", isCompare);
+  if (isCompare) {
+    els.systemTabs.hidden = true;
+    loadCompareView();
+  } else if (systems.length > 1) {
+    els.systemTabs.hidden = false;
+  }
   if (isChart) loadChartView();
+}
+
+function loadCompareView() {
+  if (systems.length < 2) return;
+  if (!hasData) setCompareLoading(true);
+  pollNow();
+}
+
+function setCompareLoading(on) {
+  if (!fEls.compareGrid) return;
+  if (!on) return;
+  fEls.compareGrid.innerHTML = "";
+  for (const sys of systems) {
+    const card = document.createElement("article");
+    card.className = "compare-card skeleton";
+    card.innerHTML = `
+      <div class="compare-card-header">
+        <h3 class="compare-name">${escapeAttr(sys.name)}</h3>
+      </div>
+      <div class="compare-metrics">
+        <div class="compare-metric compare-metric-soc">
+          <span class="compare-label">${t("cardBattery")}</span>
+          <span class="compare-value">--%</span>
+          <div class="compare-bar-wrap"><div class="compare-bar" style="width:0%"></div></div>
+        </div>
+        <div class="compare-metric compare-metric-solar">
+          <span class="compare-label">${t("cardSolar")}</span>
+          <span class="compare-value">-- W</span>
+        </div>
+        <div class="compare-metric compare-metric-load">
+          <span class="compare-label">${t("cardLoad")}</span>
+          <span class="compare-value">-- W</span>
+        </div>
+        <div class="compare-metric compare-metric-gen">
+          <span class="compare-label">${t("cardGenerator")}</span>
+          <span class="compare-value">--</span>
+        </div>
+      </div>
+      <p class="compare-status">--</p>
+    `;
+    fEls.compareGrid.appendChild(card);
+  }
+}
+
+function renderComparison(allData) {
+  if (!fEls.compareGrid) return;
+  hasData = true;
+  lastCompareData = allData;
+
+  const lowestIds = new Set(findLowestSocIds(allData));
+  let latestTs = null;
+
+  fEls.compareGrid.innerHTML = "";
+  for (const d of allData) {
+    const card = document.createElement("article");
+    const hasError = !d || d.error;
+    const genOn = !hasError && (d.grid?.active ?? false);
+    const isLowest = !hasError && lowestIds.has(d.systemId);
+
+    card.className = "compare-card"
+      + (isLowest ? " compare-lowest-soc" : "")
+      + (genOn ? " compare-gen-active" : "");
+
+    if (hasError) {
+      const name = d?.name || systems.find((s) => s.id === d?.systemId)?.name || "System";
+      card.innerHTML = `
+        <div class="compare-card-header">
+          <h3 class="compare-name">${escapeAttr(name)}</h3>
+        </div>
+        <p class="compare-error">${escapeAttr(d?.error || t("compareUnavailable"))}</p>
+      `;
+      fEls.compareGrid.appendChild(card);
+      continue;
+    }
+
+    const soc = d.battery?.soc ?? 0;
+    const solarW = Math.round(d.solar?.power ?? 0);
+    const loadW = Math.round(d.load?.power ?? 0);
+    const badges = [];
+    if (isLowest && lowestIds.size > 0) {
+      badges.push(`<span class="compare-highlight compare-highlight-lowest">${t("compareLowestSoc")}</span>`);
+    }
+    if (genOn) {
+      badges.push(`<span class="compare-highlight compare-highlight-gen">${t("compareGeneratorOn")}</span>`);
+    }
+
+    card.innerHTML = `
+      <div class="compare-card-header">
+        <h3 class="compare-name">${escapeAttr(d.name)}</h3>
+        ${badges.length ? `<div class="compare-badges">${badges.join("")}</div>` : ""}
+      </div>
+      <div class="compare-metrics">
+        <div class="compare-metric compare-metric-soc">
+          <span class="compare-label">${t("cardBattery")}</span>
+          <span class="compare-value">${soc}%</span>
+          <div class="compare-bar-wrap"><div class="compare-bar" style="width:${clampPct(soc)}%"></div></div>
+        </div>
+        <div class="compare-metric compare-metric-solar">
+          <span class="compare-label">${t("cardSolar")}</span>
+          <span class="compare-value">${solarW} W</span>
+        </div>
+        <div class="compare-metric compare-metric-load">
+          <span class="compare-label">${t("cardLoad")}</span>
+          <span class="compare-value">${loadW} W</span>
+        </div>
+        <div class="compare-metric compare-metric-gen">
+          <span class="compare-label">${t("cardGenerator")}</span>
+          <span class="gen-badge ${genOn ? "gen-on" : "gen-off"}">${genOn ? t("genOn") : t("genOff")}</span>
+        </div>
+      </div>
+      <p class="compare-status">${escapeAttr(d.status || "--")}</p>
+    `;
+    fEls.compareGrid.appendChild(card);
+
+    const ts = d.timestamp;
+    if (ts && (!latestTs || ts > latestTs)) latestTs = ts;
+  }
+
+  if (latestTs) {
+    const timePart = latestTs.includes(" ")
+      ? latestTs.split(" ")[1]
+      : latestTs.includes("T")
+        ? latestTs.split("T")[1]?.split(".")[0]
+        : latestTs;
+    els.lastUpdate.textContent = `Last update: ${timePart}`;
+  }
+
+  setStatus(allData.some((d) => d && !d.error));
 }
 
 fEls.tabCards.addEventListener("click", () => setView("cards"));
 fEls.tabFlow.addEventListener("click", () => setView("flow"));
 fEls.tabChart.addEventListener("click", () => setView("chart"));
-fEls.chartDate.addEventListener("change", () => loadHistory(fEls.chartDate.value));
+if (fEls.tabCompare) fEls.tabCompare.addEventListener("click", () => setView("compare"));
+fEls.chartDate.addEventListener("change", () => selectChartDate(fEls.chartDate.value));
+if (fEls.chartPrev) {
+  fEls.chartPrev.addEventListener("click", () => navigateChartDay(-1));
+}
+if (fEls.chartNext) {
+  fEls.chartNext.addEventListener("click", () => navigateChartDay(1));
+}
 if (fEls.chartExportBtn) fEls.chartExportBtn.addEventListener("click", exportChartCsv);
+if (fEls.chartRetryBtn) {
+  fEls.chartRetryBtn.addEventListener("click", () => {
+    loadChartView();
+  });
+}
+if (fEls.energyRetryBtn) {
+  fEls.energyRetryBtn.addEventListener("click", () => loadEnergySummary());
+}
+initChartSwipe();
 
 /* ── Helpers ── */
-function fmtW(w) {
-  const abs = Math.abs(w);
-  if (abs >= 10000) return (w / 1000).toFixed(0) + " kW";
-  if (abs >= 1000) return (w / 1000).toFixed(1) + " kW";
-  return Math.round(w) + " W";
-}
-
 function setBar(barEl, pct) {
-  barEl.style.width = Math.max(0, Math.min(100, pct)) + "%";
+  barEl.style.width = clampPct(pct) + "%";
 }
 
 function setInverterStatus(text) {
@@ -190,13 +442,13 @@ function setInverterStatus(text) {
 
 function setBatRate(absAmps) {
   if (absAmps < 15) {
-    els.batRate.textContent = "Slow";
+    els.batRate.textContent = t("batRateSlow");
     els.batRate.className = "bat-rate rate-slow";
   } else if (absAmps < 40) {
-    els.batRate.textContent = "Mid";
+    els.batRate.textContent = t("batRateMid");
     els.batRate.className = "bat-rate rate-mid";
   } else {
-    els.batRate.textContent = "Fast";
+    els.batRate.textContent = t("batRateFast");
     els.batRate.className = "bat-rate rate-fast";
   }
 }
@@ -214,11 +466,40 @@ function showDash() {
 
 function setStatus(ok) {
   els.statusDot.className = ok ? "dot dot-ok" : "dot dot-err";
+  els.statusDot.title = t(ok ? "statusConnected" : "statusDisconnected");
+}
+
+function showPollError(message) {
+  if (!els.pollErrorToast || !els.pollErrorMsg) return;
+  els.pollErrorMsg.textContent = message;
+  els.pollErrorToast.hidden = false;
+}
+
+function hidePollError() {
+  if (!els.pollErrorToast) return;
+  els.pollErrorToast.hidden = true;
+  if (els.pollRetryBtn) {
+    els.pollRetryBtn.disabled = false;
+    els.pollRetryBtn.textContent = t("retry");
+  }
+  pollRetrying = false;
+}
+
+function setPollRetrying(retrying) {
+  pollRetrying = retrying;
+  if (!els.pollRetryBtn) return;
+  els.pollRetryBtn.disabled = retrying;
+  els.pollRetryBtn.textContent = retrying ? t("retrying") : t("retry");
 }
 
 /* ── System tabs ── */
 function renderSystemTabs() {
   els.systemTabs.innerHTML = "";
+  updateCompareTabVisibility();
+  if (currentView === "compare") {
+    els.systemTabs.hidden = true;
+    return;
+  }
   if (systems.length <= 1) {
     els.systemTabs.hidden = true;
     if (systems.length === 1) {
@@ -227,7 +508,7 @@ function renderSystemTabs() {
     return;
   }
   els.systemTabs.hidden = false;
-  els.headerTitle.textContent = "Solar Dashboard";
+  els.headerTitle.textContent = t("appTitle");
 
   for (const sys of systems) {
     const btn = document.createElement("button");
@@ -251,13 +532,26 @@ function renderSystemTabs() {
 }
 
 /* ── Render normalized data ── */
+function renderWeatherStrip(weather) {
+  if (!els.weatherStrip || !els.weatherText) return;
+  const label = formatWeatherStrip(weather);
+  if (!label) {
+    els.weatherStrip.hidden = true;
+    return;
+  }
+  els.weatherText.textContent = label;
+  els.weatherStrip.hidden = false;
+}
+
 function renderData(d) {
   if (!d || d.error) {
     setInverterStatus("--");
     setStatus(false);
+    renderWeatherStrip(null);
     return;
   }
 
+  lastRenderData = d;
   setLoading(false);
   hasData = true;
 
@@ -268,6 +562,7 @@ function renderData(d) {
   const inv = d.inverter || {};
 
   setInverterStatus(d.status);
+  renderWeatherStrip(d.weather);
 
   /* Battery */
   const soc = bat.soc ?? 0;
@@ -279,30 +574,40 @@ function renderData(d) {
   const batA = bat.current ?? 0;
   const absA = Math.abs(batA);
   if (absA < 2) {
-    els.batDirection.textContent = "Idle";
+    els.batDirection.textContent = t("batIdle");
     els.batDirection.className = "bat-direction dir-idle";
     els.batRate.textContent = "";
     els.batRate.className = "bat-rate";
   } else if (batA < 0) {
-    els.batDirection.textContent = "Charging";
+    els.batDirection.textContent = t("batCharging");
     els.batDirection.className = "bat-direction dir-charging";
     setBatRate(absA);
   } else {
-    els.batDirection.textContent = "Discharging";
+    els.batDirection.textContent = t("batDischarging");
     els.batDirection.className = "bat-direction dir-discharging";
     setBatRate(absA);
   }
 
+  const timeToEmpty = estimateBatteryTimeToEmpty(bat, grid, { load, translate: t });
+  if (els.batEmptyIn) {
+    if (timeToEmpty) {
+      els.batEmptyIn.textContent = timeToEmpty.label;
+      els.batEmptyIn.hidden = false;
+    } else {
+      els.batEmptyIn.textContent = "";
+      els.batEmptyIn.hidden = true;
+    }
+  }
+
   /* Solar */
-  const nomPV = inv.nominalPV || 5000;
-  const solPct = Math.round(((sol.power ?? 0) / nomPV) * 100);
+  const solPct = solarPctFromPower(sol.power, inv.nominalPV || 5000);
   els.solPct.textContent = solPct;
   setBar(els.solBar, solPct);
   els.solWatts.textContent = Math.round(sol.power ?? 0);
   els.solPvVolts.textContent = (sol.voltage ?? 0).toFixed(0);
 
   /* Load */
-  const ldPct = load.percent ?? Math.round(((load.power ?? 0) / (inv.ratedPower || 5000)) * 100);
+  const ldPct = loadPercent(load, inv.ratedPower || 5000);
   els.loadPct.textContent = ldPct;
   setBar(els.loadBar, ldPct);
   els.loadWatts.textContent = Math.round(load.power ?? 0);
@@ -311,7 +616,7 @@ function renderData(d) {
   const genOn = grid.active ?? false;
   const gridW = grid.power ?? 0;
   const gridV = grid.voltage ?? 0;
-  els.genStatus.textContent = genOn ? "ON" : "OFF";
+  els.genStatus.textContent = genOn ? t("genOn") : t("genOff");
   els.genStatus.className = genOn ? "gen-badge gen-on" : "gen-badge gen-off";
   els.genWatts.textContent = genOn ? Math.abs(Math.round(gridW)) : "0";
   els.genVolts.textContent = genOn ? gridV.toFixed(0) : "--";
@@ -320,13 +625,13 @@ function renderData(d) {
   /* Footer */
   const ts = d.timestamp || "--";
   const timePart = ts.includes(" ") ? ts.split(" ")[1] : ts.includes("T") ? ts.split("T")[1]?.split(".")[0] : ts;
-  els.lastUpdate.textContent = `Last update: ${timePart}`;
+  els.lastUpdate.textContent = t("lastUpdate", { time: timePart });
   if (d.energyToday != null) {
-    els.energyToday.textContent = `Today: ${parseFloat(d.energyToday).toFixed(1)} kWh`;
+    els.energyToday.textContent = t("energyToday", { kwh: parseFloat(d.energyToday).toFixed(1) });
   }
 
   if (systems.length === 1) {
-    els.headerTitle.textContent = d.name || systems[0]?.name || "Solar Dashboard";
+    els.headerTitle.textContent = d.name || systems[0]?.name || t("appTitle");
   }
 
   /* Flow */
@@ -352,7 +657,7 @@ function renderFlow(d) {
 
   fEls.fpGen.classList.toggle("active", genOn);
   fEls.fnGenBg.classList.toggle("active", genOn);
-  fEls.fnGenV.textContent = genOn ? fmtW(Math.abs(gridW)) : "OFF";
+  fEls.fnGenV.textContent = genOn ? fmtW(Math.abs(gridW)) : t("genOff");
   fEls.flGen.classList.toggle("active", genOn);
   fEls.flGen.textContent = genOn ? fmtW(Math.abs(gridW)) : "";
 
@@ -383,55 +688,148 @@ function renderFlow(d) {
   fEls.fnBatBg.classList.add(charging ? "charging" : discharging ? "discharging" : "idle");
 
   fEls.fnBatV.textContent = soc + "%";
-  const batState = charging ? "Charging" : discharging ? "Discharging" : "Idle";
-  fEls.fnBatDetail.textContent = batV.toFixed(1) + "V \u00B7 " + batState;
+  const batState = charging ? t("batCharging") : discharging ? t("batDischarging") : t("batIdle");
+  let batDetail = batV.toFixed(1) + "V \u00B7 " + batState;
+  const timeToEmpty = estimateBatteryTimeToEmpty(d.battery, d.grid, { load: d.load, translate: t });
+  if (timeToEmpty) batDetail += " \u00B7 " + timeToEmpty.label;
+  fEls.fnBatDetail.textContent = batDetail;
+}
+
+/* ── Theme ── */
+const THEME_ICONS = {
+  dark: "\u{1F319}",
+  light: "\u2600",
+  "high-contrast": "\u25C9",
+};
+
+function getSystemThemePrefs() {
+  return {
+    prefersLight: window.matchMedia("(prefers-color-scheme: light)").matches,
+    prefersHighContrast: window.matchMedia("(prefers-contrast: more)").matches,
+  };
+}
+
+function getCurrentTheme() {
+  return normalizeTheme(document.documentElement.getAttribute("data-theme"))
+    || resolveInitialTheme(localStorage.getItem(THEME_STORAGE_KEY), getSystemThemePrefs());
+}
+
+function getChartColors() {
+  const style = getComputedStyle(document.documentElement);
+  const pick = (name) => style.getPropertyValue(name).trim();
+  return {
+    solar: pick("--accent-sol"),
+    load: pick("--accent-load"),
+    battery: pick("--accent-bat"),
+    soc: pick("--accent-soc"),
+    grid: pick("--chart-grid"),
+    text: pick("--text-dim"),
+  };
+}
+
+function updateThemeUi(theme) {
+  const label = THEME_LABELS[theme] || THEME_LABELS.dark;
+  const icon = THEME_ICONS[theme] || THEME_ICONS.dark;
+  const title = `Theme: ${label} (click to change)`;
+  for (const btn of [els.themeBtn, els.setupThemeBtn]) {
+    if (!btn) continue;
+    btn.textContent = icon;
+    btn.title = title;
+    btn.setAttribute("aria-label", title);
+  }
+  if (els.themeSelect && els.themeSelect.value !== theme) {
+    els.themeSelect.value = theme;
+  }
+}
+
+function updateMetaThemeColor(theme) {
+  const color = THEME_META_COLORS[theme] || THEME_META_COLORS.dark;
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.name = "theme-color";
+    document.head.appendChild(meta);
+  }
+  meta.content = color;
+}
+
+function refreshChartsForTheme() {
+  if (currentView !== "chart") return;
+  if (chartHistory?.points?.length) renderChart(chartHistory);
+  if (lastEnergySummary) renderEnergyChart(lastEnergySummary);
+}
+
+function applyTheme(theme) {
+  const next = normalizeTheme(theme) || "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  updateThemeUi(next);
+  updateMetaThemeColor(next);
+  refreshChartsForTheme();
+}
+
+function initTheme() {
+  const theme = resolveInitialTheme(localStorage.getItem(THEME_STORAGE_KEY), getSystemThemePrefs());
+  applyTheme(theme);
+}
+
+function cycleTheme() {
+  applyTheme(getNextTheme(getCurrentTheme()));
 }
 
 /* ── Intraday chart ── */
-const CHART_COLORS = {
-  solar: "#f59e0b",
-  load: "#3b82f6",
-  battery: "#22c55e",
-  grid: "#2a2d3a",
-  text: "#8b8fa3",
-};
 
-function setChartLoading(on) {
-  historyLoading = on;
-  if (fEls.chartLoading) fEls.chartLoading.hidden = !on;
-  if (fEls.powerChart) fEls.powerChart.hidden = on;
-  if (on && fEls.chartEmpty) fEls.chartEmpty.hidden = true;
-  if (on) updateChartExportBtn();
-}
-
-function sanitizeExportName(name) {
-  const safe = String(name || "system")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9._-]/g, "")
-    .slice(0, 64);
-  return safe || "system";
-}
-
-function csvCell(value) {
-  if (value == null || value === "") return "";
-  const text = String(value);
-  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
-}
-
-function historyToCsv(points) {
-  const lines = ["time,solar_w,load_w,battery_w,soc"];
-  for (const p of points) {
-    lines.push([
-      csvCell(p.time),
-      csvCell(p.solar ?? 0),
-      csvCell(p.load ?? 0),
-      csvCell(p.battery ?? 0),
-      csvCell(Number.isFinite(p.soc) ? p.soc : ""),
-    ].join(","));
+function setIntradayChartState(state, opts = {}) {
+  historyLoading = state === "loading";
+  const showPanel = state === "empty" || state === "error";
+  if (fEls.chartLoading) fEls.chartLoading.hidden = state !== "loading";
+  if (fEls.powerChart) fEls.powerChart.hidden = state !== "ready";
+  if (fEls.chartEmpty) {
+    fEls.chartEmpty.hidden = !showPanel;
+    fEls.chartEmpty.classList.toggle("chart-empty-error", state === "error");
   }
-  return lines.join("\r\n");
+  if (fEls.chartEmptyMsg) {
+    if (state === "error") {
+      fEls.chartEmptyMsg.textContent = opts.message || t("chartLoadError");
+    } else if (state === "empty") {
+      fEls.chartEmptyMsg.textContent = opts.message || t("chartEmptyDetail");
+    }
+  }
+  if (fEls.chartRetryBtn) fEls.chartRetryBtn.hidden = state !== "error";
+  if (state !== "ready") {
+    const socLegend = document.querySelector(".legend-soc-item");
+    if (socLegend) socLegend.hidden = true;
+    if (fEls.socEstimatedBadge) fEls.socEstimatedBadge.hidden = true;
+  }
+  updateChartExportBtn();
+  refreshChartDateNav();
+}
+
+function setEnergyChartState(state, opts = {}) {
+  const showPanel = state === "empty" || state === "error";
+  if (fEls.energyLoading) fEls.energyLoading.hidden = state !== "loading";
+  if (fEls.energyChart) fEls.energyChart.hidden = state !== "ready";
+  if (fEls.energyEmpty) {
+    fEls.energyEmpty.hidden = !showPanel;
+    fEls.energyEmpty.classList.toggle("chart-empty-error", state === "error");
+  }
+  if (fEls.energyEmptyMsg) {
+    if (state === "error") {
+      fEls.energyEmptyMsg.textContent = opts.message || t("energyLoadError");
+    } else if (state === "empty") {
+      fEls.energyEmptyMsg.textContent = opts.message || t("energyEmptyDetail");
+    }
+  }
+  if (fEls.energyRetryBtn) fEls.energyRetryBtn.hidden = state !== "error";
+  if (state !== "ready") {
+    const socLegend = document.querySelector(".legend-soc-range-item");
+    if (socLegend) socLegend.hidden = true;
+  }
+}
+
+function chartErrorMessage(err, fallback) {
+  const msg = err?.message?.trim();
+  return msg || fallback;
 }
 
 function updateChartExportBtn() {
@@ -476,17 +874,20 @@ function exportChartCsv() {
 
 function renderChart(data) {
   const canvas = fEls.powerChart;
-  if (!canvas) return;
+  if (!canvas) return false;
 
   const points = data?.points || [];
-  if (!points.length) {
-    canvas.hidden = true;
-    if (fEls.chartEmpty) fEls.chartEmpty.hidden = false;
-    return;
+  const socLegend = document.querySelector(".legend-soc-item");
+  const hasSoc = points.some((p) => Number.isFinite(p.soc));
+  if (socLegend) socLegend.hidden = !hasSoc;
+  if (fEls.socEstimatedBadge) {
+    fEls.socEstimatedBadge.hidden = !hasSoc || !shouldShowEstimatedSocBadge(data);
   }
 
-  canvas.hidden = false;
-  if (fEls.chartEmpty) fEls.chartEmpty.hidden = true;
+  if (!points.length) return false;
+
+  setIntradayChartState("ready");
+  const CHART_COLORS = getChartColors();
 
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -500,7 +901,7 @@ function renderChart(data) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
-  const pad = { top: 16, right: 12, bottom: 28, left: 44 };
+  const pad = { top: 16, right: hasSoc ? 40 : 12, bottom: 28, left: 44 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
 
@@ -521,6 +922,9 @@ function renderChart(data) {
   function yAt(w) {
     return pad.top + plotH - ((w - yMin) / (yMax - yMin)) * plotH;
   }
+  function ySocAt(pct) {
+    return pad.top + plotH - (pct / 100) * plotH;
+  }
 
   ctx.strokeStyle = CHART_COLORS.grid;
   ctx.lineWidth = 1;
@@ -540,6 +944,15 @@ function renderChart(data) {
     const val = yMax - ((yMax - yMin) * i) / 4;
     const y = pad.top + (plotH * i) / 4;
     ctx.fillText(fmtW(val), pad.left - 6, y);
+  }
+
+  if (hasSoc) {
+    ctx.textAlign = "left";
+    for (let i = 0; i <= 4; i++) {
+      const pct = 100 - (100 * i) / 4;
+      const y = pad.top + (plotH * i) / 4;
+      ctx.fillText(`${Math.round(pct)}%`, pad.left + plotW + 6, y);
+    }
   }
 
   const labelCount = Math.min(6, points.length);
@@ -572,34 +985,45 @@ function renderChart(data) {
   drawSeries("solar", CHART_COLORS.solar);
   drawSeries("load", CHART_COLORS.load);
   drawSeries("battery", CHART_COLORS.battery);
-}
 
-function setEnergyLoading(on) {
-  if (fEls.energyLoading) fEls.energyLoading.hidden = !on;
-  if (fEls.energyChart) fEls.energyChart.hidden = on;
-  if (on && fEls.energyEmpty) fEls.energyEmpty.hidden = true;
-}
-
-function fmtChartDate(dateStr) {
-  const d = new Date(`${dateStr}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return dateStr.slice(5);
-  return d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+  if (hasSoc) {
+    ctx.strokeStyle = CHART_COLORS.soc;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < points.length; i++) {
+      const soc = points[i].soc;
+      if (!Number.isFinite(soc)) continue;
+      const x = xAt(i);
+      const y = ySocAt(soc);
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  return true;
 }
 
 function renderEnergyChart(data) {
   const canvas = fEls.energyChart;
-  if (!canvas) return;
+  if (!canvas) return false;
 
   const series = data?.series || [];
-  const hasData = series.some((d) => (d.solarKwh ?? 0) > 0 || (d.loadKwh ?? 0) > 0);
-  if (!series.length || !hasData) {
-    canvas.hidden = true;
-    if (fEls.energyEmpty) fEls.energyEmpty.hidden = false;
-    return;
-  }
+  const socLegend = document.querySelector(".legend-soc-range-item");
+  const hasSoc = series.some((d) => d.minSoc != null && d.maxSoc != null);
+  if (socLegend) socLegend.hidden = !hasSoc;
 
-  canvas.hidden = false;
-  if (fEls.energyEmpty) fEls.energyEmpty.hidden = true;
+  const hasData = series.some((d) => (d.solarKwh ?? 0) > 0 || (d.loadKwh ?? 0) > 0 || hasSoc);
+  if (!series.length || !hasData) return false;
+
+  setEnergyChartState("ready");
+  const CHART_COLORS = getChartColors();
 
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -613,7 +1037,7 @@ function renderEnergyChart(data) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
-  const pad = { top: 16, right: 12, bottom: 32, left: 40 };
+  const pad = { top: 16, right: hasSoc ? 36 : 12, bottom: 32, left: 40 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const n = series.length;
@@ -649,15 +1073,35 @@ function renderEnergyChart(data) {
     ctx.fillText(val < 10 ? val.toFixed(1) : Math.round(val).toString(), pad.left - 6, y);
   }
 
+  if (hasSoc) {
+    ctx.textAlign = "left";
+    for (let i = 0; i <= 4; i++) {
+      const pct = 100 - (100 * i) / 4;
+      const y = pad.top + (plotH * i) / 4;
+      ctx.fillText(`${Math.round(pct)}%`, pad.left + plotW + 6, y);
+    }
+  }
+
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   for (let i = 0; i < n; i++) {
     const cx = pad.left + groupW * i + groupW / 2;
-    ctx.fillText(fmtChartDate(series[i].date), cx, pad.top + plotH + 8);
+    ctx.fillText(fmtChartDate(series[i].date, getLocale()), cx, pad.top + plotH + 8);
+    const day = series[i];
+    if (day.minSoc != null && day.maxSoc != null) {
+      ctx.fillStyle = CHART_COLORS.soc;
+      ctx.font = "10px sans-serif";
+      ctx.fillText(`${day.minSoc}–${day.maxSoc}%`, cx, pad.top + plotH + 22);
+      ctx.fillStyle = CHART_COLORS.text;
+      ctx.font = "11px sans-serif";
+    }
   }
 
   function barHeight(kwh) {
     return ((kwh ?? 0) / yMax) * plotH;
+  }
+  function ySocAt(pct) {
+    return pad.top + plotH - (pct / 100) * plotH;
   }
 
   for (let i = 0; i < n; i++) {
@@ -671,95 +1115,308 @@ function renderEnergyChart(data) {
 
     ctx.fillStyle = CHART_COLORS.load;
     ctx.fillRect(baseX + barW + barGap, yBase - loadH, barW, loadH);
+
+    const day = series[i];
+    if (day.minSoc != null && day.maxSoc != null) {
+      const cx = pad.left + groupW * i + groupW - barGap * 2;
+      const yTop = ySocAt(day.maxSoc);
+      const yBot = ySocAt(day.minSoc);
+      ctx.strokeStyle = CHART_COLORS.soc;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, yTop);
+      ctx.lineTo(cx, yBot);
+      ctx.stroke();
+      ctx.fillStyle = CHART_COLORS.soc;
+      ctx.beginPath();
+      ctx.arc(cx, yTop, 2, 0, Math.PI * 2);
+      ctx.arc(cx, yBot, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  return true;
+}
+
+function loadChartDate() {
+  try {
+    return localStorage.getItem(CHART_DATE_KEY);
+  } catch {
+    return null;
   }
 }
 
-async function loadHistory(date) {
-  if (!activeSystemId || currentView !== "chart") return;
-  setChartLoading(true);
+function saveChartDate(date) {
   try {
-    const qs = date ? `?date=${encodeURIComponent(date)}` : "";
-    const data = await api("GET", `/api/systems/${activeSystemId}/history${qs}`);
-    chartHistory = data;
-    if (data.date && fEls.chartDate) fEls.chartDate.value = data.date;
-    renderChart(data);
-    setStatus(true);
-  } catch (err) {
-    console.error("history error:", err);
-    chartHistory = { points: [] };
-    renderChart({ points: [] });
-    setStatus(false);
-  } finally {
-    setChartLoading(false);
-    updateChartExportBtn();
+    localStorage.setItem(CHART_DATE_KEY, date);
+  } catch {
+    /* ignore quota errors */
   }
+}
+
+function getSelectedChartDate() {
+  const today = todayIsoDate();
+  const raw = fEls.chartDate?.value || loadChartDate() || today;
+  return clampIsoDateToToday(raw, today);
+}
+
+function initChartDateInput() {
+  const today = todayIsoDate();
+  if (!fEls.chartDate) return;
+  fEls.chartDate.max = today;
+  const stored = loadChartDate();
+  if (stored) {
+    fEls.chartDate.value = clampIsoDateToToday(stored, today);
+  }
+}
+
+function refreshChartDateNav() {
+  const selected = getSelectedChartDate();
+  const today = todayIsoDate();
+  renderChartWeekStrip(selected, today);
+}
+
+function renderChartWeekStrip(selectedDate, today = todayIsoDate()) {
+  const strip = fEls.chartWeekStrip;
+  if (!strip) return;
+
+  strip.innerHTML = "";
+  const dates = buildWeekStripDates(selectedDate, 7);
+  for (const date of dates) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chart-day-btn";
+    if (date === selectedDate) btn.classList.add("active");
+    if (date === today) btn.classList.add("is-today");
+    btn.dataset.date = date;
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", date === selectedDate ? "true" : "false");
+    btn.setAttribute("aria-label", date);
+    btn.disabled = historyLoading;
+
+    const wd = document.createElement("span");
+    wd.className = "chart-day-wd";
+    wd.textContent = fmtWeekStripWeekday(date, getLocale());
+
+    const num = document.createElement("span");
+    num.className = "chart-day-num";
+    num.textContent = fmtWeekStripDay(date);
+
+    btn.append(wd, num);
+    btn.addEventListener("click", () => {
+      if (date !== getSelectedChartDate()) selectChartDate(date);
+    });
+    strip.appendChild(btn);
+  }
+
+  if (fEls.chartPrev) fEls.chartPrev.disabled = historyLoading;
+  if (fEls.chartNext) {
+    fEls.chartNext.disabled = historyLoading || selectedDate >= today;
+  }
+}
+
+function selectChartDate(dateStr) {
+  const today = todayIsoDate();
+  const date = clampIsoDateToToday(dateStr || today, today);
+  saveChartDate(date);
+  if (fEls.chartDate) {
+    fEls.chartDate.max = today;
+    fEls.chartDate.value = date;
+  }
+  renderChartWeekStrip(date, today);
+  loadChartView();
+}
+
+function navigateChartDay(delta) {
+  if (historyLoading || !delta) return;
+  const current = getSelectedChartDate();
+  const next = addIsoDays(current, delta);
+  const today = todayIsoDate();
+  if (isIsoDateAfter(next, today)) return;
+  selectChartDate(next);
+}
+
+function initChartSwipe() {
+  const area = fEls.chartSwipeArea;
+  if (!area) return;
+
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+
+  area.addEventListener("touchstart", (e) => {
+    if (historyLoading || e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    tracking = true;
+  }, { passive: true });
+
+  area.addEventListener("touchend", (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    if (Math.abs(dx) < CHART_SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx > 0) navigateChartDay(-1);
+    else navigateChartDay(1);
+  }, { passive: true });
+
+  area.addEventListener("touchcancel", () => {
+    tracking = false;
+  }, { passive: true });
+}
+
+function historySummaryQuery(endDate) {
+  const end = endDate || getSelectedChartDate();
+  return `/api/systems/${activeSystemId}/history/summary?days=7&end=${encodeURIComponent(end)}`;
 }
 
 async function loadEnergySummary() {
   if (!activeSystemId || currentView !== "chart") return;
-  setEnergyLoading(true);
+  setEnergyChartState("loading");
   try {
-    const data = await api("GET", `/api/systems/${activeSystemId}/history/summary?days=7`);
-    renderEnergyChart(data);
+    const data = await api("GET", historySummaryQuery(getSelectedChartDate()));
+    lastEnergySummary = data;
+    if (renderEnergyChart(data)) return;
+    setEnergyChartState("empty");
   } catch (err) {
+    lastEnergySummary = null;
     console.error("energy summary error:", err);
-    renderEnergyChart({ series: [] });
-  } finally {
-    setEnergyLoading(false);
+    setEnergyChartState("error", {
+      message: chartErrorMessage(err, t("energyLoadError")),
+    });
   }
 }
 
 async function loadChartView() {
   if (!activeSystemId || currentView !== "chart") return;
-  setChartLoading(true);
-  setEnergyLoading(true);
-  const date = fEls.chartDate.value || null;
-  const qs = date ? `?date=${encodeURIComponent(date)}` : "";
-  try {
-    const [history, summary] = await Promise.all([
-      api("GET", `/api/systems/${activeSystemId}/history${qs}`),
-      api("GET", `/api/systems/${activeSystemId}/history/summary?days=7`),
-    ]);
-    if (history.date && fEls.chartDate) fEls.chartDate.value = history.date;
-    renderChart(history);
-    renderEnergyChart(summary);
-    setStatus(true);
-  } catch (err) {
-    console.error("chart view error:", err);
-    renderChart({ points: [] });
-    renderEnergyChart({ series: [] });
-    setStatus(false);
-  } finally {
-    setChartLoading(false);
-    setEnergyLoading(false);
+  initChartDateInput();
+  const date = getSelectedChartDate();
+  if (fEls.chartDate) fEls.chartDate.value = date;
+  renderChartWeekStrip(date, todayIsoDate());
+  setIntradayChartState("loading");
+  setEnergyChartState("loading");
+  const qs = `?date=${encodeURIComponent(date)}`;
+  const [historyResult, summaryResult] = await Promise.allSettled([
+    api("GET", `/api/systems/${activeSystemId}/history${qs}`),
+    api("GET", historySummaryQuery(date)),
+  ]);
+
+  let historyOk = false;
+  if (historyResult.status === "fulfilled") {
+    const history = historyResult.value;
+    chartHistory = history;
+    if (history.date) {
+      saveChartDate(history.date);
+      if (fEls.chartDate) fEls.chartDate.value = history.date;
+      renderChartWeekStrip(history.date, todayIsoDate());
+    }
+    if (renderChart(history)) {
+      historyOk = true;
+    } else {
+      setIntradayChartState("empty");
+      historyOk = true;
+    }
+  } else {
+    console.error("chart view history error:", historyResult.reason);
+    chartHistory = null;
+    setIntradayChartState("error", {
+      message: chartErrorMessage(historyResult.reason, t("chartLoadError")),
+    });
   }
+
+  if (summaryResult.status === "fulfilled") {
+    lastEnergySummary = summaryResult.value;
+    if (!renderEnergyChart(summaryResult.value)) {
+      setEnergyChartState("empty");
+    }
+  } else {
+    lastEnergySummary = null;
+    console.error("chart view summary error:", summaryResult.reason);
+    setEnergyChartState("error", {
+      message: chartErrorMessage(summaryResult.reason, t("energyLoadError")),
+    });
+  }
+
+  setStatus(historyOk);
 }
 
 /* ── Polling ── */
 async function pollNow() {
+  if (currentView === "compare") {
+    if (systems.length < 2) return;
+    if (!hasData) setCompareLoading(true);
+    try {
+      const data = await api("GET", "/api/systems/all/data");
+      renderComparison(data);
+      hidePollError();
+    } catch (err) {
+      console.error("compare poll error:", err);
+      setCompareLoading(false);
+      setStatus(false);
+      showPollError(chartErrorMessage(err, t("compareLoadError")));
+    } finally {
+      setPollRetrying(false);
+    }
+    return;
+  }
+
   if (!activeSystemId) return;
   if (!hasData) setLoading(true);
   try {
     const data = await api("GET", `/api/systems/${activeSystemId}/data`);
     renderData(data);
+    hidePollError();
   } catch (err) {
     console.error("poll error:", err);
     setLoading(false);
     setStatus(false);
+    showPollError(chartErrorMessage(err, t("pollLoadError")));
+  } finally {
+    setPollRetrying(false);
   }
+}
+
+async function retryPollNow() {
+  if (currentView === "compare") {
+    if (systems.length < 2 || pollRetrying) return;
+    setPollRetrying(true);
+    await pollNow();
+    return;
+  }
+  if (!activeSystemId || pollRetrying) return;
+  setPollRetrying(true);
+  await pollNow();
 }
 
 function startPolling() {
   if (pollTimer) clearTimeout(pollTimer);
   async function tick() {
     await pollNow();
-    pollTimer = setTimeout(tick, POLL_MS);
+    pollTimer = setTimeout(tick, getPollMs());
   }
   tick();
 }
 
 function stopPolling() {
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  hidePollError();
+}
+
+/** Same refresh path as pull-to-refresh (cards/flow → poll, chart → history). */
+async function refreshDashboardNow() {
+  if (dashboardRefreshing || els.dashScreen.hidden) return;
+  dashboardRefreshing = true;
+  try {
+    if (pollTimer) clearTimeout(pollTimer);
+    const refresh = currentView === "chart"
+      ? loadChartView()
+      : pollNow();
+    await refresh;
+    if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), getPollMs());
+  } finally {
+    dashboardRefreshing = false;
+  }
 }
 
 /* ── Load systems list ── */
@@ -779,11 +1436,19 @@ async function loadSystems() {
 /* ── Add System ── */
 const addPlantGroup = $("add-plant-group");
 const addPlantSelect = $("add-plant");
+const addDeviceGroup = $("add-device-group");
+const addDeviceSelect = $("add-device");
 
 function hidePlantPicker() {
   addPlantGroup.hidden = true;
   addPlantSelect.innerHTML = "";
   addPlantSelect.required = false;
+}
+
+function hideDevicePicker() {
+  addDeviceGroup.hidden = true;
+  addDeviceSelect.innerHTML = "";
+  addDeviceSelect.required = false;
 }
 
 function showPlantPicker(plants) {
@@ -798,11 +1463,28 @@ function showPlantPicker(plants) {
   addPlantSelect.required = true;
 }
 
+function showDevicePicker(devices) {
+  addDeviceSelect.innerHTML = "";
+  const aggregateOpt = document.createElement("option");
+  aggregateOpt.value = "__aggregate__";
+  aggregateOpt.textContent = "All inverters (combined)";
+  addDeviceSelect.appendChild(aggregateOpt);
+  for (const d of devices) {
+    const opt = document.createElement("option");
+    opt.value = d.key;
+    opt.textContent = d.label;
+    addDeviceSelect.appendChild(opt);
+  }
+  addDeviceGroup.hidden = false;
+  addDeviceSelect.required = true;
+}
+
 function openAddModal() {
   manageModal.hidden = true;
   addModal.hidden = false;
   addForm.reset();
   hidePlantPicker();
+  hideDevicePicker();
   addError.hidden = true;
 }
 
@@ -814,7 +1496,7 @@ addForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   addError.hidden = true;
   $("add-submit").disabled = true;
-  $("add-submit").textContent = "Adding...";
+  $("add-submit").textContent = t("adding");
 
   const body = {
     service: $("add-service").value,
@@ -825,6 +1507,13 @@ addForm.addEventListener("submit", async (e) => {
   if (!addPlantGroup.hidden && addPlantSelect.value) {
     body.plantId = addPlantSelect.value;
   }
+  if (!addDeviceGroup.hidden && addDeviceSelect.value) {
+    if (addDeviceSelect.value === "__aggregate__") {
+      body.deviceMode = "aggregate";
+    } else {
+      body.deviceKey = addDeviceSelect.value;
+    }
+  }
 
   try {
     const result = await api("POST", "/api/systems", body);
@@ -832,8 +1521,13 @@ addForm.addEventListener("submit", async (e) => {
       showPlantPicker(result.plants);
       return;
     }
+    if (result.requiresDeviceSelection) {
+      showDevicePicker(result.devices);
+      return;
+    }
     closeAddModal();
     hidePlantPicker();
+    hideDevicePicker();
     await loadSystems();
     if (systems.length === 1) activeSystemId = systems[0].id;
     renderSystemTabs();
@@ -843,13 +1537,105 @@ addForm.addEventListener("submit", async (e) => {
     addError.hidden = false;
   } finally {
     $("add-submit").disabled = false;
-    $("add-submit").textContent = "Add System";
+    $("add-submit").textContent = t("addSystem");
   }
 });
 
 $("add-cancel").addEventListener("click", closeAddModal);
 
 /* ── Manage Systems ── */
+function renderCredentialForm(sys) {
+  const form = document.createElement("div");
+  form.className = "manage-credentials";
+  form.innerHTML = `
+    <p class="manage-section-title">${escapeAttr(t("credPortalTitle"))}</p>
+    <label>${escapeAttr(t("username"))}</label>
+    <input type="text" class="cred-user" required value="${escapeAttr(sys.username || "")}">
+    <label>${escapeAttr(t("password"))}</label>
+    <input type="password" class="cred-pass" required placeholder="${escapeAttr(t("credNewPasswordPlaceholder"))}">
+    <div class="cred-plant-group" hidden>
+      <label>${escapeAttr(t("plant"))}</label>
+      <select class="cred-plant"></select>
+    </div>
+    <button type="button" class="cred-save">${escapeAttr(t("credSave"))}</button>
+    <p class="cred-msg" hidden></p>
+  `;
+
+  const msg = form.querySelector(".cred-msg");
+  const plantGroup = form.querySelector(".cred-plant-group");
+  const plantSelect = form.querySelector(".cred-plant");
+
+  function hidePlantPicker() {
+    plantGroup.hidden = true;
+    plantSelect.innerHTML = "";
+    plantSelect.required = false;
+  }
+
+  function showPlantPicker(plants) {
+    plantSelect.innerHTML = "";
+    for (const p of plants) {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      plantSelect.appendChild(opt);
+    }
+    plantGroup.hidden = false;
+    plantSelect.required = true;
+  }
+
+  form.querySelector(".cred-save").addEventListener("click", async () => {
+    msg.hidden = true;
+    const btn = form.querySelector(".cred-save");
+    const userInput = form.querySelector(".cred-user");
+    const passInput = form.querySelector(".cred-pass");
+
+    if (!userInput.value.trim() || !passInput.value) {
+      msg.textContent = t("credRequired");
+      msg.className = "cred-msg cred-err";
+      msg.hidden = false;
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = t("credSaving");
+
+    const body = {
+      user: userInput.value.trim(),
+      password: passInput.value,
+    };
+    if (!plantGroup.hidden && plantSelect.value) {
+      body.plantId = plantSelect.value;
+    }
+
+    try {
+      const result = await api("PUT", `/api/systems/${sys.id}/credentials`, body);
+      if (result.requiresPlantSelection) {
+        showPlantPicker(result.plants);
+        msg.textContent = t("credSelectPlant");
+        msg.className = "cred-msg cred-ok";
+        msg.hidden = false;
+        return;
+      }
+      sys.username = result.username || body.user;
+      passInput.value = "";
+      hidePlantPicker();
+      msg.textContent = t("credUpdated");
+      msg.className = "cred-msg cred-ok";
+      msg.hidden = false;
+      startPolling();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "cred-msg cred-err";
+      msg.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t("credSave");
+    }
+  });
+
+  return form;
+}
+
 function renderAlertForm(sys) {
   const alerts = sys.alerts || {};
   const form = document.createElement("div");
@@ -857,25 +1643,25 @@ function renderAlertForm(sys) {
   form.innerHTML = `
     <label class="alert-toggle">
       <input type="checkbox" class="alert-enabled" ${alerts.enabled ? "checked" : ""}>
-      Enable alerts
+      ${escapeAttr(t("alertsEnable"))}
     </label>
-    <label>Webhook URL</label>
-    <input type="url" class="alert-webhook" placeholder="https://discord.com/api/webhooks/..." value="${escapeAttr(alerts.webhookUrl || "")}">
+    <label>${escapeAttr(t("alertsWebhook"))}</label>
+    <input type="url" class="alert-webhook" placeholder="${escapeAttr(t("alertsWebhookPlaceholder"))}" value="${escapeAttr(alerts.webhookUrl || "")}">
     <div class="alert-grid">
       <div>
-        <label>Low SOC %</label>
+        <label>${escapeAttr(t("alertsLowSoc"))}</label>
         <input type="number" class="alert-threshold" min="0" max="100" value="${alerts.lowSocThreshold ?? 20}">
       </div>
       <div>
-        <label>Cooldown (min)</label>
+        <label>${escapeAttr(t("alertsCooldown"))}</label>
         <input type="number" class="alert-cooldown" min="5" max="1440" value="${alerts.cooldownMinutes ?? 60}">
       </div>
     </div>
     <div class="alert-checks">
-      <label><input type="checkbox" class="alert-low-soc" ${alerts.notifyLowSoc !== false ? "checked" : ""}> Low battery</label>
-      <label><input type="checkbox" class="alert-generator" ${alerts.notifyGenerator !== false ? "checked" : ""}> Generator on</label>
+      <label><input type="checkbox" class="alert-low-soc" ${alerts.notifyLowSoc !== false ? "checked" : ""}> ${escapeAttr(t("alertsLowBattery"))}</label>
+      <label><input type="checkbox" class="alert-generator" ${alerts.notifyGenerator !== false ? "checked" : ""}> ${escapeAttr(t("alertsGeneratorOn"))}</label>
     </div>
-    <button type="button" class="alert-save">Save alerts</button>
+    <button type="button" class="alert-save">${escapeAttr(t("alertsSave"))}</button>
     <p class="alert-msg" hidden></p>
   `;
 
@@ -884,7 +1670,7 @@ function renderAlertForm(sys) {
     msg.hidden = true;
     const btn = form.querySelector(".alert-save");
     btn.disabled = true;
-    btn.textContent = "Saving...";
+    btn.textContent = t("alertsSaving");
     try {
       const body = {
         enabled: form.querySelector(".alert-enabled").checked,
@@ -895,7 +1681,7 @@ function renderAlertForm(sys) {
         notifyGenerator: form.querySelector(".alert-generator").checked,
       };
       sys.alerts = await api("PUT", `/api/systems/${sys.id}/alerts`, body);
-      msg.textContent = "Alerts saved";
+      msg.textContent = t("alertsSaved");
       msg.className = "alert-msg alert-ok";
       msg.hidden = false;
     } catch (err) {
@@ -904,26 +1690,21 @@ function renderAlertForm(sys) {
       msg.hidden = false;
     } finally {
       btn.disabled = false;
-      btn.textContent = "Save alerts";
+      btn.textContent = t("alertsSave");
     }
   });
 
   return form;
 }
 
-function escapeAttr(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;");
-}
-
 function openManageModal() {
   manageModal.hidden = false;
+  syncPollIntervalSelect();
+  updateThemeUi(getCurrentTheme());
   manageList.innerHTML = "";
 
   if (!systems.length) {
-    manageList.innerHTML = '<p class="manage-empty">No systems configured.</p>';
+    manageList.innerHTML = `<p class="manage-empty">${t("noSystems")}</p>`;
     return;
   }
 
@@ -936,14 +1717,16 @@ function openManageModal() {
 
     const info = document.createElement("div");
     info.className = "manage-info";
-    const alertBadge = sys.alerts?.enabled ? '<span class="alert-badge">Alerts on</span>' : "";
+    const alertBadge = sys.alerts?.enabled
+      ? `<span class="alert-badge">${escapeAttr(t("alertsOnBadge"))}</span>`
+      : "";
     info.innerHTML = `<strong>${sys.name}</strong><span class="manage-service">${sys.service}${alertBadge}</span>`;
 
     const del = document.createElement("button");
     del.className = "manage-delete";
-    del.textContent = "Remove";
+    del.textContent = t("remove");
     del.addEventListener("click", async () => {
-      if (!confirm(`Remove "${sys.name}"?`)) return;
+      if (!confirm(t("removeConfirm", { name: sys.name }))) return;
       await api("DELETE", `/api/systems/${sys.id}`);
       await loadSystems();
       openManageModal();
@@ -957,6 +1740,7 @@ function openManageModal() {
     top.appendChild(info);
     top.appendChild(del);
     row.appendChild(top);
+    row.appendChild(renderCredentialForm(sys));
     row.appendChild(renderAlertForm(sys));
     manageList.appendChild(row);
   }
@@ -966,12 +1750,66 @@ els.manageBtn.addEventListener("click", openManageModal);
 $("manage-close").addEventListener("click", () => { manageModal.hidden = true; });
 $("manage-add").addEventListener("click", openAddModal);
 
+const pollIntervalSelect = $("poll-interval");
+
+function refreshPollIntervalOptions() {
+  if (!pollIntervalSelect) return;
+  const current = pollIntervalSelect.value || String(getPollIntervalSec());
+  pollIntervalSelect.innerHTML = POLL_INTERVAL_OPTIONS_SEC.map((sec) => {
+    return `<option value="${sec}">${formatPollIntervalLabelI18n(sec)}</option>`;
+  }).join("");
+  pollIntervalSelect.value = current;
+}
+
+function changeLocale(locale) {
+  setLocale(locale);
+  applyTranslations();
+  syncLangToggle();
+  refreshPollIntervalOptions();
+  renderSystemTabs();
+  if (lastRenderData) renderData(lastRenderData);
+  if (currentView === "compare" && lastCompareData) renderComparison(lastCompareData);
+  if (els.pollErrorToast && !els.pollErrorToast.hidden) {
+    setPollRetrying(pollRetrying);
+  }
+  if (currentView === "chart") {
+    refreshChartDateNav();
+    if (chartHistory && fEls.powerChart && !fEls.powerChart.hidden) {
+      renderChart(chartHistory);
+    }
+    if (lastEnergySummary && fEls.energyChart && !fEls.energyChart.hidden) {
+      renderEnergyChart(lastEnergySummary);
+    }
+  }
+  if (!manageModal.hidden) openManageModal();
+}
+
+function initLangToggle() {
+  document.querySelectorAll("[data-lang]").forEach((btn) => {
+    btn.addEventListener("click", () => changeLocale(btn.dataset.lang));
+  });
+}
+
+if (pollIntervalSelect) {
+  refreshPollIntervalOptions();
+  pollIntervalSelect.addEventListener("change", () => {
+    savePollIntervalSec(pollIntervalSelect.value);
+    restartPollingIfActive();
+  });
+}
+
+if (els.themeBtn) els.themeBtn.addEventListener("click", cycleTheme);
+if (els.setupThemeBtn) els.setupThemeBtn.addEventListener("click", cycleTheme);
+if (els.themeSelect) {
+  els.themeSelect.addEventListener("change", () => applyTheme(els.themeSelect.value));
+}
+
 /* ── Setup (proxy connection) ── */
 els.setupForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   els.setupError.hidden = true;
   els.setupBtn.disabled = true;
-  els.setupBtn.textContent = "Connecting...";
+  els.setupBtn.textContent = t("connecting");
 
   const url = els.setupUrl.value.trim().replace(/\/+$/, "");
   const token = els.setupToken.value.trim();
@@ -980,12 +1818,13 @@ els.setupForm.addEventListener("submit", async (e) => {
     const resp = await fetch(`${url}/api/systems`, {
       headers: { "Authorization": `Bearer ${token}` },
     });
-    if (!resp.ok) throw new Error("Invalid token or proxy URL");
+    if (!resp.ok) throw new Error(t("invalidTokenOrUrl"));
     await resp.json();
 
     saveConn({ url, token });
     await loadSystems();
     showDash();
+    setView(localStorage.getItem(VIEW_KEY) || "cards");
 
     if (!systems.length) {
       openAddModal();
@@ -997,7 +1836,7 @@ els.setupForm.addEventListener("submit", async (e) => {
     els.setupError.hidden = false;
   } finally {
     els.setupBtn.disabled = false;
-    els.setupBtn.textContent = "Connect";
+    els.setupBtn.textContent = t("connect");
   }
 });
 
@@ -1005,6 +1844,19 @@ els.disconnectBtn.addEventListener("click", () => {
   clearConn();
   stopPolling();
   showSetup();
+});
+
+if (els.pollRetryBtn) {
+  els.pollRetryBtn.addEventListener("click", () => retryPollNow());
+}
+
+/* ── Desktop keyboard refresh (F5 / Ctrl|Cmd+R) ── */
+document.addEventListener("keydown", (e) => {
+  if (els.dashScreen.hidden) return;
+  if (isEditableElement(document.activeElement)) return;
+  if (!matchesDashboardRefreshShortcut(e)) return;
+  e.preventDefault();
+  refreshDashboardNow();
 });
 
 /* ── Pull to refresh ── */
@@ -1022,7 +1874,7 @@ els.disconnectBtn.addEventListener("click", () => {
   }
 
   dash.addEventListener("touchstart", (e) => {
-    if (refreshing || !isAtTop()) return;
+    if (refreshing || dashboardRefreshing || !isAtTop()) return;
     startY = e.touches[0].clientY;
     pulling = true;
   }, { passive: true });
@@ -1041,17 +1893,11 @@ els.disconnectBtn.addEventListener("click", () => {
     if (!pulling) return;
     pulling = false;
     const armed = ptr.classList.contains("armed");
-    if (armed && !refreshing) {
+    if (armed && !refreshing && !dashboardRefreshing) {
       refreshing = true;
       ptr.className = "ptr refreshing";
       ptr.style.height = "36px";
-      if (pollTimer) clearTimeout(pollTimer);
-      const refresh = currentView === "chart"
-        ? loadChartView()
-        : pollNow();
-      refresh.then(() => {
-        if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), POLL_MS);
-      }).finally(() => {
+      refreshDashboardNow().finally(() => {
         refreshing = false;
         ptr.className = "ptr";
         ptr.style.height = "0";
@@ -1069,6 +1915,11 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ── Boot ── */
+initTheme();
+loadStoredLocale();
+applyTranslations();
+syncLangToggle();
+initLangToggle();
 setView(localStorage.getItem(VIEW_KEY) || "cards");
 
 (async function boot() {
@@ -1082,17 +1933,23 @@ setView(localStorage.getItem(VIEW_KEY) || "cards");
   }
 
   const conn = loadConn();
-  if (!conn) { showSetup(); return; }
+  if (!conn) {
+    setView("cards");
+    showSetup();
+    return;
+  }
 
   try {
     await loadSystems();
     showDash();
+    setView(localStorage.getItem(VIEW_KEY) || "cards");
     if (systems.length) {
       startPolling();
     } else {
       openAddModal();
     }
   } catch {
+    setView("cards");
     showSetup();
   }
 })();

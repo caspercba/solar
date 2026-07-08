@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-07-03_
+_Last updated: 2026-07-08_
 
 ## Done
 
@@ -14,40 +14,87 @@ _Last updated: 2026-07-03_
 - URL deep-link auto-login (`?proxy=...&token=...`)
 - Timezone-aware date queries and yesterday fallback (ShineMonitor)
 - RELEASE_NOTES.md changelog (v1.0.0, v1.1.0)
-- **PLAN.md** — project definition, roadmap, historical data storage plan
-- Root README with architecture and deployment guide
+- **PLAN.md** — project definition, vendor-only history policy, testing strategy (§7.3)
+- Root README with architecture and deployment guide (vendor-only history documented)
 - Credentials redacted from `discovery/growatt/README.md`
 - Health check endpoint (`GET /api/health`)
 - CORS origin allowlist via `ALLOWED_ORIGINS`
-- Vitest unit tests for Worker adapters and routes
-- Credential encryption at rest in KV (`CREDENTIALS_KEY`)
+- Vitest unit tests for Worker adapters, routes, alerts, and history helpers
+- Credential encryption at rest in KV (`CREDENTIALS_KEY`); `credentials.test.js` on Vitest
 - Multi-plant picker during system setup
 - Inverter status badge on dashboard cards view
 - ShineMonitor `BATTERY_SOC` used when API returns valid value
 - Intraday power chart (Chart view, canvas, date picker)
-- `GET /api/systems/:id/history` with `fetchHistory` in both adapters
+- `GET /api/systems/:id/history` — direct `adapter.fetchHistory` dispatch (vendor-only)
+- `GET /api/systems/:id/history/summary` — direct `adapter.fetchHistorySummary` dispatch
+- ShineMonitor and Growatt `fetchHistorySummary` for 7-day energy totals + SOC extrema
 - PWA manifest and service worker
-- GitHub Actions CI for worker tests and deploy-on-tag
+- 7-day energy bar chart, SOC trend overlay, and CSV export in Chart view
+- Chart empty states and error messaging when vendor returns no data
+- **Vendor-only history refactor** — KV snapshot layer removed; `history.js` is shared adapter math only
+- **Frontend unit tests** — pure helpers extracted to `frontend/lib.js`; Vitest + jsdom
+- **Playwright E2E** — setup, dashboard, chart, chart navigation, compare view, poll interval, mobile PTR against mock Worker (`e2e/`)
+- **CI** — worker + frontend unit + E2E jobs on PR and main; Cloudflare Pages deploy on push to `main`; Worker deploy on release tags (`.github/workflows/ci.yml`)
+- Worker tests for `fetchHistorySummary` (`historySummary.test.js`) and alert cron (`scheduled.test.js`)
+- HTTP fixtures for vendor parser regression (`worker/test/fixtures/`)
+- **SOC threshold alerts** — Worker cron (`wrangler.toml`), webhook dispatch, manage-systems UI
+- **Adapter development guide** — [discovery/ADAPTER_GUIDE.md](./discovery/ADAPTER_GUIDE.md)
+- **Worker deployment runbook** — [worker/DEPLOY.md](./worker/DEPLOY.md)
+- **Multi-day chart navigation** — week strip + prev/next day controls (vendor round-trip per day)
+- **Estimated SOC badge** — shown on intraday chart when ShineMonitor SOC is voltage-interpolated
+- **Configurable poll interval** — manage-systems modal; persisted in `localStorage`
+- **Poll error toast** — retry UI when realtime fetch fails
+- **Desktop keyboard refresh** — F5 and Ctrl/Cmd+R trigger poll without full reload
+- **Theme modes** — dark (default), light, and high-contrast; persisted preference
+- **Per-token rate limiting** — on `/api/systems/:id/data`, `/all/data`, and `/ha` routes
+- **Structured logging** — JSON logs with secret redaction (`worker/src/logger.js`); optional Analytics Engine hook
+- **ShineMonitor automatic re-auth** — retry once on token/secret expiry (fetchData + fetchHistory)
+- **Growatt session cookies in KV** — password migration on login; re-login on 401
+- **ShineMonitor multi-device** — discovery, aggregate mode, device picker UI
+- **Spanish i18n** — `frontend/i18n.js`; language selector on setup and manage-systems
+- **Docker Compose local dev** — mock Worker + static frontend (`docker-compose.yml`, `npm run dev`)
+- **Cloudflare Pages auto-deploy** — CI stages and deploys frontend on every push to `main`
+- **Staging worker environment** — `[env.staging]` in `wrangler.toml` with isolated KV namespace
+- **Multi-system comparison view** — side-by-side cards via `/api/systems/all/data`
+- **Battery time-to-empty estimate** — cards view detail from load and SOC
+- **Credential rotation UX** — edit portal username/password in manage-systems modal (`PUT /api/systems/:id/credentials`)
+- **Home Assistant REST bridge** — `GET /api/systems/:id/ha` flat snake_case payload
+- **Growatt weather strip** — optional temperature/condition/irradiance on cards view
+- **Victron VRM discovery spike** — `discovery/victron/` (README, API.md, `fetch_data.py`); literature review only, not validated against a live account; see ADR 0001
 
 ## In Progress
 
-- (developer) Add SOC threshold alerts via Worker cron
-- (planner) historical data — PLAN.md updated with storage architecture and Phase 3b roadmap
+_None._
 
 ## Up Next
 
-_Priority order from PLAN.md Phase 3b — stored history and extended graphs._
+_Priority order — documentation sync and test gaps first, then productization polish (PLAN.md Phase 4/5)._
 
-1. Worker cron snapshot job (store normalized realtime every 5–15 min)
-2. KV history storage module (write, read, merge, prune with 90-day retention)
-3. History API: serve stored data first, vendor `fetchHistory` fallback
-4. `GET /api/systems/:id/history/summary?days=7` endpoint
-5. 7-day energy bar chart on dashboard
-6. SOC trend chart (intraday overlay + 7-day summary)
-7. CSV export for chart data
-8. History storage unit tests
-9. Worker deployment runbook (cron triggers, retention config)
-10. Always-on `API_TOKEN` in production (ops/config)
+**Documentation sync:**
+
+1. Refresh PLAN.md checkboxes and success criteria to match v1.2.x implementation (many items still marked open)
+2. Update RELEASE_NOTES.md for v1.2.0 / v1.2.1 (extended history, testing, UX features)
+
+**Test gaps:**
+
+3. Worker route edge cases — CORS OPTIONS preflight responses
+4. Playwright E2E for alerts configuration in manage-systems modal
+
+**Ops & productization:**
+
+5. Always-on `API_TOKEN` and `CREDENTIALS_KEY` in production (verify secrets set; dev-mode open auth is a footgun)
+6. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
+
+**UX & labeling:**
+
+7. Configurable per-system "Generator" vs "Grid" label for `grid.active` card
+
+**Features (medium / nice-to-have):**
+
+8. Generator runtime tracking — accumulate hours when `grid.active` is true (session or vendor only; no KV archive)
+9. WebSocket push — replace polling when vendor supports realtime streams (ShineMonitor `ws.shinemonitor.com`; see `discovery/WEBSOCKET_REALTIME.md`)
+10. Home Assistant MQTT bridge (REST `/ha` endpoint exists today)
+11. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account (attribute codes, `stats` interval enum) before `worker/src/services/victron.js` is written; Solis/Deye remain unstarted
 
 ## Blocked
 
@@ -56,31 +103,29 @@ _None._
 ## Decisions Made
 
 - **No frontend build step** — plain HTML/CSS/JS with cache-busting `?v=N` params; keeps hosting trivial.
-- **Cloudflare Worker as sole backend** — required for Growatt CORS; KV for system configs; no separate database.
+- **Cloudflare Worker as sole backend** — required for Growatt CORS; KV for system configs only; no historical data archive.
 - **Normalize at adapter boundary** — frontend consumes one JSON shape regardless of inverter brand.
 - **Discover once, poll many** — plant ID, device SN, nominal power captured at setup and stored in KV.
 - **Multi-plant selection at setup** — `requiresPlantSelection` flow when account has multiple plants.
-- **ShineMonitor SOC** — prefer API `BATTERY_SOC` when valid; voltage interpolation (42.0 V → 0%, 53.5 V → 100%) as fallback.
+- **Multi-device selection at setup** — `requiresDeviceSelection` flow; optional aggregate mode for multi-inverter plants.
+- **ShineMonitor SOC** — prefer API `BATTERY_SOC` when valid; voltage interpolation (42.0 V → 0%, 53.5 V → 100%) as fallback; show "Estimated" badge when interpolated on chart.
 - **Generator label for grid input** — `grid.active` drives the "Generator" card; suitable for off-grid setups with gen input.
-- **On-demand history first** — intraday charts fetch from vendor APIs today; Phase 3b adds Worker-owned snapshots.
-- **KV for history storage** — daily keys `history:day:<id>:<date>`; 90-day default retention; cron merges realtime polls into day buckets.
-- **Stored-first history API** — serve KV snapshots when available; fall back to vendor `fetchHistory` for backfill.
+- **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV.
+- **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
+- **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
 
 ## Blocked / Open Questions
 
 1. Should frontend and worker share a Cloudflare project or remain independently deployable?
-2. Show "estimated" badge when SOC is voltage-interpolated?
-3. "Generator" vs "Grid" labeling — configurable per system?
-4. Password rotation UX — edit credentials in place vs delete/re-add?
-5. Multi-user access — shared token sufficient or per-user tokens needed?
-6. Snapshot interval — 5 min vs 15 min?
-7. History merge — prefer vendor or stored data when both exist?
-8. Retention default — 90 days sufficient or configurable?
+2. "Generator" vs "Grid" labeling — configurable per system? _(Estimated SOC badge implemented; label config still open.)_
+3. Multi-user access — shared token sufficient or per-user tokens needed?
 
 ## Known Risks
 
 - **Upstream API breakage** — ShineMonitor/Growatt can change endpoints without notice; discovery scripts are the first line of detection.
-- **Session cache per isolate** — cold Worker starts re-authenticate; acceptable today, may need KV-backed sessions at scale.
-- **Vendor history gaps** — mitigated by Phase 3b Worker snapshots; until then, chart view depends on vendor APIs.
-- **KV write volume from cron** — batch into single daily key update per snapshot tick to limit writes.
-- **No E2E tests** — adapter/route regressions covered by Vitest; full browser flow untested.
+- **Session cache per isolate** — cold Worker starts re-authenticate; Growatt cookies in KV mitigate password storage but isolate cache still clears on cold start.
+- **Vendor history gaps** — chart view depends on vendor API availability; no local backfill; empty states mitigate UX impact.
+- **Vendor rate limits** — multi-day summary and week navigation require N vendor round-trips; in-memory cache and `days` cap mitigate; Worker rate limiting protects proxy abuse.
+- **Route edge-case coverage** — CORS preflight lacks dedicated worker tests (502/429 paths covered).
+- **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` must be set in production; dev-mode open auth remains a footgun if misconfigured.
+- **PLAN.md drift** — many completed v1.2.x items still unchecked in PLAN.md; may mislead future planning passes until synced.

@@ -1,0 +1,20 @@
+{
+  "name": "solar-dashboard-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "chmod +x node_modules/7zip-bin/linux/arm64/7za 2>/dev/null || true",
+    "pretest": "node scripts/fetch-deps.js",
+    "test": "node scripts/run-tests.js",
+    "test:ci": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "mock-worker": "node fixtures/mock-worker.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.0",
+    "7zip-bin": "^5.2.0",
+    "serve": "^14.2.4"
+  }
+}

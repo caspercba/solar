@@ -1,4 +1,7 @@
-import { checkAuth, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
+import { checkAuth, isAuthMisconfigured, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
+import { toHaPayload } from "./ha.js";
+import { logAdapterError } from "./logger.js";
+import { checkDataRateLimit, getRateLimitKey, rateLimitResponse } from "./rateLimit.js";
 import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
 import {
   runScheduledAlerts,
@@ -7,14 +10,28 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
-import { deleteHistory, getHistorySummary, runScheduledSnapshots } from "./history.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
 const ADAPTERS = { shinemonitor, growatt };
 
+/** Pass KV env to adapters that persist session state (Growatt). */
+function forAdapter(raw, env) {
+  if (raw.service === "growatt") return growatt.withAdapterContext(raw, env);
+  return raw;
+}
+
 function generateId() {
   return crypto.randomUUID();
+}
+
+function enforceDataRateLimit(request, env, origin) {
+  const key = getRateLimitKey(request, env);
+  const result = checkDataRateLimit(key);
+  if (!result.allowed) {
+    return rateLimitResponse(result.retryAfter, origin);
+  }
+  return null;
 }
 
 async function listSystems(env) {
@@ -52,6 +69,10 @@ export default {
       return jsonResponse({ ok: true, version: "1.1.0" }, 200, origin);
     }
 
+    if (isAuthMisconfigured(env)) {
+      return errorResponse("Service misconfigured: API_TOKEN is required in this environment", 503, origin);
+    }
+
     if (!checkAuth(request, env)) {
       return errorResponse("Unauthorized", 401, origin);
     }
@@ -68,11 +89,12 @@ export default {
     if (path === "/api/systems" && request.method === "GET") {
       const index = await listSystems(env);
       const safe = await Promise.all(index.map(async (s) => {
-        const raw = await env.SYSTEMS.get(`system:${s.id}`, "json");
+        const raw = await loadSystemConfig(env, s.id);
         return {
           id: s.id,
           name: s.name,
           service: s.service,
+          username: raw?.credentials?.user || "",
           alerts: publicAlerts(raw?.alerts || DEFAULT_ALERTS),
         };
       }));
@@ -82,7 +104,7 @@ export default {
     // POST /api/systems — add a new system
     if (path === "/api/systems" && request.method === "POST") {
       const body = await request.json();
-      const { service, name, user, password, plantId } = body;
+      const { service, name, user, password, plantId, deviceKey, deviceMode } = body;
 
       if (!service || !user || !password) {
         return errorResponse("Missing required fields: service, user, password", 400, origin);
@@ -95,8 +117,17 @@ export default {
 
       let discovered;
       try {
-        discovered = await adapter.discover({ user, password }, plantId || null);
+        discovered = await adapter.discover(
+          { user, password },
+          plantId || null,
+          service === "shinemonitor" ? { deviceKey: deviceKey || null, deviceMode: deviceMode || null } : undefined,
+        );
       } catch (err) {
+        logAdapterError(env, "adapter_discover_failed", {
+          service,
+          route: "POST /api/systems",
+          error: err,
+        });
         return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
       }
 
@@ -104,6 +135,15 @@ export default {
         return jsonResponse({
           requiresPlantSelection: true,
           plants: discovered.plants,
+        }, 200, origin);
+      }
+
+      if (discovered.requiresDeviceSelection) {
+        return jsonResponse({
+          requiresDeviceSelection: true,
+          plantId: discovered.plantId,
+          plantName: discovered.plantName,
+          devices: discovered.deviceOptions,
         }, 200, origin);
       }
 
@@ -125,6 +165,63 @@ export default {
       await saveIndex(env, index);
 
       return jsonResponse({ id, name: systemName, service, discovered }, 201, origin);
+    }
+
+    // PUT /api/systems/:id/credentials — rotate portal username/password and re-discover
+    const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
+    if (credentialsMatch && request.method === "PUT") {
+      const id = credentialsMatch[1];
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const body = await request.json();
+      const { user, password, plantId: bodyPlantId } = body;
+
+      if (!user || !password) {
+        return errorResponse("Missing required fields: user, password", 400, origin);
+      }
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter) {
+        return errorResponse(`No adapter for service: ${raw.service}`, 500, origin);
+      }
+
+      const plantId = bodyPlantId || raw.credentials?.plantId || null;
+
+      let discovered;
+      try {
+        discovered = await adapter.discover({ user, password }, plantId);
+      } catch (err) {
+        logAdapterError(env, "adapter_discover_failed", {
+          service: raw.service,
+          systemId: id,
+          route: "PUT /api/systems/:id/credentials",
+          error: err,
+        });
+        return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
+      }
+
+      if (discovered.requiresPlantSelection) {
+        return jsonResponse({
+          requiresPlantSelection: true,
+          plants: discovered.plants,
+        }, 200, origin);
+      }
+
+      const updatedConfig = {
+        ...raw,
+        credentials: { user, ...buildCredentials(raw.service, password, discovered) },
+      };
+
+      await saveSystemConfig(env, updatedConfig);
+
+      return jsonResponse({
+        id: raw.id,
+        name: raw.name,
+        service: raw.service,
+        username: user,
+        discovered,
+      }, 200, origin);
     }
 
     // PUT /api/systems/:id/alerts — update alert thresholds and webhook
@@ -151,7 +248,6 @@ export default {
       const id = deleteMatch[1];
       await env.SYSTEMS.delete(`system:${id}`);
       await deleteAlertState(env, id);
-      await deleteHistory(env, id);
       const index = await listSystems(env);
       const updated = index.filter(s => s.id !== id);
       await saveIndex(env, updated);
@@ -160,6 +256,9 @@ export default {
 
     // GET /api/systems/all/data — fetch data for all systems (must be before :id/data)
     if (path === "/api/systems/all/data" && request.method === "GET") {
+      const limited = enforceDataRateLimit(request, env, origin);
+      if (limited) return limited;
+
       const index = await listSystems(env);
       const results = await Promise.allSettled(
         index.map(async (entry) => {
@@ -167,21 +266,57 @@ export default {
           if (!raw) return { systemId: entry.id, error: "Not found" };
           const adapter = ADAPTERS[raw.service];
           if (!adapter) return { systemId: entry.id, error: "No adapter" };
-          return adapter.fetchData(raw);
+          return adapter.fetchData(forAdapter(raw, env));
         })
       );
 
       const data = results.map((r, i) => {
         if (r.status === "fulfilled") return r.value;
+        logAdapterError(env, "adapter_fetch_failed", {
+          systemId: index[i].id,
+          service: index[i].service,
+          route: "GET /api/systems/all/data",
+          error: r.reason,
+        });
         return { systemId: index[i].id, name: index[i].name, service: index[i].service, error: r.reason?.message || "Unknown error" };
       });
 
       return jsonResponse(data, 200, origin);
     }
 
+    // GET /api/systems/:id/ha — flat JSON for Home Assistant REST sensors
+    const haMatch = path.match(/^\/api\/systems\/([^/]+)\/ha$/);
+    if (haMatch && request.method === "GET") {
+      const limited = enforceDataRateLimit(request, env, origin);
+      if (limited) return limited;
+
+      const id = haMatch[1];
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter) return errorResponse(`No adapter for service: ${raw.service}`, 500, origin);
+
+      try {
+        const data = await adapter.fetchData(forAdapter(raw, env));
+        return jsonResponse(toHaPayload(data), 200, origin);
+      } catch (err) {
+        logAdapterError(env, "adapter_fetch_failed", {
+          systemId: id,
+          service: raw.service,
+          route: "GET /api/systems/:id/ha",
+          error: err,
+        });
+        return errorResponse(`Fetch failed: ${err.message}`, 502, origin);
+      }
+    }
+
     // GET /api/systems/:id/data — fetch real-time data for one system
     const dataMatch = path.match(/^\/api\/systems\/([^/]+)\/data$/);
     if (dataMatch && request.method === "GET") {
+      const limited = enforceDataRateLimit(request, env, origin);
+      if (limited) return limited;
+
       const id = dataMatch[1];
       const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
@@ -190,18 +325,24 @@ export default {
       if (!adapter) return errorResponse(`No adapter for service: ${raw.service}`, 500, origin);
 
       try {
-        const data = await adapter.fetchData(raw);
+        const data = await adapter.fetchData(forAdapter(raw, env));
         return jsonResponse(data, 200, origin);
       } catch (err) {
+        logAdapterError(env, "adapter_fetch_failed", {
+          systemId: id,
+          service: raw.service,
+          route: "GET /api/systems/:id/data",
+          error: err,
+        });
         return errorResponse(`Fetch failed: ${err.message}`, 502, origin);
       }
     }
 
-    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from stored snapshots
+    // GET /api/systems/:id/history/summary?days=7 — daily energy totals from vendor APIs
     const summaryMatch = path.match(/^\/api\/systems\/([^/]+)\/history\/summary$/);
     if (summaryMatch && request.method === "GET") {
       const id = summaryMatch[1];
-      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
 
       const daysParam = url.searchParams.get("days");
@@ -215,8 +356,23 @@ export default {
         return errorResponse("Invalid end date (expected YYYY-MM-DD)", 400, origin);
       }
 
-      const summary = await getHistorySummary(env, id, days, endDate || null);
-      return jsonResponse(summary, 200, origin);
+      const adapter = ADAPTERS[raw.service];
+      if (!adapter?.fetchHistorySummary) {
+        return errorResponse(`History summary not supported for service: ${raw.service}`, 501, origin);
+      }
+
+      try {
+        const summary = await adapter.fetchHistorySummary(forAdapter(raw, env), days, endDate || null);
+        return jsonResponse(summary, 200, origin);
+      } catch (err) {
+        logAdapterError(env, "adapter_history_summary_failed", {
+          systemId: id,
+          service: raw.service,
+          route: "GET /api/systems/:id/history/summary",
+          error: err,
+        });
+        return errorResponse(`History summary failed: ${err.message}`, 502, origin);
+      }
     }
 
     // GET /api/systems/:id/history?date=YYYY-MM-DD — intraday power series
@@ -228,7 +384,7 @@ export default {
         return errorResponse("Invalid date (expected YYYY-MM-DD)", 400, origin);
       }
 
-      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      const raw = await loadSystemConfig(env, id);
       if (!raw) return errorResponse("System not found", 404, origin);
 
       const adapter = ADAPTERS[raw.service];
@@ -237,9 +393,15 @@ export default {
       }
 
       try {
-        const data = await adapter.fetchHistory(raw, dateParam || null);
+        const data = await adapter.fetchHistory(forAdapter(raw, env), dateParam || null);
         return jsonResponse(data, 200, origin);
       } catch (err) {
+        logAdapterError(env, "adapter_history_failed", {
+          systemId: id,
+          service: raw.service,
+          route: "GET /api/systems/:id/history",
+          error: err,
+        });
         return errorResponse(`History fetch failed: ${err.message}`, 502, origin);
       }
     }
@@ -248,10 +410,7 @@ export default {
   },
 
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(Promise.all([
-      runScheduledAlerts(env, ADAPTERS),
-      runScheduledSnapshots(env, ADAPTERS),
-    ]));
+    ctx.waitUntil(runScheduledAlerts(env, ADAPTERS));
   },
 };
 
@@ -261,17 +420,19 @@ function buildCredentials(service, password, discovered) {
       pwdSha1: discovered.pwdSha1,
       plantId: discovered.plantId,
       device: discovered.device,
+      devices: discovered.devices,
+      deviceMode: discovered.deviceMode || "primary",
       nominalPower: discovered.nominalPower,
       timezone: discovered.timezone,
     };
   }
   if (service === "growatt") {
     return {
-      password,
       plantId: discovered.plantId,
       storageSn: discovered.storageSn,
       nominalPower: discovered.nominalPower,
       nominalPV: discovered.nominalPV,
+      sessionCookies: discovered.sessionCookies,
     };
   }
   return { password };

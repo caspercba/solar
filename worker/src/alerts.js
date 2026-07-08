@@ -1,4 +1,6 @@
 import { loadSystemConfig, saveSystemConfig } from "./credentials.js";
+import { logAdapterError } from "./logger.js";
+import { withAdapterContext } from "./services/growatt.js";
 
 export const DEFAULT_ALERTS = {
   enabled: false,
@@ -136,6 +138,12 @@ export async function processSystemAlerts(env, systemConfig, fetchData, nowMs = 
   try {
     data = await fetchData(systemConfig);
   } catch (err) {
+    logAdapterError(env, "alert_fetch_failed", {
+      systemId: systemConfig.id,
+      service: systemConfig.service,
+      route: "scheduled/alerts",
+      error: err,
+    });
     return { sent: 0, error: err.message };
   }
 
@@ -164,7 +172,13 @@ export async function processSystemAlerts(env, systemConfig, fetchData, nowMs = 
       });
       sent++;
     } catch (err) {
-      console.error(`Alert webhook failed for ${systemConfig.id}:`, err.message);
+      logAdapterError(env, "alert_webhook_failed", {
+        systemId: systemConfig.id,
+        service: systemConfig.service,
+        route: "scheduled/alerts",
+        alertType: action.type,
+        error: err,
+      });
     }
   }
 
@@ -182,7 +196,10 @@ export async function runScheduledAlerts(env, adapters) {
       if (!raw) return { systemId: entry.id, sent: 0, error: "Not found" };
       const adapter = adapters[raw.service];
       if (!adapter) return { systemId: entry.id, sent: 0, error: "No adapter" };
-      return processSystemAlerts(env, raw, (cfg) => adapter.fetchData(cfg));
+      return processSystemAlerts(env, raw, (cfg) => {
+        const ctx = cfg.service === "growatt" ? withAdapterContext(cfg, env) : cfg;
+        return adapter.fetchData(ctx);
+      });
     }),
   );
 

@@ -1,0 +1,22 @@
+{
+  "err": 0,
+  "dat": {
+    "title": [
+      { "title": "Timestamp" },
+      { "title": "Battery Voltage" },
+      { "title": "Batt Current" },
+      { "title": "Charger Power" },
+      { "title": "PLoad" },
+      { "title": "BATTERY_SOC" }
+    ],
+    "total": 2,
+    "row": [
+      {
+        "field": ["2026-07-02 10:00:00", "50.0", "0", "2000", "400", "90"]
+      },
+      {
+        "field": ["2026-07-02 10:05:00", "50.0", "0", "2000", "400", "88"]
+      }
+    ]
+  }
+}

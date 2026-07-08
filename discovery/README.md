@@ -1,13 +1,21 @@
-# Discovery — ShineMonitor API
+# Discovery
 
-This folder documents how the **ShineMonitor** web portal ([www.shinemonitor.com](https://www.shinemonitor.com/)) loads plant data, so you can pull the same information as JSON without driving the browser.
+This folder holds reverse-engineered vendor API docs, Python validation scripts, and the **adapter development guide** for adding new inverter brands to the Solar Dashboard.
 
-## Contents
+| File / folder | Description |
+|---------------|-------------|
+| [**ADAPTER_GUIDE.md**](./ADAPTER_GUIDE.md) | **How to add a new brand** — discovery layout, adapter interface, normalized JSON, Worker registration, tests, CI |
+| [**API.md**](./API.md) | ShineMonitor API reference: hosts, auth, signing, endpoints, example responses |
+| [**WEBSOCKET_REALTIME.md**](./WEBSOCKET_REALTIME.md) | Spike: `ws.shinemonitor.com` is HTTP not WebSocket — **defer** push/SSE |
+| [**ws_probe.py**](./ws_probe.py) | Stdlib probe: WebSocket handshake test + optional legacy `ws` host comparison |
+| [**fetch_plant_json.py**](./fetch_plant_json.py) | ShineMonitor Python client (login + sample queries) |
+| [**growatt/**](./growatt/) | Growatt API reference + `fetch_data.py` |
 
-| File | Description |
-|------|-------------|
-| [**API.md**](./API.md) | Full API reference: hosts, auth, signing, endpoints, **example responses** |
-| [**fetch_plant_json.py**](./fetch_plant_json.py) | Minimal Python client (login + sample queries) |
+---
+
+## ShineMonitor
+
+This section documents how the **ShineMonitor** web portal ([www.shinemonitor.com](https://www.shinemonitor.com/)) loads plant data, so you can pull the same information as JSON without driving the browser.
 
 ## Quick start
 
