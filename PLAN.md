@@ -1,6 +1,6 @@
 # Solar Dashboard — Project Plan
 
-_Last updated: 2026-07-03_
+_Last updated: 2026-07-08_
 
 ## 1. Project Definition
 
@@ -284,6 +284,15 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [ ] `fetchHistorySummary` — daily solar/load kWh from vendor energy endpoints
 - [ ] Weather data integration (available via Growatt API)
 
+### 6.3 Victron VRM (`victron.js`) — not started, discovery only
+
+- [x] Discovery spike: auth, endpoints, feasibility vs. normalized contract (`discovery/victron/`)
+- [ ] Live verification against a real VRM account/token (attribute codes, `stats` interval enum)
+- [ ] Multi-device instance role mapping in `discover()` (battery monitor, solar charger(s), inverter)
+- [ ] `worker/src/services/victron.js` implementing `discover()` + `fetchData()`
+- [ ] `fetchHistory()` / `fetchHistorySummary()` via VRM `stats` endpoint
+- [ ] Register in `ADAPTERS` map and `/api/services`
+
 ---
 
 ## 7. Discovery & Documentation
@@ -302,6 +311,7 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 ### 7.2 Planned
 
 - [ ] Update README to reflect vendor-only history (remove KV snapshot docs)
+- [x] Victron VRM discovery spike (`discovery/victron/README.md`, `API.md`, `fetch_data.py`) — literature review only, not validated against a live account
 
 ### 7.3 Testing
 
@@ -433,7 +443,7 @@ Run all three on `pull_request` and `push` to `main`. E2E may be allowed to retr
 
 ### 10.3 Nice to Have
 
-10. **Additional adapters** — Victron VRM, Solis, Deye, SMA (each needs discovery pass like existing folders).
+10. **Additional adapters** — Victron VRM, Solis, Deye, SMA (each needs discovery pass like existing folders). Victron VRM discovery spike complete (`discovery/victron/`, ADR 0001) — official public API docs make it the lowest-risk of the three, but sites expose multiple devices per installation (battery monitor, solar chargers, inverter), so the adapter's `discover()` will need a device-instance role map, not a single serial like ShineMonitor/Growatt. Not yet validated against a live VRM account. Solis/Deye remain unstarted.
 11. **Home Assistant integration** — expose normalized data via MQTT or REST for HA dashboards.
 12. **Dark/light theme toggle** with system preference detection.
 13. **WebSocket push** — replace polling when inverter APIs support it (ShineMonitor has `ws.shinemonitor.com`).

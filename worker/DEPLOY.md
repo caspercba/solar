@@ -11,7 +11,7 @@ Step-by-step guide for deploying the **solar-proxy** Cloudflare Worker. A new op
 | **Worker** (`solar-proxy`) | Token-gated REST API that stores inverter credentials in KV and proxies ShineMonitor / Growatt APIs |
 | **Workers KV** (`SYSTEMS` binding) | System configs, encrypted credentials, alert cooldown state |
 | **Cron trigger** (optional) | Every 5 minutes — evaluates SOC / generator alerts and POSTs to configured webhooks |
-| **Secrets** | `API_TOKEN`, `CREDENTIALS_KEY`, `ALLOWED_ORIGINS` — never committed to git |
+| **Secrets** | `API_TOKEN`, `PRODUCTION`, `CREDENTIALS_KEY`, `ALLOWED_ORIGINS` — never committed to git |
 
 The static frontend (repository root) is deployed separately — see the root [README](../README.md#host-the-frontend).
 
@@ -90,7 +90,7 @@ An empty list is expected on first deploy.
 
 ## 3. Configure Worker secrets
 
-Secrets are encrypted by Cloudflare and injected at runtime as `env.API_TOKEN`, `env.CREDENTIALS_KEY`, and `env.ALLOWED_ORIGINS`. They are **not** in `wrangler.toml` and are **not** overwritten by `wrangler deploy`.
+Secrets are encrypted by Cloudflare and injected at runtime as `env.API_TOKEN`, `env.PRODUCTION`, `env.CREDENTIALS_KEY`, and `env.ALLOWED_ORIGINS`. They are **not** in `wrangler.toml` and are **not** overwritten by `wrangler deploy`.
 
 Run each command from the `worker/` directory. Wrangler prompts for the value (paste or pipe stdin).
 
@@ -113,7 +113,25 @@ npx wrangler secret put API_TOKEN
 **Behavior:**
 
 - **Set** — all `/api/*` routes except `GET /api/health` require a matching Bearer token.
-- **Unset** — Worker runs in open dev mode (anyone can call the API). **Never leave production unset.**
+- **Unset, `PRODUCTION` not set** — Worker runs in open dev mode (anyone can call the API). Intended for local `wrangler dev` and unit tests only.
+- **Unset, `PRODUCTION` set** — see §3.2a. All `/api/*` routes except `GET /api/health` return `503` instead of running open.
+
+### 3.1a `PRODUCTION` (required on every real deployment)
+
+Fail-closed guard that prevents a deployed Worker from silently running in open dev mode if `API_TOKEN` was never set (e.g. forgotten secret, wrong Cloudflare account, botched migration).
+
+```bash
+echo "true" | npx wrangler secret put PRODUCTION
+echo "true" | npx wrangler secret put PRODUCTION --env staging
+```
+
+**Behavior:**
+
+- **`PRODUCTION=true` and `API_TOKEN` set** — normal Bearer-token auth (§3.1).
+- **`PRODUCTION=true` and `API_TOKEN` unset** — every route except `GET /api/health` returns `503 { "error": "Service misconfigured: API_TOKEN is required in this environment" }`. The Worker never falls back to open mode.
+- **`PRODUCTION` unset** — no change to existing behavior; `wrangler dev` and unit tests keep working with `API_TOKEN` unset. Since `PRODUCTION` is a secret (not a `wrangler.toml` var), it is never present locally unless you deliberately add it to `.dev.vars`.
+
+Set this on **both** production and staging — anything that isn't your local machine.
 
 ### 3.2 `CREDENTIALS_KEY` (required in production)
 
@@ -194,6 +212,8 @@ curl -sS -H "Authorization: Bearer YOUR_API_TOKEN" \
   "https://solar-proxy.<subdomain>.workers.dev/api/systems"
 # Expected: [] or JSON array of systems
 ```
+
+If `401` came back **without** a Bearer token above, the deployment is auth-gated correctly. If you ever see a `200`/JSON array there instead, `PRODUCTION` and/or `API_TOKEN` are missing on this deployment — fix immediately (§3.1, §3.1a).
 
 **CORS (from allowed origin):**
 
@@ -319,6 +339,7 @@ Use this before pointing users at a new deployment.
 | Item | Action | Verify |
 |------|--------|--------|
 | **API_TOKEN set** | `npx wrangler secret put API_TOKEN` | `GET /api/systems` without token returns **401** |
+| **PRODUCTION set** | `echo "true" \| npx wrangler secret put PRODUCTION` | Temporarily unset `API_TOKEN` (redeploy, test, then restore) — `GET /api/systems` should return **503**, never open access |
 | **CREDENTIALS_KEY set** | `openssl rand -base64 32 \| wrangler secret put CREDENTIALS_KEY` | Add a test system; KV entry has `_encrypted: true` (Dashboard → KV) |
 | **ALLOWED_ORIGINS set** | `wrangler secret put ALLOWED_ORIGINS` | Browser from frontend origin succeeds; random origin gets **403** on preflight |
 | **KV bound** | `id` in `wrangler.toml` matches your namespace | `wrangler kv key list --binding SYSTEMS` works |
@@ -328,7 +349,7 @@ Use this before pointing users at a new deployment.
 | **Alerts (if used)** | `enabled: true` + valid `webhookUrl` per system | Cron Events show success; test webhook receives POST |
 | **Health monitoring** | Optional uptime check on `/api/health` | Returns `{ "ok": true }` |
 
-**Dev mode warning:** If `API_TOKEN` is unset, the Worker accepts unauthenticated requests. This is intentional for local development only.
+**Dev mode warning:** If `API_TOKEN` is unset **and** `PRODUCTION` is unset, the Worker accepts unauthenticated requests. This is intentional for local development only — always set `PRODUCTION=true` (§3.1a) on deployed Workers so a missing `API_TOKEN` fails closed (`503`) instead of running open.
 
 ---
 
@@ -377,7 +398,7 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-CI runs tests, then deploys the production Worker from the tagged commit. The frontend is deployed separately on each push to `main`. **Runtime secrets are not set by CI** — configure `API_TOKEN`, `CREDENTIALS_KEY`, and `ALLOWED_ORIGINS` once per Cloudflare account with `wrangler secret put` (§3).
+CI runs tests, then deploys the production Worker from the tagged commit. The frontend is deployed separately on each push to `main`. **Runtime secrets are not set by CI** — configure `API_TOKEN`, `PRODUCTION`, `CREDENTIALS_KEY`, and `ALLOWED_ORIGINS` once per Cloudflare account with `wrangler secret put` (§3).
 
 ### 8.3 Manual deploy (without CI)
 
@@ -423,6 +444,7 @@ npx wrangler deployments list
 | Secret | Steps |
 |--------|-------|
 | **API_TOKEN** | `wrangler secret put API_TOKEN` → update all frontends |
+| **PRODUCTION** | `echo "true" \| wrangler secret put PRODUCTION` once per deployed environment (production and staging); never set locally |
 | **CREDENTIALS_KEY** | Generate new key → existing encrypted data needs re-discovery or migration; plan downtime |
 | **Inverter password** | Delete system in UI and re-add, or extend Worker with a credential-update route (not built-in today) |
 
@@ -431,6 +453,7 @@ npx wrangler deployments list
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | `401 Unauthorized` | Wrong or missing Bearer token | Match frontend token to `API_TOKEN` secret |
+| `503 Service misconfigured` | `PRODUCTION=true` but `API_TOKEN` unset | `npx wrangler secret put API_TOKEN` on that environment |
 | CORS error in browser | Origin not in `ALLOWED_ORIGINS` | Add exact frontend URL (including `https://`) |
 | `CREDENTIALS_KEY required to decrypt` | Key removed after encrypting | Restore key or delete and re-add systems |
 | `502 Discovery failed` | Bad inverter credentials or vendor outage | Check credentials; test vendor portal directly |
@@ -451,6 +474,9 @@ npm test                       # Vitest + Miniflare
 # With local secrets (optional — use .dev.vars, never commit):
 # echo 'API_TOKEN=dev-token' >> .dev.vars
 # echo 'ALLOWED_ORIGINS=http://localhost:8080' >> .dev.vars
+
+# Do NOT add PRODUCTION to .dev.vars — it disables open dev mode (§3.1a) and
+# makes `wrangler dev` return 503 unless you also set a local API_TOKEN.
 ```
 
 `.dev.vars` is gitignored. For production values, always use `wrangler secret put`.

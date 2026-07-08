@@ -53,4 +53,36 @@ describe("i18n", () => {
   it("interpolate helper handles missing vars", () => {
     expect(interpolate("Hello {name}", {})).toBe("Hello ");
   });
+
+  it("translates theme keys in English", () => {
+    expect(t("theme")).toBe("Theme");
+    expect(t("themeAria")).toBe("Color theme");
+    expect(t("themeDark")).toBe("Dark");
+    expect(t("themeLight")).toBe("Light");
+    expect(t("themeHighContrast")).toBe("High contrast");
+  });
+
+  it("translates theme keys in Spanish", () => {
+    setLocale("es");
+    expect(t("theme")).toBe("Tema");
+    expect(t("themeAria")).toBe("Tema de color");
+    expect(t("themeDark")).toBe("Oscuro");
+    expect(t("themeLight")).toBe("Claro");
+    expect(t("themeHighContrast")).toBe("Alto contraste");
+  });
+
+  it("translates compare view keys in English", () => {
+    expect(t("compareLowestSoc")).toBe("Lowest SOC");
+    expect(t("compareGeneratorOn")).toBe("Generator ON");
+    expect(t("compareUnavailable")).toBe("Unavailable");
+    expect(t("compareLoadError")).toBe("Could not load comparison data.");
+  });
+
+  it("translates compare view keys in Spanish", () => {
+    setLocale("es");
+    expect(t("compareLowestSoc")).toBe("SOC más bajo");
+    expect(t("compareGeneratorOn")).toBe("Generador ENCENDIDO");
+    expect(t("compareUnavailable")).toBe("No disponible");
+    expect(t("compareLoadError")).toBe("No se pudieron cargar los datos de comparación.");
+  });
 });
