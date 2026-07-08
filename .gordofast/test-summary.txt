@@ -1,0 +1,37 @@
+Task: Fix failing e2e chart-navigation specs blocking releases (Tester verification)
+
+Context: The developer's fix for this issue was already committed and merged to main
+prior to this task starting (commit adfda67 "Fix e2e chart-navigation failures and
+other flaky/broken specs"). This run verifies that fix resolves the three reported
+failures and that the full suite is green.
+
+Commands run (from repo root / subdirs, no root-level pnpm scripts exist in this repo —
+it uses npm workspaces with separate worker/ and e2e/ test runners):
+
+1. `cd worker && npm test` (vitest run)
+   Result: PASS — 13 test files, 150 tests passed, 0 failed.
+
+2. `cd e2e && npm install` then `npx playwright test` (full suite, both
+   desktop-chrome and mobile-chrome projects; browsers preinstalled at
+   /opt/playwright)
+   Result: PASS — 74 passed, 2 skipped (intentional test.skip() for
+   mobile-only/desktop-only variants, e.g. chart swipe test skipped on
+   desktop-chrome project), 0 failed.
+
+   Specifically verified the three previously-failing specs:
+   - tests/chart-nav.spec.js:24 (prev/next buttons step through 7 past days) — PASS
+   - tests/chart-nav.spec.js:56 (week strip day buttons) — PASS
+   - tests/chart.spec.js:68 (week strip day persists in localStorage) — PASS
+
+3. Flakiness check: `npx playwright test tests/chart-nav.spec.js tests/chart.spec.js
+   --repeat-each=3` — all iterations passed (69 passed, 3 skipped), no flakes.
+
+4. CI-parity check: `CI=1 npx playwright test` (single worker, retries=1 like the
+   real CI job) — 74 passed, 2 skipped, all green on first attempt (no retries used).
+
+Conclusion: No further app or spec changes were needed — the developer's prior fix
+(min-height on .chart-wrap to prevent the #chart-loading overlay from collapsing to
+0x0, plus freezing the browser clock via page.clock.setFixedTime so hardcoded
+week-strip fixture dates don't rot) fully resolves all three reported failures.
+Full e2e suite and full worker unit suite are green. Working tree has no changes to
+commit (verification-only run).
