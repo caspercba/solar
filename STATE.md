@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-07-07_
+_Last updated: 2026-07-08_
 
 ## Done
 
@@ -33,67 +33,67 @@ _Last updated: 2026-07-07_
 - Chart empty states and error messaging when vendor returns no data
 - **Vendor-only history refactor** — KV snapshot layer removed; `history.js` is shared adapter math only
 - **Frontend unit tests** — pure helpers extracted to `frontend/lib.js`; Vitest + jsdom
-- **Playwright E2E** — setup, dashboard, chart, mobile PTR against mock Worker (`e2e/`)
-- **CI** — worker + frontend unit + E2E jobs on PR and main (`.github/workflows/ci.yml`)
+- **Playwright E2E** — setup, dashboard, chart, chart navigation, compare view, poll interval, mobile PTR against mock Worker (`e2e/`)
+- **CI** — worker + frontend unit + E2E jobs on PR and main; Cloudflare Pages deploy on push to `main`; Worker deploy on release tags (`.github/workflows/ci.yml`)
 - Worker tests for `fetchHistorySummary` (`historySummary.test.js`) and alert cron (`scheduled.test.js`)
 - HTTP fixtures for vendor parser regression (`worker/test/fixtures/`)
 - **SOC threshold alerts** — Worker cron (`wrangler.toml`), webhook dispatch, manage-systems UI
-- **Adapter development guide** — [discovery/ADAPTER_GUIDE.md](./discovery/ADAPTER_GUIDE.md) (discovery → adapter → tests → CI)
-- **Worker deployment runbook** — [worker/DEPLOY.md](./worker/DEPLOY.md) (KV, secrets, alerts/cron, production checklist, tag-based CI)
+- **Adapter development guide** — [discovery/ADAPTER_GUIDE.md](./discovery/ADAPTER_GUIDE.md)
+- **Worker deployment runbook** — [worker/DEPLOY.md](./worker/DEPLOY.md)
+- **Multi-day chart navigation** — week strip + prev/next day controls (vendor round-trip per day)
+- **Estimated SOC badge** — shown on intraday chart when ShineMonitor SOC is voltage-interpolated
+- **Configurable poll interval** — manage-systems modal; persisted in `localStorage`
+- **Poll error toast** — retry UI when realtime fetch fails
+- **Desktop keyboard refresh** — F5 and Ctrl/Cmd+R trigger poll without full reload
+- **Theme modes** — dark (default), light, and high-contrast; persisted preference
+- **Per-token rate limiting** — on `/api/systems/:id/data`, `/all/data`, and `/ha` routes
+- **Structured logging** — JSON logs with secret redaction (`worker/src/logger.js`); optional Analytics Engine hook
+- **ShineMonitor automatic re-auth** — retry once on token/secret expiry (fetchData + fetchHistory)
+- **Growatt session cookies in KV** — password migration on login; re-login on 401
+- **ShineMonitor multi-device** — discovery, aggregate mode, device picker UI
+- **Spanish i18n** — `frontend/i18n.js`; language selector on setup and manage-systems
+- **Docker Compose local dev** — mock Worker + static frontend (`docker-compose.yml`, `npm run dev`)
+- **Cloudflare Pages auto-deploy** — CI stages and deploys frontend on every push to `main`
+- **Staging worker environment** — `[env.staging]` in `wrangler.toml` with isolated KV namespace
+- **Multi-system comparison view** — side-by-side cards via `/api/systems/all/data`
+- **Battery time-to-empty estimate** — cards view detail from load and SOC
+- **Credential rotation UX** — edit portal username/password in manage-systems modal (`PUT /api/systems/:id/credentials`)
+- **Home Assistant REST bridge** — `GET /api/systems/:id/ha` flat snake_case payload
+- **Growatt weather strip** — optional temperature/condition/irradiance on cards view
 
 ## In Progress
 
-- (planner) read PLAN.md — planning pass to refresh STATE.md and backlog
+_None._
 
 ## Up Next
 
-_Priority order — finish v1.2.0 chart polish, then productization and UX (PLAN.md Phase 3b tail → Phase 4/5)._
+_Priority order — documentation sync and test gaps first, then productization polish (PLAN.md Phase 4/5)._
 
-**Chart & history polish (Phase 3b — remaining):**
+**Documentation sync:**
 
-1. Multi-day navigation in chart view — week strip or swipe between past days (vendor round-trip per day)
-2. "Estimated" badge when ShineMonitor SOC is voltage-interpolated on intraday chart
-
-**Documentation & ops:**
-
-3. Always-on `API_TOKEN` and `CREDENTIALS_KEY` in production (ops/config)
-4. Cloudflare Pages auto-deploy for frontend from `main`
-5. Staging worker environment
-
-**UX & resilience:**
-
-6. Configurable poll interval
-7. Error toast / retry UI when poll fails
-8. Desktop keyboard shortcut for refresh
-9. Light theme / high-contrast mode
-
-**Security & hardening:**
-
-11. Per-token rate limiting on `/api/systems/*/data`
-12. Structured logging / error reporting (Workers Analytics or Sentry)
-
-**Adapter improvements:**
-
-14. ShineMonitor automatic re-auth on token/secret expiry
-15. Growatt: store session token in KV instead of plaintext password
-16. ShineMonitor multi-device support (multiple inverters per system)
+1. Refresh PLAN.md checkboxes and success criteria to match v1.2.x implementation (many items still marked open)
+2. Update RELEASE_NOTES.md for v1.2.0 / v1.2.1 (extended history, testing, UX features)
 
 **Test gaps:**
 
-17. Worker route edge cases — CORS preflight, adapter throw → 502 JSON
-18. Playwright E2E for alerts configuration in manage-systems modal
+3. Worker route edge cases — CORS OPTIONS preflight responses
+4. Playwright E2E for alerts configuration in manage-systems modal
+
+**Ops & productization:**
+
+5. Always-on `API_TOKEN` and `CREDENTIALS_KEY` in production (verify secrets set; dev-mode open auth is a footgun)
+6. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
+
+**UX & labeling:**
+
+7. Configurable per-system "Generator" vs "Grid" label for `grid.active` card
 
 **Features (medium / nice-to-have):**
 
-19. Multi-system comparison view (side-by-side cards via `/api/systems/all/data`)
-20. Credential rotation UX — edit passwords in place without delete/re-add
-21. Battery time-to-empty estimate from current load and SOC
-22. i18n — Spanish labels
-23. Docker-compose local dev (Miniflare + static file server)
-24. Growatt weather data integration
-25. Home Assistant REST/MQTT bridge
-26. WebSocket push when vendor supports realtime streams
-27. Additional inverter adapter (Victron VRM, Solis, or Deye — TBD)
+8. Generator runtime tracking — accumulate hours when `grid.active` is true (session or vendor only; no KV archive)
+9. WebSocket push — replace polling when vendor supports realtime streams (ShineMonitor `ws.shinemonitor.com`; see `discovery/WEBSOCKET_REALTIME.md`)
+10. Home Assistant MQTT bridge (REST `/ha` endpoint exists today)
+11. Additional inverter adapter — Victron VRM, Solis, or Deye (TBD by user need)
 
 ## Blocked
 
@@ -106,24 +106,25 @@ _None._
 - **Normalize at adapter boundary** — frontend consumes one JSON shape regardless of inverter brand.
 - **Discover once, poll many** — plant ID, device SN, nominal power captured at setup and stored in KV.
 - **Multi-plant selection at setup** — `requiresPlantSelection` flow when account has multiple plants.
-- **ShineMonitor SOC** — prefer API `BATTERY_SOC` when valid; voltage interpolation (42.0 V → 0%, 53.5 V → 100%) as fallback.
+- **Multi-device selection at setup** — `requiresDeviceSelection` flow; optional aggregate mode for multi-inverter plants.
+- **ShineMonitor SOC** — prefer API `BATTERY_SOC` when valid; voltage interpolation (42.0 V → 0%, 53.5 V → 100%) as fallback; show "Estimated" badge when interpolated on chart.
 - **Generator label for grid input** — `grid.active` drives the "Generator" card; suitable for off-grid setups with gen input.
 - **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV.
 - **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
+- **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
 
 ## Blocked / Open Questions
 
 1. Should frontend and worker share a Cloudflare project or remain independently deployable?
-2. Show "estimated" badge when SOC is voltage-interpolated? _(PLAN proposes yes; UI not built yet.)_
-3. "Generator" vs "Grid" labeling — configurable per system?
-4. Password rotation UX — edit credentials in place vs delete/re-add?
-5. Multi-user access — shared token sufficient or per-user tokens needed?
+2. "Generator" vs "Grid" labeling — configurable per system? _(Estimated SOC badge implemented; label config still open.)_
+3. Multi-user access — shared token sufficient or per-user tokens needed?
 
 ## Known Risks
 
 - **Upstream API breakage** — ShineMonitor/Growatt can change endpoints without notice; discovery scripts are the first line of detection.
-- **Session cache per isolate** — cold Worker starts re-authenticate; acceptable today, may need KV-backed sessions at scale.
+- **Session cache per isolate** — cold Worker starts re-authenticate; Growatt cookies in KV mitigate password storage but isolate cache still clears on cold start.
 - **Vendor history gaps** — chart view depends on vendor API availability; no local backfill; empty states mitigate UX impact.
-- **Vendor rate limits** — multi-day summary and week navigation may require N vendor round-trips; in-memory cache and `days` cap mitigate.
-- **Route edge-case coverage** — CORS preflight and adapter 502 paths lack dedicated worker tests.
+- **Vendor rate limits** — multi-day summary and week navigation require N vendor round-trips; in-memory cache and `days` cap mitigate; Worker rate limiting protects proxy abuse.
+- **Route edge-case coverage** — CORS preflight lacks dedicated worker tests (502/429 paths covered).
 - **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` must be set in production; dev-mode open auth remains a footgun if misconfigured.
+- **PLAN.md drift** — many completed v1.2.x items still unchecked in PLAN.md; may mislead future planning passes until synced.
