@@ -198,11 +198,21 @@ test.describe("Keyboard refresh", () => {
 
   test("does not intercept F5 when a text input is focused", async ({ page }) => {
     await switchView(page, "chart");
-    await page.locator("#chart-date").focus();
+    await expect(page.locator("#chart-loading")).toBeHidden();
 
-    const navigated = page.waitForEvent("framenavigated");
+    let historyRequestCount = 0;
+    await page.route("**/api/systems/*/history?*", async (route) => {
+      historyRequestCount += 1;
+      await route.continue();
+    });
+
+    await page.locator("#chart-date").focus();
+    const before = historyRequestCount;
+
     await page.keyboard.press("F5");
-    await navigated;
+    await page.waitForTimeout(500);
+
+    expect(historyRequestCount).toBe(before);
   });
 });
 
@@ -242,7 +252,9 @@ test.describe("Poll error toast", () => {
   test("shows toast on flow view", async ({ page }) => {
     await switchView(page, "flow");
     await failNextDataPoll(page);
-    await page.locator("#system-tabs button", { hasText: "Mock Home Solar" }).click();
+    // Home Solar is already the active tab by default; switch to Cabin so the
+    // click actually triggers a new poll instead of being a same-tab no-op.
+    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
 
     await expect(page.locator("#poll-error-toast")).toBeVisible();
     await expect(page.locator("#flow-view")).toBeVisible();

@@ -6,6 +6,19 @@ export const FRONTEND_PORT = Number(process.env.FRONTEND_PORT) || 3456;
 export const MOCK_WORKER_URL = `http://127.0.0.1:${MOCK_WORKER_PORT}`;
 export { MOCK_TOKEN, EMPTY_HISTORY_DATE, ESTIMATED_SOC_HISTORY_DATE };
 
+/**
+ * Reference "today" for chart/week-strip fixtures (mock history payloads are
+ * written against this date). Freezing the browser clock to it keeps
+ * date-window assertions (e.g. "2026-07-01" appearing in the week strip)
+ * stable regardless of the real wall-clock date the suite runs on.
+ */
+export const MOCK_TODAY = "2026-07-07T12:00:00Z";
+
+/** Freeze the browser clock so "today" is deterministic for chart/week-strip tests. */
+export async function mockToday(page, isoDateTime = MOCK_TODAY) {
+  await page.clock.setFixedTime(new Date(isoDateTime));
+}
+
 /** Avoid stale service-worker caches interfering with static assets in tests. */
 export async function disableServiceWorker(page) {
   await page.addInitScript(() => {
