@@ -60,6 +60,7 @@ _Last updated: 2026-07-08_
 - **Credential rotation UX** — edit portal username/password in manage-systems modal (`PUT /api/systems/:id/credentials`)
 - **Home Assistant REST bridge** — `GET /api/systems/:id/ha` flat snake_case payload
 - **Growatt weather strip** — optional temperature/condition/irradiance on cards view
+- **Victron VRM discovery spike** — `discovery/victron/` (README, API.md, `fetch_data.py`); literature review only, not validated against a live account; see ADR 0001
 
 ## In Progress
 
@@ -93,7 +94,7 @@ _Priority order — documentation sync and test gaps first, then productization 
 8. Generator runtime tracking — accumulate hours when `grid.active` is true (session or vendor only; no KV archive)
 9. WebSocket push — replace polling when vendor supports realtime streams (ShineMonitor `ws.shinemonitor.com`; see `discovery/WEBSOCKET_REALTIME.md`)
 10. Home Assistant MQTT bridge (REST `/ha` endpoint exists today)
-11. Additional inverter adapter — Victron VRM, Solis, or Deye (TBD by user need)
+11. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account (attribute codes, `stats` interval enum) before `worker/src/services/victron.js` is written; Solis/Deye remain unstarted
 
 ## Blocked
 
