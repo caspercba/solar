@@ -5,6 +5,7 @@ import {
   loginViaDeepLink,
   waitForDashboardData,
   switchView,
+  isoDateDaysAgo,
   EMPTY_HISTORY_DATE,
   ESTIMATED_SOC_HISTORY_DATE,
 } from "../helpers.js";
@@ -66,18 +67,19 @@ test.describe("Chart view", () => {
   });
 
   test("clicking a week strip day loads that date and persists in localStorage", async ({ page }) => {
-    const target = page.locator('#chart-week-strip .chart-day-btn[data-date="2026-07-01"]');
+    const oldestDay = isoDateDaysAgo(6);
+    const target = page.locator(`#chart-week-strip .chart-day-btn[data-date="${oldestDay}"]`);
     await target.click();
 
-    await expect(page.locator("#chart-date")).toHaveValue("2026-07-01");
-    await expect(page.locator('#chart-week-strip .chart-day-btn[data-date="2026-07-01"]')).toHaveClass(/active/);
+    await expect(page.locator("#chart-date")).toHaveValue(oldestDay);
+    await expect(page.locator(`#chart-week-strip .chart-day-btn[data-date="${oldestDay}"]`)).toHaveClass(/active/);
     await expect(page.locator("#power-chart")).toBeVisible();
 
     await switchView(page, "cards");
     await switchView(page, "chart");
 
-    await expect(page.locator("#chart-date")).toHaveValue("2026-07-01");
-    await expect(page.locator('#chart-week-strip .chart-day-btn[data-date="2026-07-01"]')).toHaveClass(/active/);
+    await expect(page.locator("#chart-date")).toHaveValue(oldestDay);
+    await expect(page.locator(`#chart-week-strip .chart-day-btn[data-date="${oldestDay}"]`)).toHaveClass(/active/);
   });
 
   test("summary request includes end= aligned to selected chart date", async ({ page }) => {
@@ -86,10 +88,11 @@ test.describe("Chart view", () => {
       if (req.url().includes("/history/summary")) summaryRequests.push(req.url());
     });
 
-    await page.locator('#chart-week-strip .chart-day-btn[data-date="2026-07-02"]').click();
+    const targetDate = isoDateDaysAgo(5);
+    await page.locator(`#chart-week-strip .chart-day-btn[data-date="${targetDate}"]`).click();
     await expect(page.locator("#energy-chart")).toBeVisible();
 
-    expect(summaryRequests.some((url) => url.includes("end=2026-07-02"))).toBe(true);
+    expect(summaryRequests.some((url) => url.includes(`end=${targetDate}`))).toBe(true);
   });
 
   test("shows Estimated badge when history uses voltage-derived SOC", async ({ page }) => {

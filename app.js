@@ -1920,7 +1920,6 @@ loadStoredLocale();
 applyTranslations();
 syncLangToggle();
 initLangToggle();
-setView(localStorage.getItem(VIEW_KEY) || "cards");
 
 (async function boot() {
   const params = new URLSearchParams(location.search);

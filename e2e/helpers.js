@@ -6,6 +6,16 @@ export const FRONTEND_PORT = Number(process.env.FRONTEND_PORT) || 3456;
 export const MOCK_WORKER_URL = `http://127.0.0.1:${MOCK_WORKER_PORT}`;
 export { MOCK_TOKEN, EMPTY_HISTORY_DATE, ESTIMATED_SOC_HISTORY_DATE };
 
+/** ISO date N days before today (local calendar), for asserting against the chart week strip. */
+export function isoDateDaysAgo(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /** Avoid stale service-worker caches interfering with static assets in tests. */
 export async function disableServiceWorker(page) {
   await page.addInitScript(() => {

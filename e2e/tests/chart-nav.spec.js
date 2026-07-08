@@ -6,6 +6,7 @@ import {
   waitForDashboardData,
   switchView,
   swipeChartDay,
+  isoDateDaysAgo,
 } from "../helpers.js";
 
 const CHART_DATE_KEY = "solar_chart_date";
@@ -66,14 +67,15 @@ test.describe("Chart multi-day navigation — desktop", () => {
     });
 
     const initialCount = historyRequests.length;
-    const target = page.locator('#chart-week-strip .chart-day-btn[data-date="2026-07-01"]');
+    const oldestDay = isoDateDaysAgo(6);
+    const target = page.locator(`#chart-week-strip .chart-day-btn[data-date="${oldestDay}"]`);
     await target.click();
 
     await expect(page.locator("#chart-loading")).toBeHidden();
-    await expect(page.locator("#chart-date")).toHaveValue("2026-07-01");
+    await expect(page.locator("#chart-date")).toHaveValue(oldestDay);
     await expect(page.locator("#power-chart")).toBeVisible();
     expect(historyRequests.length).toBeGreaterThan(initialCount);
-    expect(historyRequests.some((url) => url.includes("date=2026-07-01"))).toBe(true);
+    expect(historyRequests.some((url) => url.includes(`date=${oldestDay}`))).toBe(true);
   });
 
   test("persists last viewed chart date in localStorage", async ({ page }) => {

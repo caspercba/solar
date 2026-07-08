@@ -198,11 +198,33 @@ test.describe("Keyboard refresh", () => {
 
   test("does not intercept F5 when a text input is focused", async ({ page }) => {
     await switchView(page, "chart");
+    await expect(page.locator("#chart-loading")).toBeHidden();
     await page.locator("#chart-date").focus();
 
-    const navigated = page.waitForEvent("framenavigated");
+    let historyRequestCount = 0;
+    await page.route("**/api/systems/*/history?*", async (route) => {
+      historyRequestCount += 1;
+      await route.continue();
+    });
+
+    await page.evaluate(() => {
+      window.__f5DefaultPrevented = null;
+      document.addEventListener(
+        "keydown",
+        (e) => {
+          if (e.key === "F5") window.__f5DefaultPrevented = e.defaultPrevented;
+        },
+        { once: true },
+      );
+    });
+
     await page.keyboard.press("F5");
-    await navigated;
+
+    await expect
+      .poll(() => page.evaluate(() => window.__f5DefaultPrevented))
+      .not.toBeNull();
+    expect(await page.evaluate(() => window.__f5DefaultPrevented)).toBe(false);
+    expect(historyRequestCount).toBe(0);
   });
 });
 
@@ -242,7 +264,7 @@ test.describe("Poll error toast", () => {
   test("shows toast on flow view", async ({ page }) => {
     await switchView(page, "flow");
     await failNextDataPoll(page);
-    await page.locator("#system-tabs button", { hasText: "Mock Home Solar" }).click();
+    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
 
     await expect(page.locator("#poll-error-toast")).toBeVisible();
     await expect(page.locator("#flow-view")).toBeVisible();
