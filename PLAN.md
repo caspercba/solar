@@ -1,6 +1,6 @@
 # Solar Dashboard — Project Plan
 
-_Last updated: 2026-07-08_
+_Last updated: 2026-07-09_
 
 ## 1. Project Definition
 
@@ -32,12 +32,14 @@ The project exists because:
 - [x] Cards view and animated energy-flow diagram view
 - [x] Mobile UX: pull-to-refresh, skeleton loading, responsive layout
 - [x] Intraday power chart (on-demand from vendor APIs)
-- [ ] **Extended history graphs** — 7-day energy summary, SOC trend, multi-day navigation (all fetched from vendor APIs on demand)
-- [x] Production deployment docs (root README + Worker setup)
+- [x] **Extended history graphs** — 7-day energy summary, SOC trend, multi-day navigation (all fetched from vendor APIs on demand)
+- [x] Production deployment docs (root README + Worker setup + staging runbook)
 - [x] Worker unit tests for adapters and API routes (Vitest + Miniflare)
-- [ ] **Frontend unit tests** — pure helpers (formatting, CSV export, URL parsing) in Vitest + jsdom
-- [ ] **UI / E2E tests** — Playwright flows against mock Worker (setup, views, chart, system modal)
-- [ ] **CI runs all test suites** — worker + frontend unit + E2E on every PR
+- [x] **Frontend unit tests** — pure helpers (formatting, CSV export, URL parsing) in Vitest + jsdom (`frontend/lib.js`, `frontend/test/`)
+- [x] **UI / E2E tests** — Playwright flows against mock Worker (setup, dashboard, chart, chart-nav, manage-credentials, poll-interval, mobile PTR)
+- [x] **CI runs all test suites** — worker + frontend unit + E2E on every PR (`.github/workflows/ci.yml`)
+
+All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0** (HEAD of `main`). Remaining work is narrower: a handful of previously-attempted features that never landed (see §5.4), and Phase 5 expansion (adapters beyond Victron's discovery spike, i18n is done, HA bridge is done).
 
 ---
 
@@ -89,13 +91,22 @@ The project exists because:
 | `worker/src/credentials.js` | AES-GCM credential encryption/decryption |
 | `worker/src/services/shinemonitor.js` | ShineMonitor discover + fetchData + fetchHistory |
 | `worker/src/services/growatt.js` | Growatt discover + fetchData + fetchHistory |
-| `worker/wrangler.toml` | Worker name, KV binding, compatibility date |
+| `worker/src/alerts.js` | SOC/generator alert evaluation, cooldown state, webhook dispatch |
+| `worker/src/rateLimit.js` | Per-token rate limiting for data routes |
+| `worker/src/logger.js` | Structured JSON logging for adapter/alert failures |
+| `worker/src/ha.js` | Home Assistant REST bridge (normalized data for HA sensors) |
+| `worker/wrangler.toml` | Worker name, KV binding, compatibility date, `[env.staging]`, cron trigger |
+| `worker/DEPLOY.md` | Deployment runbook — secrets, KV, staging, cron, production checklist |
 | `discovery/` | ShineMonitor API reference + Python client |
 | `discovery/growatt/` | Growatt API reference + Python client |
+| `discovery/victron/` | Victron VRM discovery spike (not yet a live adapter) |
+| `discovery/ADAPTER_GUIDE.md` | Guide for adding a new inverter-brand adapter |
 | `worker/test/` | Worker unit tests (Vitest + `@cloudflare/vitest-pool-workers`) |
-| `frontend/lib.js` _(planned)_ | Extracted pure helpers from `app.js` for unit testing |
-| `frontend/test/` _(planned)_ | Frontend unit tests (Vitest + jsdom) |
-| `e2e/` _(planned)_ | Playwright specs + mock Worker fixture |
+| `frontend/lib.js` | Extracted pure helpers from `app.js` for unit testing |
+| `frontend/i18n.js` | EN/ES string tables and `t()` lookup |
+| `frontend/test/` | Frontend unit tests (Vitest + jsdom) |
+| `e2e/` | Playwright specs + mock Worker fixture |
+| `docs/decisions/` | ADRs (e.g. Victron VRM spike, WebSocket-push evaluation) |
 | `RELEASE_NOTES.md` | Version changelog |
 
 ---
@@ -167,7 +178,7 @@ Adapters expose `fetchHistory(systemConfig, date?)` returning:
 - **ShineMonitor:** paginated `queryDeviceDataOneDayPaging` → `parseHistoryRows`.
 - **Growatt:** `getStorageEnergyDayChart` + `getStorageLineChartData` (battery power overlay).
 
-### 3.3 Multi-day summary (`fetchHistorySummary`) — planned
+### 3.3 Multi-day summary (`fetchHistorySummary`) — implemented
 
 Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar charts and SOC trends, fetched live from vendor APIs:
 
@@ -237,21 +248,33 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [x] **7-day energy bar chart** — daily solar kWh below intraday chart
 - [x] **SOC trend overlay** — min/max SOC on summary days (Growatt `getStorageBatChart`)
 - [x] **CSV export** — download day series from chart view
+- [x] **Vendor-only history API** — KV snapshot layer removed; `/history` and `/history/summary` call adapters directly
+- [x] **ShineMonitor `fetchHistorySummary`** — aggregates last N days from vendor day data
+- [x] **Multi-day navigation** — prev/next controls, week strip, and swipe gesture in Chart view
+- [x] **"Estimated" badge** — shown when ShineMonitor SOC is voltage-interpolated on intraday chart
+- [x] **Chart empty and error states** — with retry, when vendor returns no data for selected date
+- [x] Configurable poll interval (manage systems modal)
+- [x] Desktop keyboard shortcut for refresh (F5 / Ctrl+R, skipped when a text input is focused)
+- [x] Error toast / retry UI when poll fails
+- [x] Light theme / high-contrast mode (persisted preference)
+- [x] Multi-system comparison view (side-by-side cards, lowest-SOC and generator highlights)
+- [x] Spanish i18n with EN/ES toggle, persisted in `localStorage`
+- [x] Battery time-to-empty estimate (cards + flow views)
+- [x] Growatt weather data on cards view
+- [x] Credential rotation UX in manage systems modal (no delete/re-add required)
+- [x] Docker Compose local dev stack (mock Worker + static frontend)
 
-### 5.2 Planned — Extended Vendor History
+### 5.2 Service adapter roadmap — see §6.3 (Victron)
 
-- [ ] **Vendor-only history API** — remove KV snapshot layer; `/history` and `/history/summary` proxy adapters directly
-- [ ] **ShineMonitor `fetchHistorySummary`** — aggregate last N days from vendor day data
-- [ ] **Multi-day navigation** — swipe or week strip to browse past days (each day = vendor round-trip)
-- [ ] **"Estimated" badge** — when ShineMonitor SOC is voltage-interpolated on intraday chart
-- [ ] **Chart empty states** — clear messaging when vendor returns no data for selected date
+### 5.3 Remaining gaps — not yet implemented
 
-### 5.3 Planned — Other
+These were previously attempted and did not land (see task board "failed" history); they remain real gaps, not just documentation drift:
 
-- [ ] Configurable poll interval
-- [ ] Desktop keyboard shortcut for refresh
-- [ ] Error toast / retry UI when poll fails
-- [ ] Light theme / high-contrast mode
+- [ ] **Per-system Generator vs Grid card label** — some systems are grid-tied without a generator; the dashboard always labels the grid-input card "Generator" (§13 Q3). Decision: add a per-system `sourceLabel` field (`generator` | `grid`, default `generator`) set in the manage-systems modal and echoed by `fetchData()`; frontend renders the card title from it.
+- [ ] **Dashboard low-SOC warning on cards** — the SOC card has no visual (color/badge) warning when battery is low; only the alert webhook (`alerts.lowSocThreshold`) reacts today, and only via cron, not in the polled UI. Reuse `alerts.lowSocThreshold` when configured, falling back to a sane default, to drive a card-level warning style.
+- [ ] **Generator runtime tracking** — accumulate hours while `grid.active` is true (session-only or vendor-only; no KV archive per the vendor-only-history policy).
+- [ ] **E2E: alerts configuration UI** — no Playwright coverage for the alert-threshold/webhook form in the manage modal.
+- [ ] **E2E: manage-systems add/remove flow** — `manage-credentials.spec.js` covers credential rotation only; add/remove-system flows are untested end-to-end.
 
 ---
 
@@ -267,9 +290,9 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [x] Field mapping: Charger Power, PV Voltage, PLoad, PGrid, Grid Voltage, Batt Current, Battery Voltage
 - [x] Use plant-level `BATTERY_SOC` when not `-1` instead of voltage estimate
 - [x] `fetchHistory` — paginated day series via `queryDeviceDataOneDayPaging`
-- [ ] Multi-device support (systems with multiple inverters)
-- [ ] Handle token/secret expiry with automatic re-auth
-- [ ] `fetchHistorySummary` — aggregate last N days from vendor day totals
+- [x] Multi-device support — discovery and aggregation across multiple inverters per system
+- [x] Automatic re-auth on token/secret expiry
+- [x] `fetchHistorySummary` — aggregate last N days from vendor day totals
 
 ### 6.2 Growatt (`growatt.js`)
 
@@ -280,9 +303,9 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [x] Real-time + today's PV energy from totals endpoint
 - [x] `fetchHistory` — `getStorageEnergyDayChart` + `getStorageLineChartData`
 - [x] `fetchSocDailySummary` — `getStorageBatChart` for 7-day charge/discharge + SOC
-- [ ] Store only session token in KV, not plaintext password (re-login on expiry)
-- [ ] `fetchHistorySummary` — daily solar/load kWh from vendor energy endpoints
-- [ ] Weather data integration (available via Growatt API)
+- [x] Store only session token (`JSESSIONID`) in KV, not plaintext password; re-login on expiry
+- [x] `fetchHistorySummary` — daily solar/load kWh from vendor energy endpoints
+- [x] Weather data integration
 
 ### 6.3 Victron VRM (`victron.js`) — not started, discovery only
 
@@ -310,8 +333,8 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 
 ### 7.2 Planned
 
-- [ ] Update README to reflect vendor-only history (remove KV snapshot docs)
-- [x] Victron VRM discovery spike (`discovery/victron/README.md`, `API.md`, `fetch_data.py`) — literature review only, not validated against a live account
+- [x] Update README to reflect vendor-only history (KV snapshot docs removed; see README "Historical data (vendor APIs)")
+- [x] Victron VRM discovery spike (`discovery/victron/README.md`, `API.md`, `fetch_data.py`, `docs/decisions/0001-victron-vrm-third-adapter-spike.md`) — literature review only, not validated against a live account (see §6.3)
 
 ### 7.3 Testing
 
@@ -321,66 +344,40 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 
 | Area | File(s) | Status |
 |------|---------|--------|
-| Auth / CORS | `auth.test.js` | Covered |
-| Credential encryption | `credentials.test.js` | Covered _(needs Vitest import fix — uses `node:test` today)_ |
+| Auth / CORS | `auth.test.js` | Covered, including preflight and 502 adapter-error cases |
+| Credential encryption | `credentials.test.js` | Covered — migrated to Vitest |
 | HTTP routes | `routes.test.js` | Covered (health, systems CRUD, auth gate) |
-| ShineMonitor adapter | `shinemonitor.test.js` | Covered (signing, SOC resolution, fetchData mock) |
-| Growatt adapter | `growatt.test.js` | Covered (STATUS_MAP, fetchData mock) |
-| History module | `history.test.js` | Covered _(to be removed/rewritten when KV snapshots deleted)_ |
-| Alerts | `alerts.test.js` | Covered (evaluate, cooldown, webhook dispatch mock) |
+| ShineMonitor adapter | `shinemonitor.test.js` | Covered (signing, SOC resolution, fetchData mock, re-auth) |
+| Growatt adapter | `growatt.test.js` | Covered (STATUS_MAP, fetchData mock, session-token storage) |
+| History module | `history.test.js`, `historySummary.test.js` | Covered — vendor-only dispatch (KV snapshot layer removed) |
+| Alerts | `alerts.test.js`, `scheduled.test.js` | Covered (evaluate, cooldown, webhook dispatch, cron `scheduled()` handler) |
+| HTTP fixtures | `fixtures.test.js`, `worker/test/fixtures/` | Covered — recorded vendor JSON for parser regression |
+| Rate limiting | `rateLimit.test.js` | Covered |
+| Structured logging | `logger.test.js` | Covered |
+| Home Assistant bridge | `ha.test.js` | Covered |
 
-**CI today:** `.github/workflows/ci.yml` runs `npm test` in `worker/` only.
+**CI today:** `.github/workflows/ci.yml` runs three jobs on every PR and push to `main` — `worker-test`, `frontend-test`, `e2e` (Playwright, Chromium) — plus release-gate/deploy jobs on `v*` tags.
 
-#### 7.3.2 Gaps — Worker unit tests
+#### 7.3.2 Worker unit tests — closed
 
-- [ ] **Unify on Vitest** — migrate `credentials.test.js` from `node:test` to Vitest so the full suite passes under `@cloudflare/vitest-pool-workers`
-- [ ] **Vendor-only history routes** — rewrite `history.test.js` after KV snapshot removal; assert direct `adapter.fetchHistory` / `fetchHistorySummary` dispatch
-- [ ] **`fetchHistorySummary` adapters** — ShineMonitor multi-day aggregate; Growatt daily energy totals (Growatt SOC summary partially covered via `fetchSocDailySummary`)
-- [ ] **Route edge cases** — invalid system ID, missing date param, adapter throw → 502 JSON, CORS preflight
-- [ ] **HTTP fixtures** — recorded vendor response JSON in `worker/test/fixtures/` for parser regression (signing stays unit-tested; row parsing uses fixtures)
-- [ ] **Alert cron integration** — `scheduled()` handler invokes `runScheduledAlerts` with mocked fetch + KV
+All items from the previous gap list have landed: Vitest unification, vendor-only history routes, `fetchHistorySummary` adapter tests, route edge cases, HTTP fixtures, and alert cron integration.
 
-#### 7.3.3 Gaps — Frontend unit tests
+#### 7.3.3 Frontend unit tests — closed
 
-`app.js` is a single script with DOM coupling. **Extract pure helpers** into `frontend/lib.js` (or similar) and test without a browser:
+Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, escaping, SOC/bar math) with a Vitest + jsdom suite under `frontend/test/`.
 
-| Function | What to assert |
-|----------|----------------|
-| `fmtW` | kW threshold formatting, rounding |
-| `fmtChartDate` | locale-safe date labels |
-| `sanitizeExportName` | strips unsafe chars, length cap |
-| `csvCell` / `historyToCsv` | RFC-style quoting, BOM-ready output |
-| `escapeAttr` | HTML attribute escaping |
-| SOC / bar math | solar % from nominal PV, load % fallback |
+#### 7.3.4 UI / E2E tests (Playwright) — closed, with two known gaps
 
-**Tooling:** root or `frontend/` Vitest config with `happy-dom` or `jsdom`; no bundler required (ESM imports).
+`e2e/tests/` covers setup, dashboard (cards/flow/compare, tabs, keyboard refresh, toast/retry), chart + chart-nav, credential rotation, poll interval, and mobile pull-to-refresh, against a mock Worker fixture (no real inverter credentials in CI).
 
-#### 7.3.4 Gaps — UI / E2E tests (Playwright)
+Not yet covered (see §5.3):
 
-End-to-end tests validate wiring between `index.html`, `app.js`, and the Worker API contract:
+- [ ] Alerts configuration UI (threshold/webhook form in manage modal)
+- [ ] Manage-systems add/remove flow (only credential rotation is covered today)
 
-| Flow | Assertions |
-|------|------------|
-| Setup screen | Invalid token → error; valid mock token → dashboard |
-| Cards view | Mock realtime JSON → SOC bar, watts, generator badge |
-| Flow view | Charge vs discharge reverses SVG animation class |
-| Chart view | History mock → canvas visible; empty mock → empty state |
-| View toggle | Cards / Flow / Chart persisted in `localStorage` |
-| System modal | Tab switch when 2+ systems (mock list) |
-| Pull-to-refresh | Trigger refresh without full page reload _(mobile viewport)_ |
+#### 7.3.5 CI — closed
 
-**Mock Worker:** lightweight Miniflare script or static JSON route map in `e2e/fixtures/` — no real inverter credentials in CI.
-
-#### 7.3.5 CI target
-
-```yaml
-jobs:
-  worker-test:   # existing — vitest in worker/
-  frontend-test: # vitest in frontend/ or repo root
-  e2e:           # playwright install + e2e/ against mock worker + static server
-```
-
-Run all three on `pull_request` and `push` to `main`. E2E may be allowed to retry once on flake.
+`worker-test`, `frontend-test`, and `e2e` all run on `pull_request` and `push` to `main`; `release-gate` validates tag format and `deploy-prereq` gates production deploy on all three passing.
 
 #### 7.3.6 Out of scope (for now)
 
@@ -394,12 +391,13 @@ Run all three on `pull_request` and `push` to `main`. E2E may be allowed to retr
 
 | Area | Current State | Target |
 |------|---------------|--------|
-| Proxy access | Bearer token (optional in dev) | Always required in production |
-| Credential storage | AES-GCM encrypted in KV when `CREDENTIALS_KEY` set | Always encrypted in production |
-| CORS | `ALLOWED_ORIGINS` allowlist or dev-mode reflect | Restrict to known frontend origins |
-| Rate limiting | None | Per-token rate limits on `/api/systems/*/data` |
+| Proxy access | Bearer token; **fails closed** (denies requests) when `API_TOKEN` unset and `PRODUCTION` secret is set | Done |
+| Credential storage | AES-GCM encrypted in KV when `CREDENTIALS_KEY` set; Growatt stores only session token, not plaintext password | Done |
+| CORS | `ALLOWED_ORIGINS` allowlist or dev-mode reflect | Done |
+| Rate limiting | Per-token rate limits on `/api/systems/*/data` (`worker/src/rateLimit.js`) | Done |
 | Discovery scripts | Env-var credentials | Already good; audit for committed secrets |
 | Growatt README | Credentials redacted | Done |
+| Structured logging | JSON error logs for adapter/alert failures (`worker/src/logger.js`) | Done; Sentry/APM remains optional (README "Sentry and third-party APM") |
 
 ---
 
@@ -407,20 +405,22 @@ Run all three on `pull_request` and `push` to `main`. E2E may be allowed to retr
 
 ### 9.1 Current
 
-- Worker: `solar-proxy` on Cloudflare (KV namespace bound in `wrangler.toml`)
+- Worker: `solar-proxy` on Cloudflare (KV namespace bound in `wrangler.toml`), plus an isolated `solar-proxy-staging` environment with its own KV namespace
 - Default proxy URL baked into setup form: `https://solar-proxy.gaspar-solar.workers.dev`
-- Frontend: static files; GitHub Actions CI runs worker tests; deploy on version tag
+- Frontend: static files, deployed to Cloudflare Pages with auto-deploy from `main`
+- GitHub Actions CI runs worker + frontend unit + Playwright E2E on every PR and push to `main`; production deploy gated on all three passing plus a `vMAJOR.MINOR.PATCH` tag
 - PWA: `manifest.json` + `sw.js` for offline shell caching
+- Cron trigger (`*/5 * * * *`) evaluates SOC/generator alert thresholds and dispatches webhooks
 
 ### 9.2 Planned
 
 - [x] GitHub Actions: worker Vitest on PR and main
-- [ ] GitHub Actions: frontend unit tests + Playwright E2E on PR and main
-- [ ] Cloudflare Pages for frontend with auto-deploy from `main`
-- [ ] Staging worker environment
+- [x] GitHub Actions: frontend unit tests + Playwright E2E on PR and main
+- [x] Cloudflare Pages for frontend with auto-deploy from `main`
+- [x] Staging worker environment
 - [x] Health check endpoint (`GET /api/health`)
-- [ ] **Cron trigger** for SOC/generator alerts only (`wrangler.toml` `[triggers]`)
-- [ ] Structured logging / error reporting (e.g. Workers Analytics, Sentry)
+- [x] **Cron trigger** for SOC/generator alerts only (`wrangler.toml` `[triggers]`)
+- [x] Structured logging / error reporting (`worker/src/logger.js`; Workers Analytics Engine and Sentry documented as optional add-ons in README)
 
 ---
 
@@ -436,21 +436,21 @@ Run all three on `pull_request` and `push` to `main`. E2E may be allowed to retr
 ### 10.2 Medium Impact
 
 5. **PWA** — done (`manifest.json`, service worker).
-6. **Alerts / notifications** — webhook or email when SOC drops below threshold or generator starts (Worker cron trigger).
-7. **Comparison view** — side-by-side cards when multiple systems selected (uses existing `/api/systems/all/data`).
-8. **Configurable thresholds** — user-defined low-battery warning level, generator detection sensitivity.
-9. **i18n** — Spanish labels (many Growatt/ShineMonitor users in LATAM).
+6. **Alerts / notifications** — done. Webhook when SOC drops below threshold, via Worker cron trigger with per-system cooldown. Remaining gap: no card-level visual warning in the polled UI (§5.3), and no E2E coverage for the config form (§7.3.4).
+7. **Comparison view** — done (`/api/systems/all/data`-backed side-by-side cards, lowest-SOC/generator highlights).
+8. **Configurable thresholds** — done for low-battery (`alerts.lowSocThreshold`); generator-detection sensitivity (`gridV`/`gridW` thresholds in the adapter) is still a fixed constant, not user-configurable.
+9. **i18n** — done. EN/ES toggle, persisted in `localStorage`, covers dashboard, manage modal, themes, and compare view strings.
 
 ### 10.3 Nice to Have
 
-10. **Additional adapters** — Victron VRM, Solis, Deye, SMA (each needs discovery pass like existing folders). Victron VRM discovery spike complete (`discovery/victron/`, ADR 0001) — official public API docs make it the lowest-risk of the three, but sites expose multiple devices per installation (battery monitor, solar chargers, inverter), so the adapter's `discover()` will need a device-instance role map, not a single serial like ShineMonitor/Growatt. Not yet validated against a live VRM account. Solis/Deye remain unstarted.
-11. **Home Assistant integration** — expose normalized data via MQTT or REST for HA dashboards.
-12. **Dark/light theme toggle** with system preference detection.
-13. **WebSocket push** — replace polling when inverter APIs support it (ShineMonitor has `ws.shinemonitor.com`).
-14. **Battery time-to-empty estimate** — based on current load and SOC.
-15. **Generator runtime tracking** — accumulate hours when `grid.active` is true (session or vendor only; no KV archive).
-16. **E2E tests** — Playwright against mock Worker _(planned — see §7.3.4)_.
-17. **Docker-compose local dev** — Miniflare + static file server for offline development.
+10. **Additional adapters** — Victron VRM, Solis, Deye, SMA (each needs a discovery pass like existing folders). Victron VRM discovery spike complete (`discovery/victron/`, ADR 0001) — official public API docs make it the lowest-risk of the three, but sites expose multiple devices per installation (battery monitor, solar chargers, inverter), so the adapter's `discover()` will need a device-instance role map, not a single serial like ShineMonitor/Growatt. Not yet validated against a live VRM account, and `worker/src/services/victron.js` doesn't exist yet. Solis/Deye remain unstarted.
+11. **Home Assistant integration** — done (`worker/src/ha.js` REST bridge + README integration docs).
+12. **Dark/light theme toggle** — done, with persisted preference (system-preference auto-detection not implemented).
+13. **WebSocket push** — evaluated and deferred; see `discovery/WEBSOCKET_REALTIME.md`. Decision: keep HTTP polling.
+14. **Battery time-to-empty estimate** — done (cards + flow views).
+15. **Generator runtime tracking** — not implemented; see §5.3.
+16. **E2E tests** — done for the core flows; alerts config and manage-systems add/remove remain uncovered (§7.3.4).
+17. **Docker-compose local dev** — done (`docker-compose.yml`, `scripts/dev-local.js`).
 
 ---
 
@@ -458,11 +458,15 @@ Run all three on `pull_request` and `push` to `main`. E2E may be allowed to retr
 
 | Version | Highlights |
 |---------|------------|
-| **v1.2.0** (planned) | Vendor-only history refactor, ShineMonitor multi-day summary, chart polish |
+| **v1.3.0** (tagged, current `main`) | Compare view, i18n (ES), light/high-contrast themes, configurable poll interval, HA REST bridge, keyboard refresh, poll error toast, battery time-to-empty, Growatt weather, credential rotation UX, ShineMonitor multi-device + re-auth, Growatt session-token-only storage, chart multi-day nav polish, Docker Compose dev stack, fail-closed `API_TOKEN` |
+| **v1.2.1** | Fix Cloudflare Pages deploy missing `frontend/lib.js` |
+| **v1.2.0** | Vendor-only history refactor, ShineMonitor multi-day summary, chart polish |
 | **v1.1.0** | Skeleton loading, pull-to-refresh, timezone-aware date queries, yesterday fallback |
 | **v1.0.0** | Initial release: cards + flow views, multi-system proxy, ShineMonitor + Growatt adapters |
 
 See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
+
+**Doc/version sync gap:** the `v1.3.0` git tag points at the current `main` tip, but `RELEASE_NOTES.md` still lists this content under `## Unreleased` (no `## v1.3.0` heading), and root `package.json` still reads `"version": "1.2.0"`. See the tracked task to close this out.
 
 ---
 
@@ -482,19 +486,19 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 
 - [x] Root README with architecture and deploy instructions
 - [x] Redact credentials from discovery docs
-- [ ] Always-on API_TOKEN in production (ops/config, not code)
+- [x] Always-on API_TOKEN in production — fails closed when `PRODUCTION` secret is set and `API_TOKEN` is unset
 - [x] CORS origin allowlist
 - [x] Health check endpoint
 - [x] Basic worker unit tests (Vitest + Miniflare)
-- [ ] Frontend unit tests (extract helpers + Vitest)
-- [ ] Playwright E2E suite with mock Worker
-- [ ] CI runs worker + frontend + E2E
+- [x] Frontend unit tests (extract helpers + Vitest)
+- [x] Playwright E2E suite with mock Worker
+- [x] CI runs worker + frontend + E2E
 - [x] Credential encryption at rest
-- [x] GitHub Actions CI/CD (worker only today)
+- [x] GitHub Actions CI/CD (worker + frontend + E2E; tag-gated deploy)
 
-### Phase 3 — Data Depth (In Progress)
+### Phase 3 — Data Depth (Complete)
 
-**3a — On-demand intraday history (complete):**
+**3a — On-demand intraday history:**
 
 - [x] Intraday power chart (both adapters)
 - [x] `/api/systems/:id/history` endpoint
@@ -502,48 +506,54 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] Multi-plant picker during system setup
 - [x] Use ShineMonitor `BATTERY_SOC` when valid
 
-**3b — Vendor-only extended graphs (next):**
+**3b — Vendor-only extended graphs:**
 
-- [ ] Remove KV history storage and cron snapshots (align code with vendor-only policy)
-- [ ] Refactor `/history` to call `adapter.fetchHistory` directly (no stored-first merge)
-- [ ] Refactor `/history/summary` to call `adapter.fetchHistorySummary` (vendor aggregate)
-- [ ] ShineMonitor `fetchHistorySummary` for 7-day energy totals
-- [ ] Chart empty states for vendor API gaps
-- [ ] Update README and tests for vendor-only history
+- [x] Remove KV history storage and cron snapshots (align code with vendor-only policy)
+- [x] Refactor `/history` to call `adapter.fetchHistory` directly (no stored-first merge)
+- [x] Refactor `/history/summary` to call `adapter.fetchHistorySummary` (vendor aggregate)
+- [x] ShineMonitor `fetchHistorySummary` for 7-day energy totals
+- [x] Chart empty states for vendor API gaps
+- [x] Update README and tests for vendor-only history
 
-**3c — Test coverage expansion (parallel):**
+**3c — Test coverage expansion:**
 
-- [ ] Fix `credentials.test.js` Vitest compatibility
-- [ ] Extract `frontend/lib.js` pure helpers from `app.js`
-- [ ] Frontend unit tests (formatting, CSV, escaping)
-- [ ] Mock Worker fixture for integration and E2E
-- [ ] Playwright E2E: setup, cards, flow, chart, system modal
-- [ ] CI jobs for frontend unit + E2E tests
-- [ ] Worker tests for `fetchHistorySummary` and alert cron handler
+- [x] Fix `credentials.test.js` Vitest compatibility
+- [x] Extract `frontend/lib.js` pure helpers from `app.js`
+- [x] Frontend unit tests (formatting, CSV, escaping)
+- [x] Mock Worker fixture for integration and E2E
+- [x] Playwright E2E: setup, cards, flow, chart, system modal, credential rotation, poll interval, mobile PTR
+- [x] CI jobs for frontend unit + E2E tests
+- [x] Worker tests for `fetchHistorySummary` and alert cron handler
 
-### Phase 4 — Productization
+### Phase 4 — Productization (Complete)
 
 - [x] PWA support
 - [x] CI/CD pipeline
-- [ ] SOC threshold alerts (Worker cron + webhook) — _in progress_
-- [ ] Staging environment
+- [x] SOC threshold alerts (Worker cron + webhook)
+- [x] Staging environment
 
-### Phase 5 — Expansion
+### Phase 5 — Expansion (In Progress)
 
-- [ ] Third-party adapter framework documented
-- [ ] Victron or Solis adapter (TBD by user need)
-- [ ] Home Assistant bridge
-- [ ] i18n (ES)
+- [x] Third-party adapter framework documented (`discovery/ADAPTER_GUIDE.md`)
+- [x] Home Assistant bridge
+- [x] i18n (ES)
+- [ ] Victron VRM adapter — discovery spike complete (ADR 0001); live-account validation, device-instance role mapping, and `worker/src/services/victron.js` implementation still open
+- [ ] Solis / Deye / SMA adapters — unstarted
+- [ ] Per-system Generator vs Grid card label (§5.3)
+- [ ] Dashboard low-SOC warning on cards (§5.3)
+- [ ] Generator runtime tracking (§5.3)
+- [ ] E2E coverage for alerts config UI and manage-systems add/remove (§7.3.4)
+- [ ] Close release-notes/version-number sync gap for v1.3.0 (§11)
 
 ---
 
 ## 13. Open Questions
 
-1. **Hosting split** — Should frontend and worker share a Cloudflare account/project, or remain independently deployable?
-2. **SOC source of truth** — For ShineMonitor, prefer API `BATTERY_SOC` when valid (current behavior). Show "estimated" badge when voltage-interpolated?
-3. **Generator vs grid** — Current UI labels grid input as "Generator"; some systems are grid-tied without a generator. Should labeling be configurable per system?
-4. **Credential rotation** — How should users update passwords without deleting and re-adding a system?
-5. **Multi-user access** — Is one shared token sufficient, or do we need per-user tokens / audit log?
+1. **Hosting split** — Should frontend and worker share a Cloudflare account/project, or remain independently deployable? _(Still open; current setup keeps them independently deployable — Pages for frontend, Workers for backend.)_
+2. **SOC source of truth** — _Resolved._ Prefer API `BATTERY_SOC` when valid; show an "Estimated" badge when voltage-interpolated (implemented).
+3. **Generator vs grid** — Current UI labels grid input as "Generator"; some systems are grid-tied without a generator. _Decision made this pass:_ add a per-system `sourceLabel` field (`generator` | `grid`, default `generator`) — tracked as a task (§5.3).
+4. **Credential rotation** — _Resolved._ In-place credential rotation UX shipped in the manage-systems modal; no delete/re-add required.
+5. **Multi-user access** — Is one shared token sufficient, or do we need per-user tokens / audit log? _(Still open; no work started.)_
 
 ---
 
@@ -556,7 +566,8 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 | KV credential leak if Worker compromised | Encrypt credentials; minimal secret surface; rotate API_TOKEN |
 | Growatt session expiry mid-poll | 4-min cache TTL + retry with re-login on 401 |
 | Voltage-based SOC inaccurate | Prefer API SOC; show "estimated" badge when interpolated |
-| Vendor history gaps / account offline | Accept limitation; show clear empty states; yesterday fallback for ShineMonitor realtime |
+| Vendor history gaps / account offline | Accept limitation; clear empty/error states with retry; yesterday fallback for ShineMonitor realtime |
 | Vendor rate limits on multi-day fetches | Cache vendor responses in-memory per isolate; limit summary `days` param |
-| No frontend or E2E tests | Extract testable helpers; Playwright + mock Worker in CI (§7.3) |
-| `credentials.test.js` uses `node:test` | Migrate to Vitest so full worker suite passes in CI |
+| `RELEASE_NOTES.md` / `package.json` version lag behind the `v1.3.0` git tag | Sync docs and version number as part of the next release task (§11) |
+| No card-level low-SOC visual warning; alerts config and manage-add/remove flows lack E2E coverage | Tracked as open work (§5.3, §7.3.4) |
+| Generator-detection thresholds (`gridV`/`gridW`) are fixed constants, not user-configurable | Acceptable for now; revisit if a system's detection proves unreliable |
