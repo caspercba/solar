@@ -1,0 +1,41 @@
+Task: Add Playwright E2E test for manage-systems add/remove flow
+
+Note: this repo has no root-level pnpm scripts (no pnpm-workspace.yaml, no root
+"test"/"test:e2e" scripts) — each subproject (worker/, frontend/, e2e/) manages
+its own npm deps/scripts, matching .github/workflows/ci.yml. Ran the equivalent
+commands per subproject instead of `pnpm test` / `pnpm test:e2e`.
+
+Commands run:
+1. cd worker && npm ci && npm test          -> PASS (13 files, 150 tests)
+2. cd frontend && npm ci && npm test        -> PASS (2 files, 77 tests)
+3. cd e2e && npm ci && npx playwright install chromium
+   && npx playwright test                    -> PASS (82 passed, 2 skipped [pre-existing])
+
+New file: e2e/tests/manage-systems.spec.js
+- "Add system" describe:
+  - happy path: 0 configured systems -> app auto-opens #add-system-modal on boot,
+    fill service/name/user/pass, mock POST /api/systems 201 + subsequent
+    GET /api/systems returning the new system, mock GET .../data for the new id;
+    asserts modal closes, dashboard renders, header title shows new system name,
+    and the POST body matches the form input.
+  - discovery failure: mock POST /api/systems -> 502
+    {error: "Discovery failed: Invalid credentials"}; asserts #add-error text,
+    modal stays open, submit button re-enabled with original label.
+- "Remove system" describe (2 mock systems from fixtures):
+  - confirm accepted: page.once("dialog", accept), mock DELETE
+    /api/systems/:id + GET /api/systems returning the remaining system; asserts
+    DELETE fired, row removed from manage list, tabs hidden (1 system left),
+    header title updates.
+  - confirm dismissed: page.once("dialog", dismiss); asserts DELETE never called
+    and the row remains.
+
+All mutating requests (POST /api/systems, DELETE /api/systems/:id) are
+intercepted via page.route().fulfill() rather than routed through to the real
+mock-worker.js fixture, since that fixture's `systems` array is shared
+module-level state across the whole Playwright run (fullyParallel, single
+webServer instance) — mutating it in one spec would leak into other spec
+files/tests. This mirrors the existing pattern in
+e2e/tests/dashboard.spec.js ("Poll error toast" describe block).
+
+Result: all tests pass. No implementation bugs found; nothing to hand to the
+Developer.
