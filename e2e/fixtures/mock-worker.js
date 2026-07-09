@@ -14,6 +14,7 @@ import {
   MOCK_SYSTEM_ID,
   MOCK_TOKEN,
   EMPTY_HISTORY_DATE,
+  defaultAlerts,
   health,
   systems,
   realtimeData,
@@ -56,6 +57,44 @@ function resolveOrigin(request) {
   return request.headers.get("Origin") || "*";
 }
 
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+/** Mirror worker/src/alerts.js normalization for E2E PUT /alerts. */
+function normalizeAlerts(alerts = {}) {
+  const merged = { ...defaultAlerts, ...alerts };
+  merged.lowSocThreshold = clampNumber(
+    merged.lowSocThreshold,
+    0,
+    100,
+    defaultAlerts.lowSocThreshold,
+  );
+  merged.cooldownMinutes = clampNumber(
+    merged.cooldownMinutes,
+    5,
+    1440,
+    defaultAlerts.cooldownMinutes,
+  );
+  merged.webhookUrl = String(merged.webhookUrl || "").trim();
+  return merged;
+}
+
+function publicAlerts(alerts) {
+  const normalized = normalizeAlerts(alerts);
+  return {
+    enabled: normalized.enabled,
+    webhookUrl: normalized.webhookUrl,
+    lowSocThreshold: normalized.lowSocThreshold,
+    notifyLowSoc: normalized.notifyLowSoc,
+    notifyGenerator: normalized.notifyGenerator,
+    cooldownMinutes: normalized.cooldownMinutes,
+    webhookConfigured: Boolean(normalized.webhookUrl),
+  };
+}
+
 /**
  * Fetch-style handler mirroring worker route paths used by the dashboard.
  * @param {Request} request
@@ -87,6 +126,29 @@ export async function handleMockWorkerRequest(request) {
 
   if (path === "/api/systems/all/data" && request.method === "GET") {
     return json(systems.map((s) => realtimeData(s.id)), 200, origin);
+  }
+
+  const alertsMatch = path.match(/^\/api\/systems\/([^/]+)\/alerts$/);
+  if (alertsMatch && request.method === "PUT") {
+    const id = alertsMatch[1];
+    const sys = systems.find((s) => s.id === id);
+    if (!sys) return error("System not found", 404, origin);
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+
+    const current = normalizeAlerts(sys.alerts);
+    const updated = normalizeAlerts({
+      ...current,
+      ...body,
+      webhookUrl: body.webhookUrl != null ? body.webhookUrl : current.webhookUrl,
+    });
+    sys.alerts = publicAlerts(updated);
+    return json(sys.alerts, 200, origin);
   }
 
   const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
