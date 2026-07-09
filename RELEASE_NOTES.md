@@ -14,6 +14,7 @@ Work merged to `main` since v1.2.1, not yet tagged.
 - Add battery time-to-empty estimate on cards and flow views.
 - Add Growatt weather data to realtime data and cards view.
 - Add credential rotation UX for existing systems (no more delete/re-add).
+- Redesign the settings modal into a Settings hub (preferences + system list) and a separate per-system detail screen (credentials, alerts, remove), replacing the single modal that showed every system's forms expanded at once.
 - Support ShineMonitor multi-inverter discovery and aggregation.
 - Store Growatt session token (`JSESSIONID`) in KV instead of plaintext password; add automatic ShineMonitor re-auth on token expiry.
 - Extend multi-day chart navigation with prev/next controls alongside the week strip and swipe gestures.

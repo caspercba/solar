@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
 
@@ -62,7 +62,7 @@
         </div>
         <span id="status-dot" class="dot dot-ok" data-i18n-title="statusConnected" title="Connected"></span>
         <button type="button" id="theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
-        <button id="manage-btn" data-i18n-title="manageSystems" title="Manage systems">&#x2699;</button>
+        <button id="manage-btn" data-i18n-title="settingsTitle" title="Settings">&#x2699;</button>
         <button id="disconnect-btn" data-i18n-title="disconnect" title="Disconnect">&#x2715;</button>
       </div>
     </header>
@@ -294,28 +294,53 @@
     </div>
   </div>
 
-  <!-- Manage Systems modal -->
+  <!-- Settings modal (hub: preferences + systems list) -->
   <div id="manage-modal" class="modal-overlay" hidden>
     <div class="modal modal-wide">
-      <h2 data-i18n="systems">Systems</h2>
-      <div class="manage-settings">
-        <label for="theme-select" data-i18n="theme">Theme</label>
-        <select id="theme-select" data-i18n-aria="themeAria" aria-label="Color theme">
-          <option value="dark" data-i18n="themeDark">Dark</option>
-          <option value="light" data-i18n="themeLight">Light</option>
-          <option value="high-contrast" data-i18n="themeHighContrast">High contrast</option>
-        </select>
-        <label for="poll-interval" data-i18n="refreshInterval">Refresh interval</label>
-        <select id="poll-interval" data-i18n-aria="refreshIntervalAria" aria-label="Data refresh interval"></select>
-      </div>
-      <div id="manage-list" class="manage-list"></div>
+      <h2 data-i18n="settingsTitle">Settings</h2>
+
+      <section class="settings-section">
+        <h3 class="settings-section-title" data-i18n="preferences">Preferences</h3>
+        <div class="manage-settings">
+          <label for="theme-select" data-i18n="theme">Theme</label>
+          <select id="theme-select" data-i18n-aria="themeAria" aria-label="Color theme">
+            <option value="dark" data-i18n="themeDark">Dark</option>
+            <option value="light" data-i18n="themeLight">Light</option>
+            <option value="high-contrast" data-i18n="themeHighContrast">High contrast</option>
+          </select>
+          <label for="poll-interval" data-i18n="refreshInterval">Refresh interval</label>
+          <select id="poll-interval" data-i18n-aria="refreshIntervalAria" aria-label="Data refresh interval"></select>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="settings-section-header">
+          <h3 class="settings-section-title" data-i18n="systems">Systems</h3>
+          <button type="button" id="manage-add" class="btn-link" data-i18n="addSystemBtn">+ Add System</button>
+        </div>
+        <div id="manage-list" class="manage-list"></div>
+      </section>
+
       <div class="modal-actions">
-        <button type="button" id="manage-add" class="btn-secondary" data-i18n="addSystemBtn">+ Add System</button>
         <button type="button" id="manage-close" data-i18n="close">Close</button>
       </div>
     </div>
   </div>
 
-  <script type="module" src="app.js?v=16"></script>
+  <!-- System Detail modal (credentials + alerts + remove for one system) -->
+  <div id="system-detail-modal" class="modal-overlay" hidden>
+    <div class="modal modal-wide">
+      <div class="detail-header">
+        <button type="button" id="detail-back" class="detail-back" data-i18n-aria="back" aria-label="Back">&#8249;</button>
+        <h2 id="detail-title">System</h2>
+      </div>
+      <div id="detail-body"></div>
+      <div class="modal-actions">
+        <button type="button" id="detail-remove" class="btn-danger" data-i18n="removeSystem">Remove system</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js?v=17"></script>
 </body>
 </html>
