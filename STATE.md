@@ -13,8 +13,8 @@ _Last updated: 2026-07-09_
 - Mobile UX: pull-to-refresh, skeleton loading, responsive layout
 - URL deep-link auto-login (`?proxy=...&token=...`)
 - Timezone-aware date queries and yesterday fallback (ShineMonitor)
-- RELEASE_NOTES.md changelog (v1.0.0, v1.1.0)
-- **PLAN.md** — project definition, vendor-only history policy, testing strategy (§7.3)
+- RELEASE_NOTES.md changelog (v1.0.0–v1.2.1)
+- **PLAN.md** — project definition, vendor-only history policy, testing strategy (§7.3); synced to v1.3.0 reality (2026-07-09)
 - Root README with architecture and deployment guide (vendor-only history documented)
 - Credentials redacted from `discovery/growatt/README.md`
 - Health check endpoint (`GET /api/health`)
@@ -33,7 +33,7 @@ _Last updated: 2026-07-09_
 - Chart empty states and error messaging when vendor returns no data
 - **Vendor-only history refactor** — KV snapshot layer removed; `history.js` is shared adapter math only
 - **Frontend unit tests** — pure helpers extracted to `frontend/lib.js`; Vitest + jsdom
-- **Playwright E2E** — setup, dashboard, chart, chart navigation, compare view, poll interval, mobile PTR against mock Worker (`e2e/`)
+- **Playwright E2E** — setup, dashboard, chart, chart navigation, compare view, poll interval, mobile PTR, credential rotation against mock Worker (`e2e/`)
 - **CI** — worker + frontend unit + E2E jobs on PR and main; Cloudflare Pages deploy on push to `main`; Worker deploy on release tags (`.github/workflows/ci.yml`)
 - Worker tests for `fetchHistorySummary` (`historySummary.test.js`) and alert cron (`scheduled.test.js`)
 - HTTP fixtures for vendor parser regression (`worker/test/fixtures/`)
@@ -62,7 +62,7 @@ _Last updated: 2026-07-09_
 - **Growatt weather strip** — optional temperature/condition/irradiance on cards view
 - **Victron VRM discovery spike** — `discovery/victron/` (README, API.md, `fetch_data.py`); literature review only, not validated against a live account; see ADR 0001
 - **Worker route edge cases** — CORS preflight and adapter 502 paths covered (`auth.test.js`)
-- **Planning pass (2026-07-09)** — PLAN.md checkboxes and phase statuses synced to actual v1.3.0 implementation; confirmed via repo inspection (git tags, file tree, test files) rather than assumed from the prior doc snapshot
+- **Planning pass (2026-07-09)** — PLAN.md and STATE.md reconciled against codebase and task board; Phases 1–4 complete at **v1.3.0** tag
 
 ## In Progress
 
@@ -70,28 +70,33 @@ _None._
 
 ## Up Next
 
-_Priority order — the five items below are the only unimplemented feature/coverage gaps found this pass (confirmed against the codebase, not just docs); everything else previously listed as "planned" is done. See PLAN.md §5.3, §7.3.4, §11 for full detail._
+_Priority order after this planning pass. Phases 1–4 are complete; remaining work is §5.3 gaps, release-doc sync, and Phase 5 expansion._
 
-**Real feature/test gaps (previously attempted, did not land — see task board "failed" history):**
+**Awaiting merge (ready on worker branches — orchestrator queue):**
 
-1. Configurable per-system "Generator" vs "Grid" card label — add a per-system `sourceLabel` field (default `generator`), settable in manage-systems modal, echoed by `fetchData()`
-2. Dashboard low-SOC warning on cards — no visual (color/badge) warning when battery is low in the polled UI today; only the alert webhook reacts, and only via cron. Reuse `alerts.lowSocThreshold` when configured
-3. Generator runtime tracking — accumulate hours when `grid.active` is true (session or vendor only; no KV archive)
-4. Playwright E2E for alerts configuration in manage-systems modal
-5. Playwright E2E for manage-systems add/remove flow (only credential rotation is covered today)
+1. Dashboard low-SOC warning threshold on cards (visual badge/style when SOC below `alerts.lowSocThreshold`)
+2. Generator runtime tracking when `grid.active` (session-only; no KV archive)
+3. Manage-systems modal fix — Close/Save buttons unreachable after low-SOC alert field added
+4. Settings section improvements in manage modal
+5. Playwright E2E for manage-systems add/remove flow (credential rotation covered; add/remove not)
 
-**Doc/release sync:**
+**Failed — needs retry:**
 
-6. `RELEASE_NOTES.md` still lists the v1.3.0 feature set under `## Unreleased` even though the `v1.3.0` git tag already points at current `main` — add the `## v1.3.0` heading
-7. Root `package.json` still reads `"version": "1.2.0"` — bump to `1.3.0` to match the tag
+6. Per-system "Generator" vs "Grid" card label (`sourceLabel` field on system config + manage modal + `fetchData()` echo)
 
-**Nice-to-have (no urgency):**
+**Still open (not on task board):**
 
-8. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`); revisit only if polling proves insufficient
-9. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account (attribute codes, `stats` interval enum) before `worker/src/services/victron.js` is written; Solis/Deye remain unstarted
-10. Generator-detection sensitivity (`gridV`/`gridW` thresholds) is a fixed constant, not user-configurable — revisit if a system's detection proves unreliable
-11. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
-12. Multi-user access — per-user tokens / audit log (no work started; open question)
+7. Playwright E2E for alerts configuration UI (threshold/webhook form in manage modal)
+8. `RELEASE_NOTES.md` — move v1.3.0 feature list from `## Unreleased` to `## v1.3.0` (tag already on `main`)
+9. Root `package.json` version bump `1.2.0` → `1.3.0` to match git tag
+
+**Phase 5 expansion (no urgency):**
+
+10. Victron VRM live-account verification, then `worker/src/services/victron.js` (discovery spike done; Solis/Deye unstarted)
+11. Configurable generator-detection thresholds (`gridV`/`gridW` constants today)
+12. Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
+13. Multi-user access — per-user tokens / audit log (open question; no work started)
+14. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`)
 
 ## Blocked
 
@@ -106,7 +111,7 @@ _None._
 - **Multi-plant selection at setup** — `requiresPlantSelection` flow when account has multiple plants.
 - **Multi-device selection at setup** — `requiresDeviceSelection` flow; optional aggregate mode for multi-inverter plants.
 - **ShineMonitor SOC** — prefer API `BATTERY_SOC` when valid; voltage interpolation (42.0 V → 0%, 53.5 V → 100%) as fallback; show "Estimated" badge when interpolated on chart.
-- **Generator label for grid input** — `grid.active` drives the "Generator" card; suitable for off-grid setups with gen input. Per-system override planned via a `sourceLabel` field (`generator` | `grid`) — see Up Next #1.
+- **Generator label for grid input** — `grid.active` drives the "Generator" card; suitable for off-grid setups with gen input. Per-system override via `sourceLabel` (`generator` | `grid`, default `generator`) — decision made; implementation failed once (see Up Next #6).
 - **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV.
 - **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
 - **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
@@ -123,4 +128,6 @@ _None._
 - **Vendor history gaps** — chart view depends on vendor API availability; no local backfill; empty states mitigate UX impact.
 - **Vendor rate limits** — multi-day summary and week navigation require N vendor round-trips; in-memory cache and `days` cap mitigate; Worker rate limiting protects proxy abuse.
 - **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` must be set in production; dev-mode open auth remains a footgun if misconfigured (mitigated by fail-closed `PRODUCTION` guard).
-- **Release doc lag** — `v1.3.0` is tagged at current `main`, but `RELEASE_NOTES.md` and `package.json` haven't been updated to match (see Up Next #6–7); a future release pass could tag over content that looks "unreleased" in the changelog.
+- **Release doc lag** — `v1.3.0` is tagged at current `main`, but `RELEASE_NOTES.md` and `package.json` haven't been updated to match (see Up Next #8–9).
+- **E2E coverage gap** — alerts configuration form in manage modal has no Playwright spec (see Up Next #7).
+- **Failed feature retry** — per-system `sourceLabel` task failed once; needs a fresh attempt with clearer KV/adapter contract (see Up Next #6).
