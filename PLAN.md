@@ -398,6 +398,8 @@ Not yet covered (see §5.3):
 | Discovery scripts | Env-var credentials | Already good; audit for committed secrets |
 | Growatt README | Credentials redacted | Done |
 | Structured logging | JSON error logs for adapter/alert failures (`worker/src/logger.js`) | Done; Sentry/APM remains optional (README "Sentry and third-party APM") |
+| Multi-user access | Single shared `API_TOKEN` (default) | Optional per-user opaque keys in KV when needed (ADR 0002 Phase 2) |
+| Admin audit trail | None | Mutation-only audit log on system CRUD / credentials / alerts (ADR 0002 Phase 1) |
 
 ---
 
@@ -544,6 +546,8 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [ ] Generator runtime tracking (§5.3)
 - [ ] E2E coverage for alerts config UI and manage-systems add/remove (§7.3.4)
 - [ ] Close release-notes/version-number sync gap for v1.3.0 (§11)
+- [ ] Mutation audit log for admin API routes (ADR 0002 Phase 1 — defer until requested)
+- [ ] Per-user opaque API keys in KV (ADR 0002 Phase 2 — defer until multi-user requirement)
 
 ---
 
@@ -553,7 +557,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 2. **SOC source of truth** — _Resolved._ Prefer API `BATTERY_SOC` when valid; show an "Estimated" badge when voltage-interpolated (implemented).
 3. **Generator vs grid** — Current UI labels grid input as "Generator"; some systems are grid-tied without a generator. _Decision made this pass:_ add a per-system `sourceLabel` field (`generator` | `grid`, default `generator`) — tracked as a task (§5.3).
 4. **Credential rotation** — _Resolved._ In-place credential rotation UX shipped in the manage-systems modal; no delete/re-add required.
-5. **Multi-user access** — Is one shared token sufficient, or do we need per-user tokens / audit log? _(Still open; no work started.)_
+5. **Multi-user access** — _Resolved (ADR 0002)._ Single shared `API_TOKEN` remains the default for households and trusted small groups. Add a **mutation-only audit log** (Phase 1) when attribution is needed; add **per-user opaque API keys in KV** with `read` / `admin` roles (Phase 2) only when independent revoke or read-only access is required. Cloudflare Access is optional for admin/token-minting surfaces, not primary end-user auth. JWT and third-party IdP rejected for this static-frontend architecture.
 
 ---
 
