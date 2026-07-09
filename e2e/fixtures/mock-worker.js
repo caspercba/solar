@@ -16,6 +16,7 @@ import {
   EMPTY_HISTORY_DATE,
   health,
   systems,
+  defaultAlerts,
   realtimeData,
   historyData,
   historySummary,
@@ -25,6 +26,10 @@ export { EMPTY_HISTORY_DATE };
 
 export const MOCK_PORT = Number(process.env.MOCK_WORKER_PORT) || 8790;
 export const MOCK_HOST = process.env.MOCK_WORKER_HOST || "127.0.0.1";
+
+/** Pristine copy of the fixture systems, restored by POST /__e2e__/reset between tests. */
+const initialSystemsSnapshot = JSON.parse(JSON.stringify(systems));
+let nextMockSystemSeq = 1;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -77,12 +82,58 @@ export async function handleMockWorkerRequest(request) {
     return json(health, 200, origin);
   }
 
+  // Test-only helper: restore the fixture systems list to its pristine state.
+  // Not part of the real Worker API — used by e2e specs that add/remove systems.
+  if (path === "/__e2e__/reset" && request.method === "POST") {
+    systems.length = 0;
+    systems.push(...JSON.parse(JSON.stringify(initialSystemsSnapshot)));
+    nextMockSystemSeq = 1;
+    return json({ ok: true }, 200, origin);
+  }
+
   if (!checkAuth(request)) {
     return error("Unauthorized", 401, origin);
   }
 
   if (path === "/api/systems" && request.method === "GET") {
     return json(systems, 200, origin);
+  }
+
+  if (path === "/api/systems" && request.method === "POST") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+
+    const { service, name, user, password, plantId } = body || {};
+    if (!service || !user || !password) {
+      return error("Missing required fields: service, user, password", 400, origin);
+    }
+    if (!["shinemonitor", "growatt"].includes(service)) {
+      return error(`Unsupported service: ${service}`, 400, origin);
+    }
+    if (password === "bad-password") {
+      return error("Discovery failed: Invalid credentials", 502, origin);
+    }
+
+    const id = `e2e-added-mock-${nextMockSystemSeq++}`;
+    const systemName = name || `${service} system`;
+    systems.push({
+      id,
+      name: systemName,
+      service,
+      username: user,
+      alerts: { ...defaultAlerts },
+    });
+
+    return json({
+      id,
+      name: systemName,
+      service,
+      discovered: { plantId: plantId || "mock-plant-1" },
+    }, 201, origin);
   }
 
   if (path === "/api/systems/all/data" && request.method === "GET") {
@@ -118,6 +169,14 @@ export async function handleMockWorkerRequest(request) {
       username: user,
       discovered: { plantId: "mock-plant-1" },
     }, 200, origin);
+  }
+
+  const deleteMatch = path.match(/^\/api\/systems\/([^/]+)$/);
+  if (deleteMatch && request.method === "DELETE") {
+    const id = deleteMatch[1];
+    const idx = systems.findIndex((s) => s.id === id);
+    if (idx !== -1) systems.splice(idx, 1);
+    return json({ ok: true }, 200, origin);
   }
 
   const dataMatch = path.match(/^\/api\/systems\/([^/]+)\/data$/);

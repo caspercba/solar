@@ -74,6 +74,7 @@ Set `CI=1` to skip the user-space dependency bootstrap and rely on system librar
 | `tests/dashboard.spec.js` | Cards SOC/watts, flow charge/discharge classes, system tabs, view toggle `localStorage` |
 | `tests/chart.spec.js` | History chart with mock data, empty state for date `2026-01-01` |
 | `tests/mobile-ptr.spec.js` | Pull-to-refresh smoke (mobile viewport) |
+| `tests/manage-systems.spec.js` | Add system via modal, remove with confirm dialog, tab bar hides at one system |
 
 Projects: **desktop-chrome** and **mobile-chrome** (Pixel 5).
 
@@ -94,6 +95,10 @@ npx playwright show-report                # After a failed run with traces
 - Date `2026-01-01` returns **empty** `points[]` to exercise chart empty-state UI.
 
 See `fixtures/payloads.js` for normalized JSON shapes matching `PLAN.md`.
+
+`POST /__e2e__/reset` (no auth) restores the fixture systems list to its pristine
+two-system state — used by specs that add/remove systems so mutations don't leak
+into other spec files sharing the mock Worker process.
 
 ## CI (GitHub Actions)
 
