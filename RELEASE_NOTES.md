@@ -12,6 +12,8 @@ Work merged to `main` since v1.2.1, not yet tagged.
 - Add desktop keyboard shortcut to refresh dashboard data.
 - Add poll error toast with retry on realtime fetch failures.
 - Add battery time-to-empty estimate on cards and flow views.
+- Add session-only generator runtime counter on the generator card (per-system,
+  stored in `localStorage`, resets on disconnect — not synced across devices).
 - Add Growatt weather data to realtime data and cards view.
 - Add credential rotation UX for existing systems (no more delete/re-add).
 - Support ShineMonitor multi-inverter discovery and aggregation.

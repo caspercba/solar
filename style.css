@@ -473,6 +473,17 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .gen-on  { background: color-mix(in srgb, var(--accent-gen) 15%, transparent); color: var(--accent-gen); }
 .gen-off { background: color-mix(in srgb, var(--text-dim) 10%, transparent);  color: var(--text-dim); }
 
+.gen-runtime {
+  margin-top: .5rem;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--accent-gen);
+  letter-spacing: .02em;
+  cursor: help;
+}
+
+.gen-runtime[hidden] { display: none; }
+
 /* ---------- VIEW TOGGLE ---------- */
 
 .view-toggle {

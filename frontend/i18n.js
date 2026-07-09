@@ -137,6 +137,13 @@ const messages = {
     timeToEmptyHours: "{h}h",
     timeToEmptyHoursMinutes: "{h}h {m}m",
     timeToEmptyLabel: "~{duration} left",
+
+    genRuntimeLabel: "Runtime",
+    genRuntimeLessThanMinute: "<1m",
+    genRuntimeMinutes: "{m}m",
+    genRuntimeHours: "{h}h",
+    genRuntimeHoursMinutes: "{h}h {m}m",
+    genRuntimeSessionNote: "This session only, not synced across devices",
   },
   es: {
     appTitle: "Panel Solar",
@@ -270,6 +277,13 @@ const messages = {
     timeToEmptyHours: "{h} h",
     timeToEmptyHoursMinutes: "{h} h {m} min",
     timeToEmptyLabel: "~{duration} restante",
+
+    genRuntimeLabel: "Tiempo de uso",
+    genRuntimeLessThanMinute: "<1 min",
+    genRuntimeMinutes: "{m} min",
+    genRuntimeHours: "{h} h",
+    genRuntimeHoursMinutes: "{h} h {m} min",
+    genRuntimeSessionNote: "Solo esta sesión, no se sincroniza entre dispositivos",
   },
 };
 
