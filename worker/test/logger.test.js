@@ -139,6 +139,43 @@ describe("logError / logAdapterError", () => {
     expect(line).not.toContain('"abc"');
     expect(line).toContain("[redacted]");
   });
+
+  it("writes Analytics Engine data point when env.ANALYTICS is bound", () => {
+    const writeDataPoint = vi.fn();
+    logAdapterError(
+      { ANALYTICS: { writeDataPoint } },
+      "alert_webhook_failed",
+      {
+        systemId: "sys-1",
+        service: "growatt",
+        route: "scheduled/alerts",
+        alertType: "low_soc",
+        error: new Error("Webhook failed (500)"),
+      },
+    );
+    expect(writeDataPoint).toHaveBeenCalledOnce();
+    expect(writeDataPoint.mock.calls[0][0]).toMatchObject({
+      indexes: ["sys-1"],
+      doubles: [1],
+      blobs: expect.arrayContaining([
+        "alert_webhook_failed",
+        "growatt",
+        "sys-1",
+        "scheduled/alerts",
+        "Webhook failed (500)",
+      ]),
+    });
+  });
+
+  it("skips Analytics write when binding is absent", () => {
+    const writeDataPoint = vi.fn();
+    logAdapterError({}, "adapter_fetch_failed", {
+      systemId: "sys-1",
+      service: "shinemonitor",
+      error: new Error("timeout"),
+    });
+    expect(writeDataPoint).not.toHaveBeenCalled();
+  });
 });
 
 describe("recordObservability", () => {
