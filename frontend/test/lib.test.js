@@ -37,6 +37,11 @@ import {
   resolveInitialTheme,
   getNextTheme,
   VALID_THEMES,
+  normalizeSocWarnThreshold,
+  isSocBelowWarnThreshold,
+  DEFAULT_SOC_WARN_THRESHOLD,
+  MIN_SOC_WARN_THRESHOLD,
+  MAX_SOC_WARN_THRESHOLD,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -426,6 +431,54 @@ describe("findLowestSocIds", () => {
   it("returns empty when no valid SOC values", () => {
     expect(findLowestSocIds([])).toEqual([]);
     expect(findLowestSocIds([{ systemId: "x", error: "fail" }])).toEqual([]);
+  });
+});
+
+describe("normalizeSocWarnThreshold", () => {
+  it("returns the default when unset or invalid", () => {
+    expect(normalizeSocWarnThreshold(null)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold(undefined)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold("")).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold("abc")).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+  });
+
+  it("rejects out-of-range values", () => {
+    expect(normalizeSocWarnThreshold(0)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold(MIN_SOC_WARN_THRESHOLD - 1)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold(MAX_SOC_WARN_THRESHOLD + 1)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+  });
+
+  it("accepts valid in-range values", () => {
+    expect(normalizeSocWarnThreshold(MIN_SOC_WARN_THRESHOLD)).toBe(MIN_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold(MAX_SOC_WARN_THRESHOLD)).toBe(MAX_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold("35")).toBe(35);
+    expect(normalizeSocWarnThreshold(15)).toBe(15);
+  });
+
+  it("supports a custom default", () => {
+    expect(normalizeSocWarnThreshold("nope", 30)).toBe(30);
+  });
+});
+
+describe("isSocBelowWarnThreshold", () => {
+  it("is true when SOC is below the threshold", () => {
+    expect(isSocBelowWarnThreshold(10, 20)).toBe(true);
+    expect(isSocBelowWarnThreshold(19, 20)).toBe(true);
+  });
+
+  it("is false when SOC is at or above the threshold", () => {
+    expect(isSocBelowWarnThreshold(20, 20)).toBe(false);
+    expect(isSocBelowWarnThreshold(50, 20)).toBe(false);
+  });
+
+  it("is false for non-finite SOC", () => {
+    expect(isSocBelowWarnThreshold(undefined, 20)).toBe(false);
+    expect(isSocBelowWarnThreshold(NaN, 20)).toBe(false);
+  });
+
+  it("uses the default threshold when omitted", () => {
+    expect(isSocBelowWarnThreshold(10)).toBe(true);
+    expect(isSocBelowWarnThreshold(50)).toBe(false);
   });
 });
 

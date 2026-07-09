@@ -107,6 +107,11 @@ const messages = {
     addSystemBtn: "+ Add System",
     close: "Close",
 
+    socWarnThreshold: "Low battery warning",
+    socWarnThresholdAria: "Low battery warning threshold percent",
+    socLowWarning: "Low",
+    socLowWarningTitle: "Battery is below the low-battery warning threshold ({threshold}%)",
+
     alertsEnable: "Enable alerts",
     alertsWebhook: "Webhook URL",
     alertsWebhookPlaceholder: "https://discord.com/api/webhooks/…",
@@ -239,6 +244,11 @@ const messages = {
     removeConfirm: '¿Eliminar "{name}"?',
     addSystemBtn: "+ Agregar sistema",
     close: "Cerrar",
+
+    socWarnThreshold: "Aviso de batería baja",
+    socWarnThresholdAria: "Umbral de aviso de batería baja en porcentaje",
+    socLowWarning: "Baja",
+    socLowWarningTitle: "La batería está por debajo del umbral de aviso de batería baja ({threshold}%)",
 
     alertsEnable: "Activar alertas",
     alertsWebhook: "URL del webhook",

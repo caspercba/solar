@@ -259,6 +259,22 @@ export function formatWeatherStrip(weather) {
   return parts.length ? parts.join(" · ") : null;
 }
 
+export const DEFAULT_SOC_WARN_THRESHOLD = 20;
+export const MIN_SOC_WARN_THRESHOLD = 1;
+export const MAX_SOC_WARN_THRESHOLD = 90;
+
+/** Normalize a stored/user-entered low-SOC dashboard warning threshold to a safe integer percent. */
+export function normalizeSocWarnThreshold(value, defaultPct = DEFAULT_SOC_WARN_THRESHOLD) {
+  const n = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(n) || n < MIN_SOC_WARN_THRESHOLD || n > MAX_SOC_WARN_THRESHOLD) return defaultPct;
+  return n;
+}
+
+/** True when SOC is below the configured dashboard low-battery warning threshold. */
+export function isSocBelowWarnThreshold(soc, threshold = DEFAULT_SOC_WARN_THRESHOLD) {
+  return Number.isFinite(soc) && soc < threshold;
+}
+
 /** System IDs with the lowest finite battery SOC (ties included). Skips error entries. */
 export function findLowestSocIds(items) {
   let minSoc = Infinity;
