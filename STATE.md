@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-07-08_
+_Last updated: 2026-07-09_
 
 ## Done
 
@@ -61,6 +61,8 @@ _Last updated: 2026-07-08_
 - **Home Assistant REST bridge** — `GET /api/systems/:id/ha` flat snake_case payload
 - **Growatt weather strip** — optional temperature/condition/irradiance on cards view
 - **Victron VRM discovery spike** — `discovery/victron/` (README, API.md, `fetch_data.py`); literature review only, not validated against a live account; see ADR 0001
+- **Worker route edge cases** — CORS preflight and adapter 502 paths covered (`auth.test.js`)
+- **Planning pass (2026-07-09)** — PLAN.md checkboxes and phase statuses synced to actual v1.3.0 implementation; confirmed via repo inspection (git tags, file tree, test files) rather than assumed from the prior doc snapshot
 
 ## In Progress
 
@@ -68,33 +70,28 @@ _None._
 
 ## Up Next
 
-_Priority order — documentation sync and test gaps first, then productization polish (PLAN.md Phase 4/5)._
+_Priority order — the five items below are the only unimplemented feature/coverage gaps found this pass (confirmed against the codebase, not just docs); everything else previously listed as "planned" is done. See PLAN.md §5.3, §7.3.4, §11 for full detail._
 
-**Documentation sync:**
+**Real feature/test gaps (previously attempted, did not land — see task board "failed" history):**
 
-1. Refresh PLAN.md checkboxes and success criteria to match v1.2.x implementation (many items still marked open)
-2. Update RELEASE_NOTES.md for v1.2.0 / v1.2.1 (extended history, testing, UX features)
-
-**Test gaps:**
-
-3. Worker route edge cases — CORS OPTIONS preflight responses
+1. Configurable per-system "Generator" vs "Grid" card label — add a per-system `sourceLabel` field (default `generator`), settable in manage-systems modal, echoed by `fetchData()`
+2. Dashboard low-SOC warning on cards — no visual (color/badge) warning when battery is low in the polled UI today; only the alert webhook reacts, and only via cron. Reuse `alerts.lowSocThreshold` when configured
+3. Generator runtime tracking — accumulate hours when `grid.active` is true (session or vendor only; no KV archive)
 4. Playwright E2E for alerts configuration in manage-systems modal
+5. Playwright E2E for manage-systems add/remove flow (only credential rotation is covered today)
 
-**Ops & productization:**
+**Doc/release sync:**
 
-5. Always-on `API_TOKEN` and `CREDENTIALS_KEY` in production (verify secrets set; dev-mode open auth is a footgun)
-6. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
+6. `RELEASE_NOTES.md` still lists the v1.3.0 feature set under `## Unreleased` even though the `v1.3.0` git tag already points at current `main` — add the `## v1.3.0` heading
+7. Root `package.json` still reads `"version": "1.2.0"` — bump to `1.3.0` to match the tag
 
-**UX & labeling:**
+**Nice-to-have (no urgency):**
 
-7. Configurable per-system "Generator" vs "Grid" label for `grid.active` card
-
-**Features (medium / nice-to-have):**
-
-8. Generator runtime tracking — accumulate hours when `grid.active` is true (session or vendor only; no KV archive)
-9. WebSocket push — replace polling when vendor supports realtime streams (ShineMonitor `ws.shinemonitor.com`; see `discovery/WEBSOCKET_REALTIME.md`)
-10. Home Assistant MQTT bridge (REST `/ha` endpoint exists today)
-11. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account (attribute codes, `stats` interval enum) before `worker/src/services/victron.js` is written; Solis/Deye remain unstarted
+8. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`); revisit only if polling proves insufficient
+9. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account (attribute codes, `stats` interval enum) before `worker/src/services/victron.js` is written; Solis/Deye remain unstarted
+10. Generator-detection sensitivity (`gridV`/`gridW` thresholds) is a fixed constant, not user-configurable — revisit if a system's detection proves unreliable
+11. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
+12. Multi-user access — per-user tokens / audit log (no work started; open question)
 
 ## Blocked
 
@@ -109,16 +106,15 @@ _None._
 - **Multi-plant selection at setup** — `requiresPlantSelection` flow when account has multiple plants.
 - **Multi-device selection at setup** — `requiresDeviceSelection` flow; optional aggregate mode for multi-inverter plants.
 - **ShineMonitor SOC** — prefer API `BATTERY_SOC` when valid; voltage interpolation (42.0 V → 0%, 53.5 V → 100%) as fallback; show "Estimated" badge when interpolated on chart.
-- **Generator label for grid input** — `grid.active` drives the "Generator" card; suitable for off-grid setups with gen input.
+- **Generator label for grid input** — `grid.active` drives the "Generator" card; suitable for off-grid setups with gen input. Per-system override planned via a `sourceLabel` field (`generator` | `grid`) — see Up Next #1.
 - **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV.
 - **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
 - **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
 
 ## Blocked / Open Questions
 
-1. Should frontend and worker share a Cloudflare project or remain independently deployable?
-2. "Generator" vs "Grid" labeling — configurable per system? _(Estimated SOC badge implemented; label config still open.)_
-3. Multi-user access — shared token sufficient or per-user tokens needed?
+1. Should frontend and worker share a Cloudflare project or remain independently deployable? _(Currently independently deployable — Pages for frontend, Workers for backend — and that has worked fine; revisit only if it becomes a pain point.)_
+2. Multi-user access — shared token sufficient or per-user tokens needed? _(No work started.)_
 
 ## Known Risks
 
@@ -126,6 +122,5 @@ _None._
 - **Session cache per isolate** — cold Worker starts re-authenticate; Growatt cookies in KV mitigate password storage but isolate cache still clears on cold start.
 - **Vendor history gaps** — chart view depends on vendor API availability; no local backfill; empty states mitigate UX impact.
 - **Vendor rate limits** — multi-day summary and week navigation require N vendor round-trips; in-memory cache and `days` cap mitigate; Worker rate limiting protects proxy abuse.
-- **Route edge-case coverage** — CORS preflight lacks dedicated worker tests (502/429 paths covered).
-- **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` must be set in production; dev-mode open auth remains a footgun if misconfigured.
-- **PLAN.md drift** — many completed v1.2.x items still unchecked in PLAN.md; may mislead future planning passes until synced.
+- **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` must be set in production; dev-mode open auth remains a footgun if misconfigured (mitigated by fail-closed `PRODUCTION` guard).
+- **Release doc lag** — `v1.3.0` is tagged at current `main`, but `RELEASE_NOTES.md` and `package.json` haven't been updated to match (see Up Next #6–7); a future release pass could tag over content that looks "unreleased" in the changelog.
