@@ -1,0 +1,19 @@
+Task: Add E2E tests for manage-systems add and remove
+
+Commands run:
+1. cd worker && npm ci && npm test          -> PASS (13 files, 150 tests)
+2. cd frontend && npm ci && npm test        -> PASS (2 files, 77 tests)
+3. cd e2e && npm ci && npx playwright install chromium
+4. cd e2e && npx playwright test tests/manage-systems.spec.js  -> PASS (6/6, desktop-chrome + mobile-chrome)
+5. cd e2e && npx playwright test (full suite)                  -> PASS (80 passed, 2 skipped, 0 failed)
+
+Notes:
+- Root package.json has no "test"/"test:e2e" scripts and no pnpm-workspace.yaml,
+  and pnpm is not installed in this environment, so tests were run per-package
+  with npm (worker/, frontend/, e2e/) matching .github/workflows/ci.yml jobs.
+- Full e2e suite (all spec files, both projects) passed after adding
+  manage-systems.spec.js and the mock-worker POST/DELETE/reset routes it needs,
+  confirming no regressions in existing specs (dashboard, chart, chart-nav,
+  manage-credentials, mobile-ptr, poll-interval, setup).
+
+Result: All tests pass. No developer follow-up tasks needed.
