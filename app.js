@@ -1697,6 +1697,55 @@ function renderAlertForm(sys) {
   return form;
 }
 
+function renderGridDetectForm(sys) {
+  const gridDetect = sys.gridDetect || {};
+  const form = document.createElement("div");
+  form.className = "manage-alerts manage-grid-detect";
+  form.innerHTML = `
+    <p class="manage-section-title">${escapeAttr(t("gridDetectTitle"))}</p>
+    <p class="manage-hint">${escapeAttr(t("gridDetectHint"))}</p>
+    <div class="alert-grid">
+      <div>
+        <label>${escapeAttr(t("gridDetectVoltage"))}</label>
+        <input type="number" class="grid-voltage" min="0" max="500" step="1" value="${gridDetect.voltageMin ?? 30}">
+      </div>
+      <div>
+        <label>${escapeAttr(t("gridDetectPower"))}</label>
+        <input type="number" class="grid-power" min="0" max="50000" step="1" value="${gridDetect.powerMin ?? 5}">
+      </div>
+    </div>
+    <button type="button" class="grid-save">${escapeAttr(t("gridDetectSave"))}</button>
+    <p class="grid-msg" hidden></p>
+  `;
+
+  const msg = form.querySelector(".grid-msg");
+  form.querySelector(".grid-save").addEventListener("click", async () => {
+    msg.hidden = true;
+    const btn = form.querySelector(".grid-save");
+    btn.disabled = true;
+    btn.textContent = t("gridDetectSaving");
+    try {
+      const body = {
+        voltageMin: Number(form.querySelector(".grid-voltage").value),
+        powerMin: Number(form.querySelector(".grid-power").value),
+      };
+      sys.gridDetect = await api("PUT", `/api/systems/${sys.id}/grid-detect`, body);
+      msg.textContent = t("gridDetectSaved");
+      msg.className = "grid-msg alert-ok";
+      msg.hidden = false;
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "grid-msg alert-err";
+      msg.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t("gridDetectSave");
+    }
+  });
+
+  return form;
+}
+
 function openManageModal() {
   manageModal.hidden = false;
   syncPollIntervalSelect();
@@ -1741,6 +1790,7 @@ function openManageModal() {
     top.appendChild(del);
     row.appendChild(top);
     row.appendChild(renderCredentialForm(sys));
+    row.appendChild(renderGridDetectForm(sys));
     row.appendChild(renderAlertForm(sys));
     manageList.appendChild(row);
   }

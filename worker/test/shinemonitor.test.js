@@ -168,6 +168,58 @@ describe("shinemonitor fetchData normalization", () => {
     expect(data.grid.active).toBe(false);
   });
 
+  it("honors per-system gridDetect thresholds for generator detection", async () => {
+    function deviceDayWithGrid(gridW, gridV) {
+      return {
+        err: 0,
+        dat: {
+          title: [
+            { title: "Battery Voltage" },
+            { title: "Batt Current" },
+            { title: "Charger Power" },
+            { title: "PV Voltage" },
+            { title: "PLoad" },
+            { title: "PGrid" },
+            { title: "Grid Voltage" },
+            { title: "rated power" },
+            { title: "work state" },
+            { title: "Timestamp" },
+          ],
+          row: [{
+            field: ["48.0", "2.5", "1200", "380", "800", String(gridW), String(gridV), "5000", "Normal", "2026-07-03 12:00:00"],
+          }],
+        },
+      };
+    }
+
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s1", token: "t1" } });
+      }
+      if (u.includes("queryPlantCurrentData")) {
+        return Response.json(plantCurrentResponse());
+      }
+      if (u.includes("queryDeviceDataOneDayPaging")) {
+        return Response.json(deviceDayWithGrid(3, 35));
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const defaultConfig = { ...SYSTEM_CONFIG, id: "sys-grid-default" };
+    const defaultData = await fetchData(defaultConfig);
+    expect(defaultData.grid.active).toBe(false);
+
+    _clearSessionCacheForTests();
+    const customConfig = {
+      ...SYSTEM_CONFIG,
+      id: "sys-grid-custom",
+      gridDetect: { voltageMin: 30, powerMin: 2 },
+    };
+    const customData = await fetchData(customConfig);
+    expect(customData.grid.active).toBe(true);
+  });
+
   it("re-authenticates once when token expires and retries successfully", async () => {
     const systemConfig = { ...SYSTEM_CONFIG, id: "sys-reauth-data" };
     let authCalls = 0;
