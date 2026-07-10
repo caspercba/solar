@@ -86,6 +86,59 @@ test.describe("System tabs", () => {
   });
 });
 
+test.describe("Generator runtime", () => {
+  const GEN_RUNTIME_KEY = `solar_gen_runtime_${MOCK_SYSTEM_ID_2}`;
+
+  test("shows no runtime badge while generator is off", async ({ page }) => {
+    await expect(page.locator("#gen-status")).toHaveText("OFF");
+    await expect(page.locator("#gen-runtime")).toBeHidden();
+  });
+
+  test("shows accumulated runtime while generator is active and persists across reload", async ({ page }) => {
+    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
+    await waitForDashboardData(page);
+    await expect(page.locator("#gen-status")).toHaveText("ON");
+
+    // Seed 26 minutes accumulated in a prior poll, as if the generator has
+    // been running since before this page load (session counter, not vendor data).
+    await page.evaluate(
+      ({ key, seconds }) => localStorage.setItem(key, JSON.stringify({ accumulatedSec: seconds, activeSince: null })),
+      { key: GEN_RUNTIME_KEY, seconds: 26 * 60 },
+    );
+
+    await page.reload();
+    await expect(page.locator("#dashboard-screen")).toBeVisible();
+    await waitForDashboardData(page);
+
+    await expect(page.locator("#system-tabs .sys-tab.active")).toHaveText("Mock Cabin");
+    await expect(page.locator("#gen-runtime")).toBeVisible();
+    await expect(page.locator("#gen-runtime-value")).toHaveText("26m");
+  });
+
+  test("resets on disconnect", async ({ page }) => {
+    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
+    await waitForDashboardData(page);
+
+    await page.evaluate(
+      ({ key, seconds }) => localStorage.setItem(key, JSON.stringify({ accumulatedSec: seconds, activeSince: null })),
+      { key: GEN_RUNTIME_KEY, seconds: 26 * 60 },
+    );
+
+    await page.locator("#disconnect-btn").click();
+    await expect(page.locator("#setup-screen")).toBeVisible();
+
+    const stored = await page.evaluate((key) => localStorage.getItem(key), GEN_RUNTIME_KEY);
+    expect(stored).toBeNull();
+
+    await loginViaDeepLink(page);
+    await waitForDashboardData(page);
+    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
+    await waitForDashboardData(page);
+
+    await expect(page.locator("#gen-runtime")).toBeHidden();
+  });
+});
+
 test.describe("View toggle persistence", () => {
   test("persists selected view in localStorage across reload", async ({ page }) => {
     await switchView(page, "flow");

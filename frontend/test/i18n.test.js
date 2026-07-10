@@ -74,6 +74,9 @@ describe("i18n", () => {
   it("translates compare view keys in English", () => {
     expect(t("compareLowestSoc")).toBe("Lowest SOC");
     expect(t("compareGeneratorOn")).toBe("Generator ON");
+    expect(t("compareGridOn")).toBe("Grid ON");
+    expect(t("cardGrid")).toBe("Grid");
+    expect(t("flowGrid")).toBe("GRID");
     expect(t("compareUnavailable")).toBe("Unavailable");
     expect(t("compareLoadError")).toBe("Could not load comparison data.");
   });
@@ -82,6 +85,9 @@ describe("i18n", () => {
     setLocale("es");
     expect(t("compareLowestSoc")).toBe("SOC más bajo");
     expect(t("compareGeneratorOn")).toBe("Generador ENCENDIDO");
+    expect(t("compareGridOn")).toBe("Red ENCENDIDA");
+    expect(t("cardGrid")).toBe("Red");
+    expect(t("flowGrid")).toBe("RED");
     expect(t("compareUnavailable")).toBe("No disponible");
     expect(t("compareLoadError")).toBe("No se pudieron cargar los datos de comparación.");
   });

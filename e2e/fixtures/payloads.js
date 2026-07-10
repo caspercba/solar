@@ -34,6 +34,7 @@ function freshSystems() {
       service: "shinemonitor",
       username: "mock-user@example.com",
       alerts: { ...defaultAlerts },
+      gridInputLabel: "generator",
     },
     {
       id: MOCK_SYSTEM_ID_2,
@@ -41,6 +42,7 @@ function freshSystems() {
       service: "growatt",
       username: "growatt-mock@example.com",
       alerts: { ...defaultAlerts },
+      gridInputLabel: "grid",
     },
   ];
 }

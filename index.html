@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
 
@@ -88,10 +88,11 @@
       </div>
 
       <!-- Battery card -->
-      <div class="card card-battery">
+      <div id="card-battery" class="card card-battery">
         <div class="card-header">
           <span class="card-icon">&#x1F50B;</span>
           <span class="card-title" data-i18n="cardBattery">Battery</span>
+          <span id="bat-low-badge" class="bat-low-badge" data-i18n="socLowWarning" hidden>Low</span>
         </div>
         <div class="card-value">
           <span id="bat-pct" class="big-number">--</span><span class="unit">%</span>
@@ -147,11 +148,11 @@
         </div>
       </div>
 
-      <!-- Generator card -->
+      <!-- Generator / Grid card -->
       <div id="card-gen" class="card card-gen">
         <div class="card-header">
           <span class="card-icon">&#x2699;</span>
-          <span class="card-title" data-i18n="cardGenerator">Generator</span>
+          <span id="gen-card-title" class="card-title" data-i18n="cardGenerator">Generator</span>
         </div>
         <div class="gen-status-row">
           <span id="gen-status" class="gen-badge gen-off">OFF</span>
@@ -160,6 +161,10 @@
           <span id="gen-watts">0</span> W
           <span class="sep">|</span>
           <span id="gen-volts">--</span> V
+        </div>
+        <div id="gen-runtime" class="gen-runtime" hidden data-i18n-title="genRuntimeSessionNote" title="This session only, not synced across devices">
+          <span data-i18n="genRuntimeLabel">Runtime</span>:
+          <span id="gen-runtime-value"></span>
         </div>
       </div>
     </main>
@@ -182,7 +187,7 @@
         <text id="fn-solar-v" x="250" y="82" class="fn-val" text-anchor="middle">--</text>
 
         <circle id="fn-gen-bg" cx="58" cy="215" r="42" class="fn-bg"/>
-        <text x="58" y="195" class="fn-lbl" text-anchor="middle" data-i18n="flowGen">GEN</text>
+        <text id="flow-gen-label" x="58" y="195" class="fn-lbl" text-anchor="middle" data-i18n="flowGen">GEN</text>
         <text x="58" y="218" class="fn-icon" text-anchor="middle">&#x2699;&#65039;</text>
         <text id="fn-gen-v" x="58" y="240" class="fn-val" text-anchor="middle">OFF</text>
 
@@ -285,6 +290,11 @@
           <label for="add-device">Inverter</label>
           <select id="add-device"></select>
         </div>
+        <label for="add-grid-input-label" data-i18n="gridInputLabelTitle">Grid input label</label>
+        <select id="add-grid-input-label">
+          <option value="generator" data-i18n="gridInputLabelGenerator">Generator</option>
+          <option value="grid" data-i18n="gridInputLabelGrid">Grid</option>
+        </select>
         <div class="modal-actions">
           <button type="button" id="add-cancel" class="btn-secondary" data-i18n="cancel">Cancel</button>
           <button type="submit" id="add-submit" data-i18n="addSystem">Add System</button>
@@ -307,6 +317,8 @@
         </select>
         <label for="poll-interval" data-i18n="refreshInterval">Refresh interval</label>
         <select id="poll-interval" data-i18n-aria="refreshIntervalAria" aria-label="Data refresh interval"></select>
+        <label for="soc-warn-threshold" data-i18n="socWarnThreshold">Low battery warning</label>
+        <input type="number" id="soc-warn-threshold" min="1" max="90" step="1" data-i18n-aria="socWarnThresholdAria" aria-label="Low battery warning threshold percent">
       </div>
       <div id="manage-list" class="manage-list"></div>
       <div class="modal-actions">
@@ -316,6 +328,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=16"></script>
+  <script type="module" src="app.js?v=17"></script>
 </body>
 </html>
