@@ -26,24 +26,38 @@ export const defaultAlerts = {
   webhookConfigured: false,
 };
 
-export const systems = [
-  {
-    id: MOCK_SYSTEM_ID,
-    name: "Mock Home Solar",
-    service: "shinemonitor",
-    username: "mock-user@example.com",
-    alerts: { ...defaultAlerts },
-    gridInputLabel: "generator",
-  },
-  {
-    id: MOCK_SYSTEM_ID_2,
-    name: "Mock Cabin",
-    service: "growatt",
-    username: "growatt-mock@example.com",
-    alerts: { ...defaultAlerts },
-    gridInputLabel: "grid",
-  },
-];
+function freshSystems() {
+  return [
+    {
+      id: MOCK_SYSTEM_ID,
+      name: "Mock Home Solar",
+      service: "shinemonitor",
+      username: "mock-user@example.com",
+      alerts: { ...defaultAlerts },
+      gridInputLabel: "generator",
+    },
+    {
+      id: MOCK_SYSTEM_ID_2,
+      name: "Mock Cabin",
+      service: "growatt",
+      username: "growatt-mock@example.com",
+      alerts: { ...defaultAlerts },
+      gridInputLabel: "grid",
+    },
+  ];
+}
+
+export const systems = freshSystems();
+
+/**
+ * Restore `systems` to the two default mock entries, in place, so tests that
+ * add/remove systems (e.g. manage-systems.spec.js) don't leak state into
+ * other spec files sharing this mock Worker process.
+ */
+export function resetSystems() {
+  systems.length = 0;
+  systems.push(...freshSystems());
+}
 
 /** Normalized realtime shape (PLAN.md §3.1). */
 export function realtimeData(systemId) {

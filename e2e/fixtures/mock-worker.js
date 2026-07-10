@@ -20,6 +20,7 @@ import {
   realtimeData,
   historyData,
   historySummary,
+  resetSystems,
 } from "./payloads.js";
 
 export { EMPTY_HISTORY_DATE };
@@ -44,6 +45,8 @@ function json(body, status = 200, origin = "*") {
 function error(message, status = 400, origin = "*") {
   return json({ error: message }, status, origin);
 }
+
+let mockSystemCounter = 0;
 
 function checkAuth(request) {
   const token = process.env.MOCK_WORKER_TOKEN || MOCK_TOKEN;
@@ -116,12 +119,57 @@ export async function handleMockWorkerRequest(request) {
     return json(health, 200, origin);
   }
 
+  // Test-only: restore the default mock systems list. Not part of the real
+  // Worker API — used by E2E specs that add/remove systems to avoid leaking
+  // state into other spec files sharing this mock Worker process.
+  if (path === "/__mock__/reset-systems" && request.method === "POST") {
+    resetSystems();
+    return json({ ok: true }, 200, origin);
+  }
+
   if (!checkAuth(request)) {
     return error("Unauthorized", 401, origin);
   }
 
   if (path === "/api/systems" && request.method === "GET") {
     return json(systems, 200, origin);
+  }
+
+  if (path === "/api/systems" && request.method === "POST") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+
+    const { service, name, user, password } = body || {};
+    if (!service || !user || !password) {
+      return error("Missing required fields: service, user, password", 400, origin);
+    }
+    if (service !== "shinemonitor" && service !== "growatt") {
+      return error(`Unsupported service: ${service}`, 400, origin);
+    }
+    if (password === "bad-password") {
+      return error("Discovery failed: Invalid credentials", 502, origin);
+    }
+
+    mockSystemCounter += 1;
+    const id = `e2e-added-${mockSystemCounter}`;
+    const systemName = name || `Mock ${service} system`;
+    const newSystem = { id, name: systemName, service, username: user, alerts: { ...defaultAlerts } };
+    systems.push(newSystem);
+
+    return json({ id, name: systemName, service, discovered: { plantName: systemName } }, 201, origin);
+  }
+
+  const systemIdMatch = path.match(/^\/api\/systems\/([^/]+)$/);
+  if (systemIdMatch && request.method === "DELETE") {
+    const id = systemIdMatch[1];
+    const idx = systems.findIndex((s) => s.id === id);
+    if (idx === -1) return error("System not found", 404, origin);
+    systems.splice(idx, 1);
+    return json({ ok: true }, 200, origin);
   }
 
   if (path === "/api/systems/all/data" && request.method === "GET") {
