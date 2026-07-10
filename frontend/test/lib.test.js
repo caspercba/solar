@@ -37,6 +37,12 @@ import {
   resolveInitialTheme,
   getNextTheme,
   VALID_THEMES,
+  generatorRuntimeStorageKey,
+  GENERATOR_RUNTIME_STORAGE_PREFIX,
+  createGeneratorRuntimeState,
+  updateGeneratorRuntime,
+  totalGeneratorRuntimeSec,
+  formatGeneratorRuntime,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -480,6 +486,75 @@ describe("isEditableElement", () => {
 
   it("returns true for contenteditable elements", () => {
     expect(isEditableElement({ tagName: "DIV", isContentEditable: true })).toBe(true);
+  });
+});
+
+describe("generatorRuntimeStorageKey", () => {
+  it("namespaces the key by system id", () => {
+    expect(generatorRuntimeStorageKey("abc-123")).toBe(`${GENERATOR_RUNTIME_STORAGE_PREFIX}abc-123`);
+  });
+});
+
+describe("updateGeneratorRuntime / totalGeneratorRuntimeSec", () => {
+  it("starts a run when active flips from false to true", () => {
+    const t0 = 1_000_000;
+    const state = updateGeneratorRuntime(createGeneratorRuntimeState(), true, t0);
+    expect(state.activeSince).toBe(t0);
+    expect(state.accumulatedSec).toBe(0);
+    expect(totalGeneratorRuntimeSec(state, t0 + 5000)).toBe(5);
+  });
+
+  it("accumulates elapsed seconds when active flips back to false", () => {
+    const t0 = 1_000_000;
+    let state = updateGeneratorRuntime(createGeneratorRuntimeState(), true, t0);
+    state = updateGeneratorRuntime(state, false, t0 + 10_000);
+    expect(state.activeSince).toBeNull();
+    expect(state.accumulatedSec).toBe(10);
+    expect(totalGeneratorRuntimeSec(state, t0 + 60_000)).toBe(10);
+  });
+
+  it("is a no-op when state does not change (still inactive, or still active)", () => {
+    const idle = createGeneratorRuntimeState();
+    expect(updateGeneratorRuntime(idle, false, 1_000_000)).toBe(idle);
+
+    const t0 = 1_000_000;
+    const running = updateGeneratorRuntime(createGeneratorRuntimeState(), true, t0);
+    expect(updateGeneratorRuntime(running, true, t0 + 30_000)).toBe(running);
+  });
+
+  it("accumulates across multiple runs", () => {
+    let state = createGeneratorRuntimeState();
+    state = updateGeneratorRuntime(state, true, 0);
+    state = updateGeneratorRuntime(state, false, 5000);
+    state = updateGeneratorRuntime(state, true, 10_000);
+    state = updateGeneratorRuntime(state, false, 20_000);
+    expect(state.accumulatedSec).toBe(15);
+  });
+
+  it("totalGeneratorRuntimeSec treats missing state as zero", () => {
+    expect(totalGeneratorRuntimeSec(null, Date.now())).toBe(0);
+  });
+});
+
+describe("formatGeneratorRuntime", () => {
+  it("returns empty string for less than a second, zero, or invalid input", () => {
+    expect(formatGeneratorRuntime(0)).toBe("");
+    expect(formatGeneratorRuntime(-5)).toBe("");
+    expect(formatGeneratorRuntime(NaN)).toBe("");
+  });
+
+  it("formats minutes, hours, and combined durations in English by default", () => {
+    expect(formatGeneratorRuntime(45 * 60)).toBe("45m");
+    expect(formatGeneratorRuntime(2 * 3600)).toBe("2h");
+    expect(formatGeneratorRuntime(2 * 3600 + 15 * 60)).toBe("2h 15m");
+    expect(formatGeneratorRuntime(20)).toBe("<1m");
+  });
+
+  it("localizes duration via the app's translate callback", () => {
+    setLocale("es");
+    expect(formatGeneratorRuntime(45 * 60, t)).toBe("45 min");
+    expect(formatGeneratorRuntime(2 * 3600 + 15 * 60, t)).toBe("2 h 15 min");
+    setLocale(DEFAULT_LOCALE);
   });
 });
 
