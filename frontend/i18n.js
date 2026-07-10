@@ -19,7 +19,6 @@ const messages = {
 
     statusConnected: "Connected",
     statusDisconnected: "Disconnected",
-    manageSystems: "Manage systems",
     disconnect: "Disconnect",
 
     tabCards: "Cards",
@@ -96,6 +95,10 @@ const messages = {
     cancel: "Cancel",
     adding: "Adding…",
 
+    settingsTitle: "Settings",
+    preferences: "Preferences",
+    back: "Back",
+    removeSystem: "Remove system",
     systems: "Systems",
     refreshInterval: "Refresh interval",
     refreshIntervalAria: "Data refresh interval",
@@ -183,7 +186,6 @@ const messages = {
 
     statusConnected: "Conectado",
     statusDisconnected: "Desconectado",
-    manageSystems: "Administrar sistemas",
     disconnect: "Desconectar",
 
     tabCards: "Tarjetas",
@@ -260,6 +262,10 @@ const messages = {
     cancel: "Cancelar",
     adding: "Agregando…",
 
+    settingsTitle: "Configuración",
+    preferences: "Preferencias",
+    back: "Atrás",
+    removeSystem: "Eliminar sistema",
     systems: "Sistemas",
     refreshInterval: "Intervalo de actualización",
     refreshIntervalAria: "Intervalo de actualización de datos",

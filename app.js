@@ -281,6 +281,11 @@ const addForm = $("add-system-form");
 const addError = $("add-error");
 const manageModal = $("manage-modal");
 const manageList = $("manage-list");
+const detailModal = $("system-detail-modal");
+const detailTitle = $("detail-title");
+const detailBody = $("detail-body");
+const detailBack = $("detail-back");
+const detailRemove = $("detail-remove");
 
 /* ── State ── */
 let systems = [];
@@ -1922,11 +1927,9 @@ function openManageModal() {
   }
 
   for (const sys of systems) {
-    const row = document.createElement("div");
-    row.className = "manage-row manage-row-expanded";
-
-    const top = document.createElement("div");
-    top.className = "manage-row-top";
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "manage-row";
 
     const info = document.createElement("div");
     info.className = "manage-info";
@@ -1935,36 +1938,60 @@ function openManageModal() {
       : "";
     info.innerHTML = `<strong>${sys.name}</strong><span class="manage-service">${sys.service}${alertBadge}</span>`;
 
-    const del = document.createElement("button");
-    del.className = "manage-delete";
-    del.textContent = t("remove");
-    del.addEventListener("click", async () => {
-      if (!confirm(t("removeConfirm", { name: sys.name }))) return;
-      await api("DELETE", `/api/systems/${sys.id}`);
-      clearGeneratorRuntimeState(sys.id);
-      await loadSystems();
-      openManageModal();
-      if (activeSystemId === sys.id && systems.length) {
-        activeSystemId = systems[0].id;
-        renderSystemTabs();
-        startPolling();
-      }
-    });
+    const chevron = document.createElement("span");
+    chevron.className = "manage-chevron";
+    chevron.textContent = "›";
+    chevron.setAttribute("aria-hidden", "true");
 
-    top.appendChild(info);
-    top.appendChild(del);
-    row.appendChild(top);
-    row.appendChild(renderCredentialForm(sys));
-    row.appendChild(renderGridInputLabelForm(sys));
-    row.appendChild(renderGridDetectForm(sys));
-    row.appendChild(renderAlertForm(sys));
+    row.appendChild(info);
+    row.appendChild(chevron);
+    row.addEventListener("click", () => openSystemDetail(sys.id));
     manageList.appendChild(row);
   }
+}
+
+let openDetailSysId = null;
+
+function openSystemDetail(sysId) {
+  const sys = systems.find((s) => s.id === sysId);
+  if (!sys) return;
+
+  openDetailSysId = sysId;
+  manageModal.hidden = true;
+  detailModal.hidden = false;
+  detailTitle.textContent = sys.name;
+  detailBody.innerHTML = "";
+  detailBody.appendChild(renderCredentialForm(sys));
+  detailBody.appendChild(renderGridInputLabelForm(sys));
+  detailBody.appendChild(renderGridDetectForm(sys));
+  detailBody.appendChild(renderAlertForm(sys));
+
+  detailRemove.onclick = async () => {
+    if (!confirm(t("removeConfirm", { name: sys.name }))) return;
+    await api("DELETE", `/api/systems/${sys.id}`);
+    clearGeneratorRuntimeState(sys.id);
+    await loadSystems();
+    openDetailSysId = null;
+    detailModal.hidden = true;
+    openManageModal();
+    if (activeSystemId === sys.id && systems.length) {
+      activeSystemId = systems[0].id;
+      renderSystemTabs();
+      startPolling();
+    }
+  };
+}
+
+function closeSystemDetail() {
+  openDetailSysId = null;
+  detailModal.hidden = true;
+  openManageModal();
 }
 
 els.manageBtn.addEventListener("click", openManageModal);
 $("manage-close").addEventListener("click", () => { manageModal.hidden = true; });
 $("manage-add").addEventListener("click", openAddModal);
+detailBack.addEventListener("click", closeSystemDetail);
 
 const pollIntervalSelect = $("poll-interval");
 
@@ -1998,7 +2025,8 @@ function changeLocale(locale) {
       renderEnergyChart(lastEnergySummary);
     }
   }
-  if (!manageModal.hidden) openManageModal();
+  if (!detailModal.hidden && openDetailSysId) openSystemDetail(openDetailSysId);
+  else if (!manageModal.hidden) openManageModal();
 }
 
 function initLangToggle() {

@@ -29,6 +29,20 @@ async function openAddModal(page) {
   await expect(page.locator("#add-system-modal")).toBeVisible();
 }
 
+async function openSystemDetail(page, systemName) {
+  await page.locator(".manage-row", { hasText: systemName }).click();
+  await expect(page.locator("#system-detail-modal")).toBeVisible();
+}
+
+async function removeSystemViaDetail(page, systemName, { accept = true } = {}) {
+  await openSystemDetail(page, systemName);
+  page.once("dialog", async (dialog) => {
+    if (accept) await dialog.accept();
+    else await dialog.dismiss();
+  });
+  await page.locator("#detail-remove").click();
+}
+
 // These specs mutate the shared mock Worker's systems list (add/remove), so
 // keep them from interleaving with each other and always restore the
 // default two-system fixture afterwards — other spec files sharing this
@@ -204,17 +218,9 @@ test.describe("Manage modal — add/remove systems", () => {
     await openManageModal(page);
     await expect(page.locator("#system-tabs")).toBeVisible();
 
-    const cabinRow = page.locator(".manage-row", { hasText: "Mock Cabin" });
-    await expect(cabinRow).toBeVisible();
+    await removeSystemViaDetail(page, "Mock Cabin");
 
-    page.once("dialog", async (dialog) => {
-      expect(dialog.type()).toBe("confirm");
-      expect(dialog.message()).toContain("Mock Cabin");
-      await dialog.accept();
-    });
-    await cabinRow.locator(".manage-delete").click();
-
-    await expect(cabinRow).toHaveCount(0);
+    await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toHaveCount(0);
     await expect(page.locator(".manage-row", { hasText: "Mock Home Solar" })).toBeVisible();
 
     // One system remains — tab bar hides, header shows its name.
@@ -225,15 +231,13 @@ test.describe("Manage modal — add/remove systems", () => {
   test("dismissing the confirm dialog keeps the system in the list", async ({ page }) => {
     await openManageModal(page);
 
-    const cabinRow = page.locator(".manage-row", { hasText: "Mock Cabin" });
-    await expect(cabinRow).toBeVisible();
+    await removeSystemViaDetail(page, "Mock Cabin", { accept: false });
 
-    page.once("dialog", async (dialog) => {
-      await dialog.dismiss();
-    });
-    await cabinRow.locator(".manage-delete").click();
+    await expect(page.locator("#system-detail-modal")).toBeVisible();
+    await page.locator("#detail-back").click();
+    await expect(page.locator("#manage-modal")).toBeVisible();
 
-    await expect(cabinRow).toBeVisible();
+    await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toBeVisible();
     await expect(page.locator("#system-tabs")).toBeVisible();
   });
 
@@ -244,10 +248,6 @@ test.describe("Manage modal — add/remove systems", () => {
 
     test("removes a system via the confirm dialog", async ({ page }) => {
       let dialogMessage = null;
-      page.once("dialog", (dialog) => {
-        dialogMessage = dialog.message();
-        dialog.accept();
-      });
 
       let deleteRequested = false;
       await page.route(`**/api/systems/${MOCK_SYSTEM_ID_2}`, async (route) => {
@@ -273,7 +273,12 @@ test.describe("Manage modal — add/remove systems", () => {
       });
 
       await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toBeVisible();
-      await page.locator(".manage-row", { hasText: "Mock Cabin" }).locator(".manage-delete").click();
+      await openSystemDetail(page, "Mock Cabin");
+      page.once("dialog", (dialog) => {
+        dialogMessage = dialog.message();
+        dialog.accept();
+      });
+      await page.locator("#detail-remove").click();
 
       await expect.poll(() => deleteRequested).toBe(true);
       expect(dialogMessage).toBe('Remove "Mock Cabin"?');
@@ -285,18 +290,20 @@ test.describe("Manage modal — add/remove systems", () => {
     });
 
     test("cancelling the confirm dialog leaves the system in place", async ({ page }) => {
-      page.once("dialog", (dialog) => dialog.dismiss());
-
       let deleteRequested = false;
       await page.route(`**/api/systems/${MOCK_SYSTEM_ID_2}`, async (route) => {
         deleteRequested = true;
         await route.continue();
       });
 
-      await page.locator(".manage-row", { hasText: "Mock Cabin" }).locator(".manage-delete").click();
+      await openSystemDetail(page, "Mock Cabin");
+      page.once("dialog", (dialog) => dialog.dismiss());
+      await page.locator("#detail-remove").click();
       await page.waitForTimeout(300);
 
       expect(deleteRequested).toBe(false);
+      await page.locator("#detail-back").click();
+      await expect(page.locator("#manage-modal")).toBeVisible();
       await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toBeVisible();
     });
   });

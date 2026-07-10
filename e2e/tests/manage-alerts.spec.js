@@ -7,7 +7,7 @@ import {
 } from "../helpers.js";
 import { MOCK_SYSTEM_ID } from "../fixtures/payloads.js";
 
-test.describe("Manage modal — alert configuration", () => {
+test.describe("System detail — alert configuration", () => {
   test.beforeEach(async ({ page }) => {
     await disableServiceWorker(page);
     await page.goto("/");
@@ -16,14 +16,16 @@ test.describe("Manage modal — alert configuration", () => {
     await waitForDashboardData(page);
     await page.locator("#manage-btn").click();
     await expect(page.locator("#manage-modal")).toBeVisible();
+    await page.locator(".manage-row", { hasText: "Mock Home Solar" }).click();
+    await expect(page.locator("#system-detail-modal")).toBeVisible();
   });
 
-  function homeRow(page) {
-    return page.locator(".manage-row", { hasText: "Mock Home Solar" });
+  function detail(page) {
+    return page.locator("#system-detail-modal");
   }
 
   function alertForm(page) {
-    return homeRow(page).locator(".manage-alerts");
+    return detail(page).locator(".manage-alerts");
   }
 
   test("saves threshold, notify toggles, and webhook via PUT /alerts", async ({ page }) => {
@@ -68,10 +70,12 @@ test.describe("Manage modal — alert configuration", () => {
 
     await expect(form.locator(".alert-msg")).toHaveText("Alerts saved");
 
-    await page.locator("#manage-close").click();
-    await expect(page.locator("#manage-modal")).toBeHidden();
-    await page.locator("#manage-btn").click();
+    await page.locator("#detail-back").click();
+    await expect(page.locator("#system-detail-modal")).toBeHidden();
     await expect(page.locator("#manage-modal")).toBeVisible();
+
+    await page.locator(".manage-row", { hasText: "Mock Home Solar" }).click();
+    await expect(page.locator("#system-detail-modal")).toBeVisible();
 
     await expect(alertForm(page).locator(".alert-threshold")).toHaveValue("100");
   });

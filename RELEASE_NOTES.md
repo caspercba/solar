@@ -24,6 +24,7 @@
 ### Adapters & security
 
 - Add credential rotation UX for existing systems (no more delete/re-add).
+- Redesign the settings modal into a Settings hub (preferences + system list) and a separate per-system detail screen (credentials, alerts, remove), replacing the single modal that showed every system's forms expanded at once.
 - Support ShineMonitor multi-inverter discovery and aggregation.
 - Store Growatt session token (`JSESSIONID`) in KV instead of plaintext password; add automatic ShineMonitor re-auth on token expiry.
 - Fail closed (deny requests) when `API_TOKEN` is unset in a deployed environment, instead of running open.
