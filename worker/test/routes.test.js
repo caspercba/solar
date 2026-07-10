@@ -98,6 +98,10 @@ describe("worker routes", () => {
           cooldownMinutes: 60,
           webhookConfigured: false,
         },
+        gridDetect: {
+          voltageMin: 30,
+          powerMin: 5,
+        },
       },
     ]);
   });
@@ -531,6 +535,54 @@ describe("worker routes", () => {
 
     const stored = await systems.SYSTEMS.get("system:s1", "json");
     expect(stored.alerts.webhookUrl).toBe("https://hooks.example/alert");
+  });
+
+  it("PUT /api/systems/:id/grid-detect updates generator detection thresholds", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Site", service: "growatt" },
+    ]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Site",
+      service: "growatt",
+      credentials: { user: "u", password: "p" },
+    }));
+
+    const res = await call(
+      request("/api/systems/s1/grid-detect", {
+        method: "PUT",
+        headers: AUTH,
+        body: { voltageMin: 25, powerMin: 10 },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ voltageMin: 25, powerMin: 10 });
+
+    const stored = await systems.SYSTEMS.get("system:s1", "json");
+    expect(stored.gridDetect).toEqual({ voltageMin: 25, powerMin: 10 });
+  });
+
+  it("GET /api/systems includes gridDetect settings", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Site", service: "shinemonitor" },
+    ]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Site",
+      service: "shinemonitor",
+      credentials: { user: "u", password: "p" },
+      gridDetect: { voltageMin: 22, powerMin: 8 },
+    }));
+
+    const res = await call(request("/api/systems", { headers: AUTH }), systems);
+    expect(res.status).toBe(200);
+    const list = await res.json();
+    expect(list[0].gridDetect).toEqual({ voltageMin: 22, powerMin: 8 });
   });
 
   it("DELETE /api/systems/:id removes the system from the index", async () => {

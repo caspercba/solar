@@ -10,6 +10,11 @@ import {
   deleteAlertState,
   DEFAULT_ALERTS,
 } from "./alerts.js";
+import {
+  updateSystemGridDetect,
+  publicGridDetect,
+  DEFAULT_GRID_DETECT,
+} from "./gridDetect.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -96,6 +101,7 @@ export default {
           service: s.service,
           username: raw?.credentials?.user || "",
           alerts: publicAlerts(raw?.alerts || DEFAULT_ALERTS),
+          gridDetect: publicGridDetect(raw?.gridDetect || DEFAULT_GRID_DETECT),
         };
       }));
       return jsonResponse(safe, 200, origin);
@@ -240,6 +246,24 @@ export default {
       const raw = await env.SYSTEMS.get(`system:${id}`, "json");
       if (!raw) return errorResponse("System not found", 404, origin);
       return jsonResponse(publicAlerts(raw.alerts || DEFAULT_ALERTS), 200, origin);
+    }
+
+    // PUT /api/systems/:id/grid-detect — update generator detection thresholds
+    const gridDetectMatch = path.match(/^\/api\/systems\/([^/]+)\/grid-detect$/);
+    if (gridDetectMatch && request.method === "PUT") {
+      const id = gridDetectMatch[1];
+      const body = await request.json();
+      const updated = await updateSystemGridDetect(env, id, body);
+      if (!updated) return errorResponse("System not found", 404, origin);
+      return jsonResponse(publicGridDetect(updated), 200, origin);
+    }
+
+    // GET /api/systems/:id/grid-detect — read generator detection thresholds
+    if (gridDetectMatch && request.method === "GET") {
+      const id = gridDetectMatch[1];
+      const raw = await env.SYSTEMS.get(`system:${id}`, "json");
+      if (!raw) return errorResponse("System not found", 404, origin);
+      return jsonResponse(publicGridDetect(raw.gridDetect || DEFAULT_GRID_DETECT), 200, origin);
     }
 
     // DELETE /api/systems/:id
