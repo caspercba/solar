@@ -268,17 +268,10 @@ Example tail output (one JSON object per line):
 
 ### Optional: Workers Analytics Engine
 
-For queryable error metrics (counts by `systemId` / `service`), bind a Workers Analytics Engine dataset:
+For queryable error metrics (counts by `systemId` / `service`), bind a Workers Analytics Engine dataset. **Production setup** (dataset creation, deploy, SQL examples): [worker/DEPLOY.md §6.4](./worker/DEPLOY.md#64-optional--workers-analytics-engine-error-metrics).
 
 1. Create a dataset in the Cloudflare dashboard (**Workers & Pages → Analytics Engine → Create dataset**).
-2. Add the binding to `worker/wrangler.toml`:
-
-   ```toml
-   [[analytics_engine_datasets]]
-   binding = "ANALYTICS"
-   dataset = "solar_proxy_errors"
-   ```
-
+2. The binding is already declared in `worker/wrangler.toml` (production: `solar_proxy_errors`; staging: `solar_proxy_errors_staging`).
 3. Redeploy. Error events are written automatically via `writeDataPoint` when the binding is present.
 
 ### Sentry and third-party APM
