@@ -12,6 +12,8 @@
 - Add Spanish i18n with an EN/ES toggle, persisted in `localStorage`.
 - Add light and high-contrast themes with persistent preference.
 - Add configurable data refresh (poll) interval in the manage systems modal.
+- Add a user-configurable low-battery warning threshold that highlights the
+  battery card (default 20%), separate from webhook SOC alerts.
 - Add desktop keyboard shortcut to refresh dashboard data.
 - Add poll error toast with retry on realtime fetch failures.
 - Add battery time-to-empty estimate on cards and flow views.

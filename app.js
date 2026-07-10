@@ -29,6 +29,8 @@ import {
   getNextTheme,
   isEditableElement,
   matchesDashboardRefreshShortcut,
+  normalizeSocWarnThreshold,
+  isSocBelowWarnThreshold,
   generatorRuntimeStorageKey,
   GENERATOR_RUNTIME_STORAGE_PREFIX,
   createGeneratorRuntimeState,
@@ -48,6 +50,7 @@ import {
 
 /* ── Config ── */
 const POLL_INTERVAL_KEY = "solar_poll_interval";
+const SOC_WARN_KEY = "solar_soc_warn_threshold";
 const CONN_KEY = "solar_conn";
 const VIEW_KEY = "solar_view";
 const ACTIVE_KEY = "solar_active";
@@ -116,6 +119,14 @@ function savePollIntervalSec(sec) {
   localStorage.setItem(POLL_INTERVAL_KEY, String(normalizePollIntervalSec(sec)));
 }
 
+function getSocWarnThreshold() {
+  return normalizeSocWarnThreshold(localStorage.getItem(SOC_WARN_KEY));
+}
+
+function saveSocWarnThreshold(pct) {
+  localStorage.setItem(SOC_WARN_KEY, String(normalizeSocWarnThreshold(pct)));
+}
+
 function syncPollIntervalSelect() {
   const select = $("poll-interval");
   if (!select) return;
@@ -159,6 +170,8 @@ const els = {
   manageBtn: $("manage-btn"),
   statusDot: $("status-dot"),
   systemTabs: $("system-tabs"),
+  batCard: $("card-battery"),
+  batLowBadge: $("bat-low-badge"),
   batPct: $("bat-pct"),
   batBar: $("bat-bar"),
   batDirection: $("bat-direction"),
@@ -624,6 +637,12 @@ function renderData(d) {
   const soc = bat.soc ?? 0;
   els.batPct.textContent = soc;
   setBar(els.batBar, soc);
+  const socLow = isSocBelowWarnThreshold(soc, getSocWarnThreshold());
+  if (els.batCard) els.batCard.classList.toggle("soc-low", socLow);
+  if (els.batLowBadge) {
+    els.batLowBadge.hidden = !socLow;
+    if (socLow) els.batLowBadge.title = t("socLowWarningTitle", { threshold: getSocWarnThreshold() });
+  }
   els.batVolts.textContent = (bat.voltage ?? 0).toFixed(1);
   els.batCurrent.textContent = Math.round(bat.current ?? 0);
 
@@ -1812,6 +1831,7 @@ function renderGridDetectForm(sys) {
 function openManageModal() {
   manageModal.hidden = false;
   syncPollIntervalSelect();
+  syncSocWarnThresholdInput();
   updateThemeUi(getCurrentTheme());
   manageList.innerHTML = "";
 
@@ -1909,6 +1929,21 @@ if (pollIntervalSelect) {
   pollIntervalSelect.addEventListener("change", () => {
     savePollIntervalSec(pollIntervalSelect.value);
     restartPollingIfActive();
+  });
+}
+
+const socWarnInput = $("soc-warn-threshold");
+
+function syncSocWarnThresholdInput() {
+  if (socWarnInput) socWarnInput.value = getSocWarnThreshold();
+}
+
+if (socWarnInput) {
+  syncSocWarnThresholdInput();
+  socWarnInput.addEventListener("change", () => {
+    saveSocWarnThreshold(socWarnInput.value);
+    syncSocWarnThresholdInput();
+    if (lastRenderData) renderData(lastRenderData);
   });
 }
 
