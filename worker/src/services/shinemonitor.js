@@ -1,4 +1,5 @@
 import { computeDailySummary, dateRange } from "../history.js";
+import { isGridActive } from "../gridDetect.js";
 
 /**
  * ShineMonitor service adapter.
@@ -572,7 +573,7 @@ export async function fetchData(systemConfig) {
 
     const { soc, socSource } = resolveBatterySoc(plantCurrent, batV);
 
-    const genOn = gridV > 30 && Math.abs(gridW) > 5;
+    const genOn = isGridActive(gridV, gridW, systemConfig.gridDetect, { useAbsPower: true });
 
     let energyToday = null;
     if (Array.isArray(plantCurrent)) {

@@ -263,6 +263,7 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [x] Growatt weather data on cards view
 - [x] Credential rotation UX in manage systems modal (no delete/re-add required)
 - [x] Docker Compose local dev stack (mock Worker + static frontend)
+- [x] **Generator runtime tracking** — session-only counter (per-system, `localStorage`, resets on disconnect) shown on the generator card while `grid.active`; no KV archive per the vendor-only-history policy.
 
 ### 5.2 Service adapter roadmap — see §6.3 (Victron)
 
@@ -272,7 +273,6 @@ These were previously attempted and did not land (see task board "failed" histor
 
 - [ ] **Per-system Generator vs Grid card label** — some systems are grid-tied without a generator; the dashboard always labels the grid-input card "Generator" (§13 Q3). Decision: add a per-system `sourceLabel` field (`generator` | `grid`, default `generator`) set in the manage-systems modal and echoed by `fetchData()`; frontend renders the card title from it.
 - [ ] **Dashboard low-SOC warning on cards** — the SOC card has no visual (color/badge) warning when battery is low; only the alert webhook (`alerts.lowSocThreshold`) reacts today, and only via cron, not in the polled UI. Reuse `alerts.lowSocThreshold` when configured, falling back to a sane default, to drive a card-level warning style.
-- [ ] **Generator runtime tracking** — accumulate hours while `grid.active` is true (session-only or vendor-only; no KV archive per the vendor-only-history policy).
 - [ ] **E2E: alerts configuration UI** — no Playwright coverage for the alert-threshold/webhook form in the manage modal.
 - [ ] **E2E: manage-systems add/remove flow** — `manage-credentials.spec.js` covers credential rotation only; add/remove-system flows are untested end-to-end.
 
@@ -450,7 +450,7 @@ Not yet covered (see §5.3):
 12. **Dark/light theme toggle** — done, with persisted preference (system-preference auto-detection not implemented).
 13. **WebSocket push** — evaluated and deferred; see `discovery/WEBSOCKET_REALTIME.md`. Decision: keep HTTP polling.
 14. **Battery time-to-empty estimate** — done (cards + flow views).
-15. **Generator runtime tracking** — not implemented; see §5.3.
+15. **Generator runtime tracking** — done. Session-only counter, per system, persisted in `localStorage`, resets on disconnect (§5.1).
 16. **E2E tests** — done for the core flows; alerts config and manage-systems add/remove remain uncovered (§7.3.4).
 17. **Docker-compose local dev** — done (`docker-compose.yml`, `scripts/dev-local.js`).
 
@@ -543,7 +543,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [ ] Solis / Deye / SMA adapters — unstarted
 - [ ] Per-system Generator vs Grid card label (§5.3)
 - [ ] Dashboard low-SOC warning on cards (§5.3)
-- [ ] Generator runtime tracking (§5.3)
+- [x] Generator runtime tracking (§5.1)
 - [ ] E2E coverage for alerts config UI and manage-systems add/remove (§7.3.4)
 - [ ] Close release-notes/version-number sync gap for v1.3.0 (§11)
 - [ ] Mutation audit log for admin API routes (ADR 0002 Phase 1 — defer until requested)

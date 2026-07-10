@@ -64,6 +64,7 @@ _Last updated: 2026-07-09_
 - **Worker route edge cases** — CORS preflight and adapter 502 paths covered (`auth.test.js`)
 - **Planning pass (2026-07-09)** — PLAN.md checkboxes and phase statuses synced to actual v1.3.0 implementation; confirmed via repo inspection (git tags, file tree, test files) rather than assumed from the prior doc snapshot
 - **Multi-user token / audit-log spike** — ADR 0002 (`docs/decisions/0002-multi-user-token-and-audit-log.md`): phased model (shared token default → mutation audit → optional per-user KV keys); JWT and Cloudflare Access as primary auth rejected
+- **Generator runtime tracking** — session-only counter (per system, `localStorage`, resets on disconnect) shown on the generator card while `grid.active`; no vendor/KV history involved (PLAN §5.1, §10.3.15)
 
 ## In Progress
 
@@ -71,29 +72,28 @@ _None._
 
 ## Up Next
 
-_Priority order — the five items below are the only unimplemented feature/coverage gaps found this pass (confirmed against the codebase, not just docs); everything else previously listed as "planned" is done. See PLAN.md §5.3, §7.3.4, §11 for full detail._
+_Priority order — the items below are the remaining unimplemented feature/coverage gaps found this pass (confirmed against the codebase, not just docs); everything else previously listed as "planned" is done, including generator runtime tracking (see Done). See PLAN.md §5.3, §7.3.4, §11 for full detail._
 
 **Real feature/test gaps (previously attempted, did not land — see task board "failed" history):**
 
 1. Configurable per-system "Generator" vs "Grid" card label — add a per-system `sourceLabel` field (default `generator`), settable in manage-systems modal, echoed by `fetchData()`
 2. Dashboard low-SOC warning on cards — no visual (color/badge) warning when battery is low in the polled UI today; only the alert webhook reacts, and only via cron. Reuse `alerts.lowSocThreshold` when configured
-3. Generator runtime tracking — accumulate hours when `grid.active` is true (session or vendor only; no KV archive)
-4. Playwright E2E for alerts configuration in manage-systems modal
-5. Playwright E2E for manage-systems add/remove flow (only credential rotation is covered today)
+3. Playwright E2E for alerts configuration in manage-systems modal
+4. Playwright E2E for manage-systems add/remove flow (only credential rotation is covered today)
 
 **Doc/release sync:**
 
-6. `RELEASE_NOTES.md` still lists the v1.3.0 feature set under `## Unreleased` even though the `v1.3.0` git tag already points at current `main` — add the `## v1.3.0` heading
-7. Root `package.json` still reads `"version": "1.2.0"` — bump to `1.3.0` to match the tag
+5. `RELEASE_NOTES.md` still lists the v1.3.0 feature set under `## Unreleased` even though the `v1.3.0` git tag already points at current `main` — add the `## v1.3.0` heading
+6. Root `package.json` still reads `"version": "1.2.0"` — bump to `1.3.0` to match the tag
 
 **Nice-to-have (no urgency):**
 
-8. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`); revisit only if polling proves insufficient
-9. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account (attribute codes, `stats` interval enum) before `worker/src/services/victron.js` is written; Solis/Deye remain unstarted
-10. Generator-detection sensitivity (`gridV`/`gridW` thresholds) is a fixed constant, not user-configurable — revisit if a system's detection proves unreliable
-11. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
-12. Mutation audit log for admin routes (ADR 0002 Phase 1 — low priority, implement when requested)
-13. Per-user opaque API keys in KV (ADR 0002 Phase 2 — defer until concrete multi-user need)
+7. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`); revisit only if polling proves insufficient
+8. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account (attribute codes, `stats` interval enum) before `worker/src/services/victron.js` is written; Solis/Deye remain unstarted
+9. Generator-detection sensitivity (`gridV`/`gridW` thresholds) is a fixed constant, not user-configurable — revisit if a system's detection proves unreliable
+10. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
+11. Mutation audit log for admin routes (ADR 0002 Phase 1 — low priority, implement when requested)
+12. Per-user opaque API keys in KV (ADR 0002 Phase 2 — defer until concrete multi-user need)
 
 ## Blocked
 
