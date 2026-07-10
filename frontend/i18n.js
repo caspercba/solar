@@ -30,9 +30,11 @@ const messages = {
     cardSolar: "Solar",
     cardLoad: "Load",
     cardGenerator: "Generator",
+    cardGrid: "Grid",
 
     compareLowestSoc: "Lowest SOC",
     compareGeneratorOn: "Generator ON",
+    compareGridOn: "Grid ON",
     compareUnavailable: "Unavailable",
     compareLoadError: "Could not load comparison data.",
 
@@ -50,6 +52,7 @@ const messages = {
 
     flowSolar: "SOLAR",
     flowGen: "GEN",
+    flowGrid: "GRID",
     flowHouse: "HOUSE",
     flowBattery: "BATTERY",
 
@@ -110,6 +113,11 @@ const messages = {
     addSystemBtn: "+ Add System",
     close: "Close",
 
+    socWarnThreshold: "Low battery warning",
+    socWarnThresholdAria: "Low battery warning threshold percent",
+    socLowWarning: "Low",
+    socLowWarningTitle: "Battery is below the low-battery warning threshold ({threshold}%)",
+
     alertsEnable: "Enable alerts",
     alertsWebhook: "Webhook URL",
     alertsWebhookPlaceholder: "https://discord.com/api/webhooks/…",
@@ -121,6 +129,22 @@ const messages = {
     alertsSaving: "Saving…",
     alertsSaved: "Alerts saved",
     alertsOnBadge: "Alerts on",
+
+    gridDetectTitle: "Generator detection",
+    gridDetectVoltage: "Min voltage (V)",
+    gridDetectPower: "Min power (W)",
+    gridDetectHint: "Grid/generator is active when voltage and power exceed these values.",
+    gridDetectSave: "Save detection",
+    gridDetectSaving: "Saving…",
+    gridDetectSaved: "Detection settings saved",
+
+    gridInputLabelTitle: "Grid input label",
+    gridInputLabelHint: "Choose how the grid/generator source appears on cards and the flow diagram.",
+    gridInputLabelGenerator: "Generator",
+    gridInputLabelGrid: "Grid",
+    gridInputLabelSave: "Save label",
+    gridInputLabelSaving: "Saving…",
+    gridInputLabelSaved: "Label saved",
 
     credPortalTitle: "Portal credentials",
     credNewPasswordPlaceholder: "New password",
@@ -140,6 +164,13 @@ const messages = {
     timeToEmptyHours: "{h}h",
     timeToEmptyHoursMinutes: "{h}h {m}m",
     timeToEmptyLabel: "~{duration} left",
+
+    genRuntimeLabel: "Runtime",
+    genRuntimeLessThanMinute: "<1m",
+    genRuntimeMinutes: "{m}m",
+    genRuntimeHours: "{h}h",
+    genRuntimeHoursMinutes: "{h}h {m}m",
+    genRuntimeSessionNote: "This session only, not synced across devices",
   },
   es: {
     appTitle: "Panel Solar",
@@ -166,9 +197,11 @@ const messages = {
     cardSolar: "Solar",
     cardLoad: "Carga",
     cardGenerator: "Generador",
+    cardGrid: "Red",
 
     compareLowestSoc: "SOC más bajo",
     compareGeneratorOn: "Generador ENCENDIDO",
+    compareGridOn: "Red ENCENDIDA",
     compareUnavailable: "No disponible",
     compareLoadError: "No se pudieron cargar los datos de comparación.",
 
@@ -186,6 +219,7 @@ const messages = {
 
     flowSolar: "SOLAR",
     flowGen: "GEN",
+    flowGrid: "RED",
     flowHouse: "CASA",
     flowBattery: "BATERÍA",
 
@@ -246,6 +280,11 @@ const messages = {
     addSystemBtn: "+ Agregar sistema",
     close: "Cerrar",
 
+    socWarnThreshold: "Aviso de batería baja",
+    socWarnThresholdAria: "Umbral de aviso de batería baja en porcentaje",
+    socLowWarning: "Baja",
+    socLowWarningTitle: "La batería está por debajo del umbral de aviso de batería baja ({threshold}%)",
+
     alertsEnable: "Activar alertas",
     alertsWebhook: "URL del webhook",
     alertsWebhookPlaceholder: "https://discord.com/api/webhooks/…",
@@ -257,6 +296,22 @@ const messages = {
     alertsSaving: "Guardando…",
     alertsSaved: "Alertas guardadas",
     alertsOnBadge: "Alertas activas",
+
+    gridDetectTitle: "Detección de generador",
+    gridDetectVoltage: "Voltaje mín. (V)",
+    gridDetectPower: "Potencia mín. (W)",
+    gridDetectHint: "Red/generador activo cuando voltaje y potencia superan estos valores.",
+    gridDetectSave: "Guardar detección",
+    gridDetectSaving: "Guardando…",
+    gridDetectSaved: "Detección guardada",
+
+    gridInputLabelTitle: "Etiqueta de entrada de red",
+    gridInputLabelHint: "Elige cómo se muestra la fuente red/generador en tarjetas y el diagrama de flujo.",
+    gridInputLabelGenerator: "Generador",
+    gridInputLabelGrid: "Red",
+    gridInputLabelSave: "Guardar etiqueta",
+    gridInputLabelSaving: "Guardando…",
+    gridInputLabelSaved: "Etiqueta guardada",
 
     credPortalTitle: "Credenciales del portal",
     credNewPasswordPlaceholder: "Nueva contraseña",
@@ -276,6 +331,13 @@ const messages = {
     timeToEmptyHours: "{h} h",
     timeToEmptyHoursMinutes: "{h} h {m} min",
     timeToEmptyLabel: "~{duration} restante",
+
+    genRuntimeLabel: "Tiempo de uso",
+    genRuntimeLessThanMinute: "<1 min",
+    genRuntimeMinutes: "{m} min",
+    genRuntimeHours: "{h} h",
+    genRuntimeHoursMinutes: "{h} h {m} min",
+    genRuntimeSessionNote: "Solo esta sesión, no se sincroniza entre dispositivos",
   },
 };
 

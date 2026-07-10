@@ -406,6 +406,25 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .card-solar   .big-number { color: var(--accent-sol); }
 .card-load    .big-number { color: var(--accent-load); }
 
+.bat-low-badge {
+  margin-left: auto;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: .15rem .5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--error) 15%, transparent);
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 40%, transparent);
+}
+
+.bat-low-badge[hidden] { display: none; }
+
+.card-battery.soc-low { border-color: var(--error); }
+.card-battery.soc-low .card-bar { background: var(--error); }
+.card-battery.soc-low .big-number { color: var(--error); }
+
 .bat-status {
   display: flex;
   align-items: center;
@@ -472,6 +491,17 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 .gen-on  { background: color-mix(in srgb, var(--accent-gen) 15%, transparent); color: var(--accent-gen); }
 .gen-off { background: color-mix(in srgb, var(--text-dim) 10%, transparent);  color: var(--text-dim); }
+
+.gen-runtime {
+  margin-top: .5rem;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--accent-gen);
+  letter-spacing: .02em;
+  cursor: help;
+}
+
+.gen-runtime[hidden] { display: none; }
 
 /* ---------- VIEW TOGGLE ---------- */
 
@@ -1088,6 +1118,8 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   padding: 2rem;
   width: 100%;
   max-width: 400px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .modal h2 {
@@ -1205,7 +1237,8 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   color: var(--text-dim);
 }
 
-.manage-settings select {
+.manage-settings select,
+.manage-settings input[type="number"] {
   width: 100%;
   padding: .55rem .65rem;
   border-radius: 6px;
@@ -1213,11 +1246,12 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   background: var(--bg);
   color: var(--text);
   font-size: .85rem;
-  appearance: none;
-  cursor: pointer;
 }
 
-.manage-settings select:focus { border-color: var(--accent-sol); }
+.manage-settings select { appearance: none; cursor: pointer; }
+
+.manage-settings select:focus,
+.manage-settings input[type="number"]:focus { border-color: var(--accent-sol); }
 
 .manage-list { max-height: 45vh; overflow-y: auto; }
 
@@ -1351,6 +1385,30 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   font-weight: 600;
   color: var(--text);
   margin: 0 0 .25rem;
+}
+
+.manage-hint {
+  font-size: .72rem;
+  color: var(--text-dim);
+  margin: 0 0 .35rem;
+  line-height: 1.35;
+}
+
+.manage-grid-detect {
+  margin-bottom: .75rem;
+}
+
+.grid-msg {
+  font-size: .75rem;
+  margin: .25rem 0 0;
+}
+
+.grid-msg.alert-ok {
+  color: var(--accent-solar);
+}
+
+.grid-msg.alert-err {
+  color: var(--accent-load);
 }
 
 .manage-credentials {

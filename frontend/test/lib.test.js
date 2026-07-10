@@ -37,6 +37,21 @@ import {
   resolveInitialTheme,
   getNextTheme,
   VALID_THEMES,
+  normalizeSocWarnThreshold,
+  isSocBelowWarnThreshold,
+  DEFAULT_SOC_WARN_THRESHOLD,
+  MIN_SOC_WARN_THRESHOLD,
+  MAX_SOC_WARN_THRESHOLD,
+  generatorRuntimeStorageKey,
+  GENERATOR_RUNTIME_STORAGE_PREFIX,
+  createGeneratorRuntimeState,
+  updateGeneratorRuntime,
+  totalGeneratorRuntimeSec,
+  formatGeneratorRuntime,
+  normalizeGridInputLabel,
+  gridInputCardKey,
+  gridInputFlowKey,
+  gridInputCompareOnKey,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -429,6 +444,54 @@ describe("findLowestSocIds", () => {
   });
 });
 
+describe("normalizeSocWarnThreshold", () => {
+  it("returns the default when unset or invalid", () => {
+    expect(normalizeSocWarnThreshold(null)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold(undefined)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold("")).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold("abc")).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+  });
+
+  it("rejects out-of-range values", () => {
+    expect(normalizeSocWarnThreshold(0)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold(MIN_SOC_WARN_THRESHOLD - 1)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold(MAX_SOC_WARN_THRESHOLD + 1)).toBe(DEFAULT_SOC_WARN_THRESHOLD);
+  });
+
+  it("accepts valid in-range values", () => {
+    expect(normalizeSocWarnThreshold(MIN_SOC_WARN_THRESHOLD)).toBe(MIN_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold(MAX_SOC_WARN_THRESHOLD)).toBe(MAX_SOC_WARN_THRESHOLD);
+    expect(normalizeSocWarnThreshold("35")).toBe(35);
+    expect(normalizeSocWarnThreshold(15)).toBe(15);
+  });
+
+  it("supports a custom default", () => {
+    expect(normalizeSocWarnThreshold("nope", 30)).toBe(30);
+  });
+});
+
+describe("isSocBelowWarnThreshold", () => {
+  it("is true when SOC is below the threshold", () => {
+    expect(isSocBelowWarnThreshold(10, 20)).toBe(true);
+    expect(isSocBelowWarnThreshold(19, 20)).toBe(true);
+  });
+
+  it("is false when SOC is at or above the threshold", () => {
+    expect(isSocBelowWarnThreshold(20, 20)).toBe(false);
+    expect(isSocBelowWarnThreshold(50, 20)).toBe(false);
+  });
+
+  it("is false for non-finite SOC", () => {
+    expect(isSocBelowWarnThreshold(undefined, 20)).toBe(false);
+    expect(isSocBelowWarnThreshold(NaN, 20)).toBe(false);
+  });
+
+  it("uses the default threshold when omitted", () => {
+    expect(isSocBelowWarnThreshold(10)).toBe(true);
+    expect(isSocBelowWarnThreshold(50)).toBe(false);
+  });
+});
+
 describe("theme helpers", () => {
   it("normalizes valid theme names", () => {
     for (const theme of VALID_THEMES) {
@@ -480,6 +543,97 @@ describe("isEditableElement", () => {
 
   it("returns true for contenteditable elements", () => {
     expect(isEditableElement({ tagName: "DIV", isContentEditable: true })).toBe(true);
+  });
+});
+
+describe("generatorRuntimeStorageKey", () => {
+  it("namespaces the key by system id", () => {
+    expect(generatorRuntimeStorageKey("abc-123")).toBe(`${GENERATOR_RUNTIME_STORAGE_PREFIX}abc-123`);
+  });
+});
+
+describe("updateGeneratorRuntime / totalGeneratorRuntimeSec", () => {
+  it("starts a run when active flips from false to true", () => {
+    const t0 = 1_000_000;
+    const state = updateGeneratorRuntime(createGeneratorRuntimeState(), true, t0);
+    expect(state.activeSince).toBe(t0);
+    expect(state.accumulatedSec).toBe(0);
+    expect(totalGeneratorRuntimeSec(state, t0 + 5000)).toBe(5);
+  });
+
+  it("accumulates elapsed seconds when active flips back to false", () => {
+    const t0 = 1_000_000;
+    let state = updateGeneratorRuntime(createGeneratorRuntimeState(), true, t0);
+    state = updateGeneratorRuntime(state, false, t0 + 10_000);
+    expect(state.activeSince).toBeNull();
+    expect(state.accumulatedSec).toBe(10);
+    expect(totalGeneratorRuntimeSec(state, t0 + 60_000)).toBe(10);
+  });
+
+  it("is a no-op when state does not change (still inactive, or still active)", () => {
+    const idle = createGeneratorRuntimeState();
+    expect(updateGeneratorRuntime(idle, false, 1_000_000)).toBe(idle);
+
+    const t0 = 1_000_000;
+    const running = updateGeneratorRuntime(createGeneratorRuntimeState(), true, t0);
+    expect(updateGeneratorRuntime(running, true, t0 + 30_000)).toBe(running);
+  });
+
+  it("accumulates across multiple runs", () => {
+    let state = createGeneratorRuntimeState();
+    state = updateGeneratorRuntime(state, true, 0);
+    state = updateGeneratorRuntime(state, false, 5000);
+    state = updateGeneratorRuntime(state, true, 10_000);
+    state = updateGeneratorRuntime(state, false, 20_000);
+    expect(state.accumulatedSec).toBe(15);
+  });
+
+  it("totalGeneratorRuntimeSec treats missing state as zero", () => {
+    expect(totalGeneratorRuntimeSec(null, Date.now())).toBe(0);
+  });
+});
+
+describe("formatGeneratorRuntime", () => {
+  it("returns empty string for less than a second, zero, or invalid input", () => {
+    expect(formatGeneratorRuntime(0)).toBe("");
+    expect(formatGeneratorRuntime(-5)).toBe("");
+    expect(formatGeneratorRuntime(NaN)).toBe("");
+  });
+
+  it("formats minutes, hours, and combined durations in English by default", () => {
+    expect(formatGeneratorRuntime(45 * 60)).toBe("45m");
+    expect(formatGeneratorRuntime(2 * 3600)).toBe("2h");
+    expect(formatGeneratorRuntime(2 * 3600 + 15 * 60)).toBe("2h 15m");
+    expect(formatGeneratorRuntime(20)).toBe("<1m");
+  });
+
+  it("localizes duration via the app's translate callback", () => {
+    setLocale("es");
+    expect(formatGeneratorRuntime(45 * 60, t)).toBe("45 min");
+    expect(formatGeneratorRuntime(2 * 3600 + 15 * 60, t)).toBe("2 h 15 min");
+    setLocale(DEFAULT_LOCALE);
+  });
+});
+
+describe("grid input label helpers", () => {
+  it("normalizeGridInputLabel defaults to generator", () => {
+    expect(normalizeGridInputLabel()).toBe("generator");
+    expect(normalizeGridInputLabel(null)).toBe("generator");
+    expect(normalizeGridInputLabel("invalid")).toBe("generator");
+  });
+
+  it("normalizeGridInputLabel accepts grid", () => {
+    expect(normalizeGridInputLabel("grid")).toBe("grid");
+    expect(normalizeGridInputLabel("GRID")).toBe("grid");
+  });
+
+  it("maps label to i18n keys", () => {
+    expect(gridInputCardKey("generator")).toBe("cardGenerator");
+    expect(gridInputCardKey("grid")).toBe("cardGrid");
+    expect(gridInputFlowKey("generator")).toBe("flowGen");
+    expect(gridInputFlowKey("grid")).toBe("flowGrid");
+    expect(gridInputCompareOnKey("generator")).toBe("compareGeneratorOn");
+    expect(gridInputCompareOnKey("grid")).toBe("compareGridOn");
   });
 });
 
