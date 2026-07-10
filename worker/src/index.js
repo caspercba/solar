@@ -15,6 +15,11 @@ import {
   publicGridDetect,
   DEFAULT_GRID_DETECT,
 } from "./gridDetect.js";
+import {
+  updateSystemGridInputLabel,
+  publicGridInputLabel,
+  normalizeGridInputLabel,
+} from "./gridInputLabel.js";
 import * as shinemonitor from "./services/shinemonitor.js";
 import * as growatt from "./services/growatt.js";
 
@@ -102,6 +107,7 @@ export default {
           username: raw?.credentials?.user || "",
           alerts: publicAlerts(raw?.alerts || DEFAULT_ALERTS),
           gridDetect: publicGridDetect(raw?.gridDetect || DEFAULT_GRID_DETECT),
+          gridInputLabel: publicGridInputLabel(raw?.gridInputLabel),
         };
       }));
       return jsonResponse(safe, 200, origin);
@@ -110,7 +116,7 @@ export default {
     // POST /api/systems — add a new system
     if (path === "/api/systems" && request.method === "POST") {
       const body = await request.json();
-      const { service, name, user, password, plantId, deviceKey, deviceMode } = body;
+      const { service, name, user, password, plantId, deviceKey, deviceMode, gridInputLabel } = body;
 
       if (!service || !user || !password) {
         return errorResponse("Missing required fields: service, user, password", 400, origin);
@@ -161,6 +167,7 @@ export default {
         name: systemName,
         service,
         credentials: { user, ...buildCredentials(service, password, discovered) },
+        gridInputLabel: normalizeGridInputLabel(gridInputLabel),
         createdAt: new Date().toISOString(),
       };
 
@@ -264,6 +271,24 @@ export default {
       const raw = await env.SYSTEMS.get(`system:${id}`, "json");
       if (!raw) return errorResponse("System not found", 404, origin);
       return jsonResponse(publicGridDetect(raw.gridDetect || DEFAULT_GRID_DETECT), 200, origin);
+    }
+
+    // PUT /api/systems/:id/grid-input-label — update Generator vs Grid card label
+    const gridInputLabelMatch = path.match(/^\/api\/systems\/([^/]+)\/grid-input-label$/);
+    if (gridInputLabelMatch && request.method === "PUT") {
+      const id = gridInputLabelMatch[1];
+      const body = await request.json();
+      const updated = await updateSystemGridInputLabel(env, id, body);
+      if (!updated) return errorResponse("System not found", 404, origin);
+      return jsonResponse({ gridInputLabel: updated }, 200, origin);
+    }
+
+    // GET /api/systems/:id/grid-input-label — read Generator vs Grid card label
+    if (gridInputLabelMatch && request.method === "GET") {
+      const id = gridInputLabelMatch[1];
+      const raw = await loadSystemConfig(env, id);
+      if (!raw) return errorResponse("System not found", 404, origin);
+      return jsonResponse({ gridInputLabel: publicGridInputLabel(raw.gridInputLabel) }, 200, origin);
     }
 
     // DELETE /api/systems/:id

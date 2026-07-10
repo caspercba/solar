@@ -393,6 +393,30 @@ export function formatGeneratorRuntime(totalSeconds, translate = defaultGenerato
   return translate("genRuntimeHoursMinutes", { h, m });
 }
 
+export const DEFAULT_GRID_INPUT_LABEL = "generator";
+export const GRID_INPUT_LABELS = ["generator", "grid"];
+
+/** Normalize stored grid input label to generator|grid (default generator). */
+export function normalizeGridInputLabel(label) {
+  const value = String(label ?? DEFAULT_GRID_INPUT_LABEL).toLowerCase();
+  return GRID_INPUT_LABELS.includes(value) ? value : DEFAULT_GRID_INPUT_LABEL;
+}
+
+/** i18n key for the cards/compare metric title. */
+export function gridInputCardKey(label) {
+  return normalizeGridInputLabel(label) === "grid" ? "cardGrid" : "cardGenerator";
+}
+
+/** i18n key for the flow diagram node label. */
+export function gridInputFlowKey(label) {
+  return normalizeGridInputLabel(label) === "grid" ? "flowGrid" : "flowGen";
+}
+
+/** i18n key for the compare-view active badge. */
+export function gridInputCompareOnKey(label) {
+  return normalizeGridInputLabel(label) === "grid" ? "compareGridOn" : "compareGeneratorOn";
+}
+
 /** True when the element accepts text entry (skip refresh shortcuts). */
 export function isEditableElement(el) {
   if (!el) return false;

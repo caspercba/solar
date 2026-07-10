@@ -148,11 +148,11 @@
         </div>
       </div>
 
-      <!-- Generator card -->
+      <!-- Generator / Grid card -->
       <div id="card-gen" class="card card-gen">
         <div class="card-header">
           <span class="card-icon">&#x2699;</span>
-          <span class="card-title" data-i18n="cardGenerator">Generator</span>
+          <span id="gen-card-title" class="card-title" data-i18n="cardGenerator">Generator</span>
         </div>
         <div class="gen-status-row">
           <span id="gen-status" class="gen-badge gen-off">OFF</span>
@@ -187,7 +187,7 @@
         <text id="fn-solar-v" x="250" y="82" class="fn-val" text-anchor="middle">--</text>
 
         <circle id="fn-gen-bg" cx="58" cy="215" r="42" class="fn-bg"/>
-        <text x="58" y="195" class="fn-lbl" text-anchor="middle" data-i18n="flowGen">GEN</text>
+        <text id="flow-gen-label" x="58" y="195" class="fn-lbl" text-anchor="middle" data-i18n="flowGen">GEN</text>
         <text x="58" y="218" class="fn-icon" text-anchor="middle">&#x2699;&#65039;</text>
         <text id="fn-gen-v" x="58" y="240" class="fn-val" text-anchor="middle">OFF</text>
 
@@ -290,6 +290,11 @@
           <label for="add-device">Inverter</label>
           <select id="add-device"></select>
         </div>
+        <label for="add-grid-input-label" data-i18n="gridInputLabelTitle">Grid input label</label>
+        <select id="add-grid-input-label">
+          <option value="generator" data-i18n="gridInputLabelGenerator">Generator</option>
+          <option value="grid" data-i18n="gridInputLabelGrid">Grid</option>
+        </select>
         <div class="modal-actions">
           <button type="button" id="add-cancel" class="btn-secondary" data-i18n="cancel">Cancel</button>
           <button type="submit" id="add-submit" data-i18n="addSystem">Add System</button>
