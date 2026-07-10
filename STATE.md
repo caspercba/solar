@@ -63,6 +63,7 @@ _Last updated: 2026-07-09_
 - **Victron VRM discovery spike** — `discovery/victron/` (README, API.md, `fetch_data.py`); literature review only, not validated against a live account; see ADR 0001
 - **Worker route edge cases** — CORS preflight and adapter 502 paths covered (`auth.test.js`)
 - **Planning pass (2026-07-09)** — PLAN.md checkboxes and phase statuses synced to actual v1.3.0 implementation; confirmed via repo inspection (git tags, file tree, test files) rather than assumed from the prior doc snapshot
+- **Multi-user token / audit-log spike** — ADR 0002 (`docs/decisions/0002-multi-user-token-and-audit-log.md`): phased model (shared token default → mutation audit → optional per-user KV keys); JWT and Cloudflare Access as primary auth rejected
 - **Generator runtime tracking** — session-only counter (per system, `localStorage`, resets on disconnect) shown on the generator card while `grid.active`; no vendor/KV history involved (PLAN §5.1, §10.3.15)
 
 ## In Progress
@@ -91,7 +92,8 @@ _Priority order — the items below are the remaining unimplemented feature/cove
 8. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account (attribute codes, `stats` interval enum) before `worker/src/services/victron.js` is written; Solis/Deye remain unstarted
 9. Generator-detection sensitivity (`gridV`/`gridW` thresholds) is a fixed constant, not user-configurable — revisit if a system's detection proves unreliable
 10. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
-11. Multi-user access — per-user tokens / audit log (no work started; open question)
+11. Mutation audit log for admin routes (ADR 0002 Phase 1 — low priority, implement when requested)
+12. Per-user opaque API keys in KV (ADR 0002 Phase 2 — defer until concrete multi-user need)
 
 ## Blocked
 
@@ -110,11 +112,11 @@ _None._
 - **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV.
 - **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
 - **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
+- **Multi-user access (ADR 0002)** — shared `API_TOKEN` default; optional mutation audit log and per-user opaque KV keys with `read`/`admin` roles when needed; Cloudflare Access for admin surfaces only.
 
 ## Blocked / Open Questions
 
 1. Should frontend and worker share a Cloudflare project or remain independently deployable? _(Currently independently deployable — Pages for frontend, Workers for backend — and that has worked fine; revisit only if it becomes a pain point.)_
-2. Multi-user access — shared token sufficient or per-user tokens needed? _(No work started.)_
 
 ## Known Risks
 
