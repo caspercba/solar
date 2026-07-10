@@ -31,9 +31,11 @@ const messages = {
     cardSolar: "Solar",
     cardLoad: "Load",
     cardGenerator: "Generator",
+    cardGrid: "Grid",
 
     compareLowestSoc: "Lowest SOC",
     compareGeneratorOn: "Generator ON",
+    compareGridOn: "Grid ON",
     compareUnavailable: "Unavailable",
     compareLoadError: "Could not load comparison data.",
 
@@ -51,6 +53,7 @@ const messages = {
 
     flowSolar: "SOLAR",
     flowGen: "GEN",
+    flowGrid: "GRID",
     flowHouse: "HOUSE",
     flowBattery: "BATTERY",
 
@@ -127,6 +130,14 @@ const messages = {
     gridDetectSaving: "Saving…",
     gridDetectSaved: "Detection settings saved",
 
+    gridInputLabelTitle: "Grid input label",
+    gridInputLabelHint: "Choose how the grid/generator source appears on cards and the flow diagram.",
+    gridInputLabelGenerator: "Generator",
+    gridInputLabelGrid: "Grid",
+    gridInputLabelSave: "Save label",
+    gridInputLabelSaving: "Saving…",
+    gridInputLabelSaved: "Label saved",
+
     credPortalTitle: "Portal credentials",
     credNewPasswordPlaceholder: "New password",
     credSave: "Save credentials",
@@ -179,9 +190,11 @@ const messages = {
     cardSolar: "Solar",
     cardLoad: "Carga",
     cardGenerator: "Generador",
+    cardGrid: "Red",
 
     compareLowestSoc: "SOC más bajo",
     compareGeneratorOn: "Generador ENCENDIDO",
+    compareGridOn: "Red ENCENDIDA",
     compareUnavailable: "No disponible",
     compareLoadError: "No se pudieron cargar los datos de comparación.",
 
@@ -199,6 +212,7 @@ const messages = {
 
     flowSolar: "SOLAR",
     flowGen: "GEN",
+    flowGrid: "RED",
     flowHouse: "CASA",
     flowBattery: "BATERÍA",
 
@@ -274,6 +288,14 @@ const messages = {
     gridDetectSave: "Guardar detección",
     gridDetectSaving: "Guardando…",
     gridDetectSaved: "Detección guardada",
+
+    gridInputLabelTitle: "Etiqueta de entrada de red",
+    gridInputLabelHint: "Elige cómo se muestra la fuente red/generador en tarjetas y el diagrama de flujo.",
+    gridInputLabelGenerator: "Generador",
+    gridInputLabelGrid: "Red",
+    gridInputLabelSave: "Guardar etiqueta",
+    gridInputLabelSaving: "Guardando…",
+    gridInputLabelSaved: "Etiqueta guardada",
 
     credPortalTitle: "Credenciales del portal",
     credNewPasswordPlaceholder: "Nueva contraseña",

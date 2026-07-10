@@ -102,6 +102,7 @@ describe("worker routes", () => {
           voltageMin: 30,
           powerMin: 5,
         },
+        gridInputLabel: "generator",
       },
     ]);
   });
@@ -564,6 +565,110 @@ describe("worker routes", () => {
 
     const stored = await systems.SYSTEMS.get("system:s1", "json");
     expect(stored.gridDetect).toEqual({ voltageMin: 25, powerMin: 10 });
+  });
+
+  it("POST /api/systems stores gridInputLabel and defaults to generator", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+      }
+      if (u.includes("queryPlantsInfo")) {
+        return Response.json({ err: 0, dat: { info: [{ pid: 1, pname: "Grid Tied" }] } });
+      }
+      if (u.includes("queryPlantInfo")) {
+        return Response.json({
+          err: 0,
+          dat: { name: "Grid Tied", nominalPower: "5", address: { timezone: 0 } },
+        });
+      }
+      if (u.includes("queryPlantDeviceStatus")) {
+        return Response.json({
+          err: 0,
+          dat: { collector: [{ pn: "P1", device: [{ devcode: 2, sn: "SN", devaddr: 3 }] }] },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const systems = env();
+    const res = await call(
+      request("/api/systems", {
+        method: "POST",
+        headers: AUTH,
+        body: {
+          service: "shinemonitor",
+          name: "Grid Home",
+          user: "user@test.com",
+          password: "password",
+          gridInputLabel: "grid",
+        },
+      }),
+      systems,
+    );
+
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    const stored = await systems.SYSTEMS.get(`system:${json.id}`, "json");
+    expect(stored.gridInputLabel).toBe("grid");
+
+    const listRes = await call(request("/api/systems", { headers: AUTH }), systems);
+    const list = await listRes.json();
+    expect(list[0].gridInputLabel).toBe("grid");
+  });
+
+  it("PUT /api/systems/:id/grid-input-label updates label and round-trips via GET /api/systems", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "s1", name: "Site", service: "growatt" },
+    ]));
+    await systems.SYSTEMS.put("system:s1", JSON.stringify({
+      id: "s1",
+      name: "Site",
+      service: "growatt",
+      credentials: { user: "u", password: "p" },
+    }));
+
+    const putRes = await call(
+      request("/api/systems/s1/grid-input-label", {
+        method: "PUT",
+        headers: AUTH,
+        body: { gridInputLabel: "grid" },
+      }),
+      systems,
+    );
+
+    expect(putRes.status).toBe(200);
+    expect(await putRes.json()).toEqual({ gridInputLabel: "grid" });
+
+    const stored = await systems.SYSTEMS.get("system:s1", "json");
+    expect(stored.gridInputLabel).toBe("grid");
+
+    const getRes = await call(request("/api/systems/s1/grid-input-label", { headers: AUTH }), systems);
+    expect(getRes.status).toBe(200);
+    expect(await getRes.json()).toEqual({ gridInputLabel: "grid" });
+
+    const listRes = await call(request("/api/systems", { headers: AUTH }), systems);
+    const list = await listRes.json();
+    expect(list[0].gridInputLabel).toBe("grid");
+  });
+
+  it("GET /api/systems defaults gridInputLabel to generator for legacy systems", async () => {
+    const systems = env();
+    await systems.SYSTEMS.put("_index", JSON.stringify([
+      { id: "legacy", name: "Legacy", service: "shinemonitor" },
+    ]));
+    await systems.SYSTEMS.put("system:legacy", JSON.stringify({
+      id: "legacy",
+      name: "Legacy",
+      service: "shinemonitor",
+      credentials: { user: "u", password: "p" },
+    }));
+
+    const res = await call(request("/api/systems", { headers: AUTH }), systems);
+    expect(res.status).toBe(200);
+    const list = await res.json();
+    expect(list[0].gridInputLabel).toBe("generator");
   });
 
   it("GET /api/systems includes gridDetect settings", async () => {

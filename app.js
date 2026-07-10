@@ -35,6 +35,10 @@ import {
   updateGeneratorRuntime,
   totalGeneratorRuntimeSec,
   formatGeneratorRuntime,
+  normalizeGridInputLabel,
+  gridInputCardKey,
+  gridInputFlowKey,
+  gridInputCompareOnKey,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -45,6 +49,24 @@ import {
   syncLangToggle,
   formatPollIntervalLabelI18n,
 } from "./frontend/i18n.js";
+
+function getSystemById(systemId) {
+  return systems.find((s) => s.id === systemId) || null;
+}
+
+function getGridInputLabel(systemId) {
+  return normalizeGridInputLabel(getSystemById(systemId)?.gridInputLabel);
+}
+
+function applyGridInputLabels(systemId) {
+  const label = getGridInputLabel(systemId);
+  if (els.genCardTitle) {
+    els.genCardTitle.textContent = t(gridInputCardKey(label));
+  }
+  if (fEls.flowGenLabel) {
+    fEls.flowGenLabel.textContent = t(gridInputFlowKey(label));
+  }
+}
 
 /* ── Config ── */
 const POLL_INTERVAL_KEY = "solar_poll_interval";
@@ -177,6 +199,7 @@ const els = {
   genWatts: $("gen-watts"),
   genVolts: $("gen-volts"),
   genCard: $("card-gen"),
+  genCardTitle: $("gen-card-title"),
   genRuntime: $("gen-runtime"),
   genRuntimeValue: $("gen-runtime-value"),
   lastUpdate: $("last-update"),
@@ -236,6 +259,7 @@ const fEls = {
   fnHouseV: $("fn-house-v"),
   fnBatV: $("fn-bat-v"),
   fnBatDetail: $("fn-bat-detail"),
+  flowGenLabel: $("flow-gen-label"),
 };
 
 /* ── Modals ── */
@@ -363,7 +387,7 @@ function setCompareLoading(on) {
           <span class="compare-value">-- W</span>
         </div>
         <div class="compare-metric compare-metric-gen">
-          <span class="compare-label">${t("cardGenerator")}</span>
+          <span class="compare-label">${t(gridInputCardKey(sys.gridInputLabel))}</span>
           <span class="compare-value">--</span>
         </div>
       </div>
@@ -387,6 +411,7 @@ function renderComparison(allData) {
     const hasError = !d || d.error;
     const genOn = !hasError && (d.grid?.active ?? false);
     const isLowest = !hasError && lowestIds.has(d.systemId);
+    const gridLabel = getGridInputLabel(d.systemId);
 
     card.className = "compare-card"
       + (isLowest ? " compare-lowest-soc" : "")
@@ -412,7 +437,7 @@ function renderComparison(allData) {
       badges.push(`<span class="compare-highlight compare-highlight-lowest">${t("compareLowestSoc")}</span>`);
     }
     if (genOn) {
-      badges.push(`<span class="compare-highlight compare-highlight-gen">${t("compareGeneratorOn")}</span>`);
+      badges.push(`<span class="compare-highlight compare-highlight-gen">${t(gridInputCompareOnKey(gridLabel))}</span>`);
     }
 
     card.innerHTML = `
@@ -435,7 +460,7 @@ function renderComparison(allData) {
           <span class="compare-value">${loadW} W</span>
         </div>
         <div class="compare-metric compare-metric-gen">
-          <span class="compare-label">${t("cardGenerator")}</span>
+          <span class="compare-label">${t(gridInputCardKey(gridLabel))}</span>
           <span class="gen-badge ${genOn ? "gen-on" : "gen-off"}">${genOn ? t("genOn") : t("genOff")}</span>
         </div>
       </div>
@@ -577,6 +602,7 @@ function renderSystemTabs() {
       hasData = false;
       setLoading(true);
       renderSystemTabs();
+      applyGridInputLabels(sys.id);
       if (currentView === "chart") {
         loadChartView();
       } else {
@@ -610,6 +636,7 @@ function renderData(d) {
   lastRenderData = d;
   setLoading(false);
   hasData = true;
+  applyGridInputLabels(d.systemId || activeSystemId);
 
   const bat = d.battery || {};
   const sol = d.solar || {};
@@ -1494,6 +1521,7 @@ async function loadSystems() {
     activeSystemId = null;
   }
   renderSystemTabs();
+  applyGridInputLabels(activeSystemId);
 }
 
 /* ── Add System ── */
@@ -1566,6 +1594,7 @@ addForm.addEventListener("submit", async (e) => {
     name: $("add-name").value || undefined,
     user: $("add-user").value,
     password: $("add-pass").value,
+    gridInputLabel: $("add-grid-input-label").value,
   };
   if (!addPlantGroup.hidden && addPlantSelect.value) {
     body.plantId = addPlantSelect.value;
@@ -1809,6 +1838,58 @@ function renderGridDetectForm(sys) {
   return form;
 }
 
+function renderGridInputLabelForm(sys) {
+  const label = normalizeGridInputLabel(sys.gridInputLabel);
+  const form = document.createElement("div");
+  form.className = "manage-alerts manage-grid-input-label";
+  form.innerHTML = `
+    <p class="manage-section-title">${escapeAttr(t("gridInputLabelTitle"))}</p>
+    <p class="manage-hint">${escapeAttr(t("gridInputLabelHint"))}</p>
+    <select class="grid-input-label" aria-label="${escapeAttr(t("gridInputLabelTitle"))}">
+      <option value="generator">${escapeAttr(t("gridInputLabelGenerator"))}</option>
+      <option value="grid">${escapeAttr(t("gridInputLabelGrid"))}</option>
+    </select>
+    <button type="button" class="grid-input-label-save">${escapeAttr(t("gridInputLabelSave"))}</button>
+    <p class="grid-input-label-msg" hidden></p>
+  `;
+
+  const select = form.querySelector(".grid-input-label");
+  select.value = label;
+
+  const msg = form.querySelector(".grid-input-label-msg");
+  form.querySelector(".grid-input-label-save").addEventListener("click", async () => {
+    msg.hidden = true;
+    const btn = form.querySelector(".grid-input-label-save");
+    btn.disabled = true;
+    btn.textContent = t("gridInputLabelSaving");
+    try {
+      const result = await api("PUT", `/api/systems/${sys.id}/grid-input-label`, {
+        gridInputLabel: select.value,
+      });
+      sys.gridInputLabel = result.gridInputLabel;
+      if (sys.id === activeSystemId) {
+        applyGridInputLabels(sys.id);
+        if (lastRenderData) renderData(lastRenderData);
+      }
+      if (currentView === "compare" && lastCompareData) {
+        renderComparison(lastCompareData);
+      }
+      msg.textContent = t("gridInputLabelSaved");
+      msg.className = "grid-input-label-msg alert-ok";
+      msg.hidden = false;
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "grid-input-label-msg alert-err";
+      msg.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t("gridInputLabelSave");
+    }
+  });
+
+  return form;
+}
+
 function openManageModal() {
   manageModal.hidden = false;
   syncPollIntervalSelect();
@@ -1854,6 +1935,7 @@ function openManageModal() {
     top.appendChild(del);
     row.appendChild(top);
     row.appendChild(renderCredentialForm(sys));
+    row.appendChild(renderGridInputLabelForm(sys));
     row.appendChild(renderGridDetectForm(sys));
     row.appendChild(renderAlertForm(sys));
     manageList.appendChild(row);
@@ -1880,6 +1962,7 @@ function changeLocale(locale) {
   applyTranslations();
   syncLangToggle();
   refreshPollIntervalOptions();
+  applyGridInputLabels(activeSystemId);
   renderSystemTabs();
   if (lastRenderData) renderData(lastRenderData);
   if (currentView === "compare" && lastCompareData) renderComparison(lastCompareData);

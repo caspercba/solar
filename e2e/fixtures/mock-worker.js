@@ -182,6 +182,31 @@ export async function handleMockWorkerRequest(request) {
     }, 200, origin);
   }
 
+  const gridInputLabelMatch = path.match(/^\/api\/systems\/([^/]+)\/grid-input-label$/);
+  if (gridInputLabelMatch && request.method === "PUT") {
+    const id = gridInputLabelMatch[1];
+    const sys = systems.find((s) => s.id === id);
+    if (!sys) return error("System not found", 404, origin);
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+
+    const value = String(body?.gridInputLabel || "generator").toLowerCase();
+    sys.gridInputLabel = value === "grid" ? "grid" : "generator";
+    return json({ gridInputLabel: sys.gridInputLabel }, 200, origin);
+  }
+
+  if (gridInputLabelMatch && request.method === "GET") {
+    const id = gridInputLabelMatch[1];
+    const sys = systems.find((s) => s.id === id);
+    if (!sys) return error("System not found", 404, origin);
+    return json({ gridInputLabel: sys.gridInputLabel || "generator" }, 200, origin);
+  }
+
   const dataMatch = path.match(/^\/api\/systems\/([^/]+)\/data$/);
   if (dataMatch && request.method === "GET") {
     const id = dataMatch[1];

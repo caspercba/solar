@@ -43,6 +43,10 @@ import {
   updateGeneratorRuntime,
   totalGeneratorRuntimeSec,
   formatGeneratorRuntime,
+  normalizeGridInputLabel,
+  gridInputCardKey,
+  gridInputFlowKey,
+  gridInputCompareOnKey,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -555,6 +559,28 @@ describe("formatGeneratorRuntime", () => {
     expect(formatGeneratorRuntime(45 * 60, t)).toBe("45 min");
     expect(formatGeneratorRuntime(2 * 3600 + 15 * 60, t)).toBe("2 h 15 min");
     setLocale(DEFAULT_LOCALE);
+  });
+});
+
+describe("grid input label helpers", () => {
+  it("normalizeGridInputLabel defaults to generator", () => {
+    expect(normalizeGridInputLabel()).toBe("generator");
+    expect(normalizeGridInputLabel(null)).toBe("generator");
+    expect(normalizeGridInputLabel("invalid")).toBe("generator");
+  });
+
+  it("normalizeGridInputLabel accepts grid", () => {
+    expect(normalizeGridInputLabel("grid")).toBe("grid");
+    expect(normalizeGridInputLabel("GRID")).toBe("grid");
+  });
+
+  it("maps label to i18n keys", () => {
+    expect(gridInputCardKey("generator")).toBe("cardGenerator");
+    expect(gridInputCardKey("grid")).toBe("cardGrid");
+    expect(gridInputFlowKey("generator")).toBe("flowGen");
+    expect(gridInputFlowKey("grid")).toBe("flowGrid");
+    expect(gridInputCompareOnKey("generator")).toBe("compareGeneratorOn");
+    expect(gridInputCompareOnKey("grid")).toBe("compareGridOn");
   });
 });
 

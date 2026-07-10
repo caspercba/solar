@@ -33,6 +33,7 @@ export const systems = [
     service: "shinemonitor",
     username: "mock-user@example.com",
     alerts: { ...defaultAlerts },
+    gridInputLabel: "generator",
   },
   {
     id: MOCK_SYSTEM_ID_2,
@@ -40,6 +41,7 @@ export const systems = [
     service: "growatt",
     username: "growatt-mock@example.com",
     alerts: { ...defaultAlerts },
+    gridInputLabel: "grid",
   },
 ];
 
