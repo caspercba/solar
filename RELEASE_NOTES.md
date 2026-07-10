@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-Work merged to `main` since v1.2.1, not yet tagged.
+- Nothing yet.
+
+## v1.3.0
+
+### Dashboard & UX
 
 - Add multi-system comparison view for side-by-side monitoring.
 - Add Spanish i18n with an EN/ES toggle, persisted in `localStorage`.
@@ -10,17 +14,31 @@ Work merged to `main` since v1.2.1, not yet tagged.
 - Add configurable data refresh (poll) interval in the manage systems modal.
 - Add a user-configurable low-battery warning threshold that highlights the
   battery card (default 20%), separate from webhook SOC alerts.
-- Add Home Assistant REST bridge endpoint and integration docs.
 - Add desktop keyboard shortcut to refresh dashboard data.
 - Add poll error toast with retry on realtime fetch failures.
 - Add battery time-to-empty estimate on cards and flow views.
+- Add session-only generator runtime counter on the generator card (per-system,
+  stored in `localStorage`, resets on disconnect — not synced across devices).
 - Add Growatt weather data to realtime data and cards view.
+
+### Adapters & security
+
 - Add credential rotation UX for existing systems (no more delete/re-add).
 - Support ShineMonitor multi-inverter discovery and aggregation.
 - Store Growatt session token (`JSESSIONID`) in KV instead of plaintext password; add automatic ShineMonitor re-auth on token expiry.
-- Extend multi-day chart navigation with prev/next controls alongside the week strip and swipe gestures.
-- Add Docker Compose local dev stack with mock Worker and static frontend.
 - Fail closed (deny requests) when `API_TOKEN` is unset in a deployed environment, instead of running open.
+
+### Charts
+
+- Extend multi-day chart navigation with prev/next controls alongside the week strip and swipe gestures.
+
+### Integrations
+
+- Add Home Assistant REST bridge endpoint and integration docs.
+
+### Infrastructure & development
+
+- Add Docker Compose local dev stack with mock Worker and static frontend.
 - Various Cloudflare Pages/Worker deploy diagnostics and CI fixes.
 
 ## v1.2.1

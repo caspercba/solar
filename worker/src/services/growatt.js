@@ -9,6 +9,7 @@
  */
 
 import { saveSystemConfig } from "../credentials.js";
+import { isGridActive } from "../gridDetect.js";
 import {
   computeDailySummary,
   computeSocExtrema,
@@ -335,7 +336,7 @@ export async function fetchData(systemConfig) {
   const ratedPower = nominalPower || 3500;
 
   const batCurrent = batV > 0 ? batPower / batV : 0;
-  const genOn = gridV > 30 && gridW > 5;
+  const genOn = isGridActive(gridV, gridW, systemConfig.gridDetect);
 
   let energyToday = null;
   if (totalsResp.result === 1) {

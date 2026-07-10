@@ -124,6 +124,14 @@ const messages = {
     alertsSaved: "Alerts saved",
     alertsOnBadge: "Alerts on",
 
+    gridDetectTitle: "Generator detection",
+    gridDetectVoltage: "Min voltage (V)",
+    gridDetectPower: "Min power (W)",
+    gridDetectHint: "Grid/generator is active when voltage and power exceed these values.",
+    gridDetectSave: "Save detection",
+    gridDetectSaving: "Saving…",
+    gridDetectSaved: "Detection settings saved",
+
     credPortalTitle: "Portal credentials",
     credNewPasswordPlaceholder: "New password",
     credSave: "Save credentials",
@@ -142,6 +150,13 @@ const messages = {
     timeToEmptyHours: "{h}h",
     timeToEmptyHoursMinutes: "{h}h {m}m",
     timeToEmptyLabel: "~{duration} left",
+
+    genRuntimeLabel: "Runtime",
+    genRuntimeLessThanMinute: "<1m",
+    genRuntimeMinutes: "{m}m",
+    genRuntimeHours: "{h}h",
+    genRuntimeHoursMinutes: "{h}h {m}m",
+    genRuntimeSessionNote: "This session only, not synced across devices",
   },
   es: {
     appTitle: "Panel Solar",
@@ -262,6 +277,14 @@ const messages = {
     alertsSaved: "Alertas guardadas",
     alertsOnBadge: "Alertas activas",
 
+    gridDetectTitle: "Detección de generador",
+    gridDetectVoltage: "Voltaje mín. (V)",
+    gridDetectPower: "Potencia mín. (W)",
+    gridDetectHint: "Red/generador activo cuando voltaje y potencia superan estos valores.",
+    gridDetectSave: "Guardar detección",
+    gridDetectSaving: "Guardando…",
+    gridDetectSaved: "Detección guardada",
+
     credPortalTitle: "Credenciales del portal",
     credNewPasswordPlaceholder: "Nueva contraseña",
     credSave: "Guardar credenciales",
@@ -280,6 +303,13 @@ const messages = {
     timeToEmptyHours: "{h} h",
     timeToEmptyHoursMinutes: "{h} h {m} min",
     timeToEmptyLabel: "~{duration} restante",
+
+    genRuntimeLabel: "Tiempo de uso",
+    genRuntimeLessThanMinute: "<1 min",
+    genRuntimeMinutes: "{m} min",
+    genRuntimeHours: "{h} h",
+    genRuntimeHoursMinutes: "{h} h {m} min",
+    genRuntimeSessionNote: "Solo esta sesión, no se sincroniza entre dispositivos",
   },
 };
 

@@ -31,6 +31,12 @@ import {
   matchesDashboardRefreshShortcut,
   normalizeSocWarnThreshold,
   isSocBelowWarnThreshold,
+  generatorRuntimeStorageKey,
+  GENERATOR_RUNTIME_STORAGE_PREFIX,
+  createGeneratorRuntimeState,
+  updateGeneratorRuntime,
+  totalGeneratorRuntimeSec,
+  formatGeneratorRuntime,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -55,6 +61,51 @@ const CHART_SWIPE_THRESHOLD = 50;
 function saveConn(data) { localStorage.setItem(CONN_KEY, JSON.stringify(data)); }
 function loadConn() { try { return JSON.parse(localStorage.getItem(CONN_KEY)); } catch { return null; } }
 function clearConn() { localStorage.removeItem(CONN_KEY); }
+
+/* ── Generator runtime (session-only, per system, resets on disconnect) ── */
+function loadGeneratorRuntimeState(systemId) {
+  try {
+    const raw = localStorage.getItem(generatorRuntimeStorageKey(systemId));
+    if (!raw) return createGeneratorRuntimeState();
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.accumulatedSec !== "number") return createGeneratorRuntimeState();
+    return { accumulatedSec: parsed.accumulatedSec, activeSince: parsed.activeSince ?? null };
+  } catch {
+    return createGeneratorRuntimeState();
+  }
+}
+
+function saveGeneratorRuntimeState(systemId, state) {
+  try {
+    localStorage.setItem(generatorRuntimeStorageKey(systemId), JSON.stringify(state));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+function clearGeneratorRuntimeState(systemId) {
+  localStorage.removeItem(generatorRuntimeStorageKey(systemId));
+}
+
+function clearAllGeneratorRuntimeStates() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(GENERATOR_RUNTIME_STORAGE_PREFIX)) keys.push(key);
+  }
+  for (const key of keys) localStorage.removeItem(key);
+}
+
+function renderGeneratorRuntime(totalSec) {
+  if (!els.genRuntime || !els.genRuntimeValue) return;
+  const label = formatGeneratorRuntime(totalSec, t);
+  if (label) {
+    els.genRuntimeValue.textContent = label;
+    els.genRuntime.hidden = false;
+  } else {
+    els.genRuntime.hidden = true;
+  }
+}
 
 function getPollIntervalSec() {
   return normalizePollIntervalSec(localStorage.getItem(POLL_INTERVAL_KEY));
@@ -139,6 +190,8 @@ const els = {
   genWatts: $("gen-watts"),
   genVolts: $("gen-volts"),
   genCard: $("card-gen"),
+  genRuntime: $("gen-runtime"),
+  genRuntimeValue: $("gen-runtime-value"),
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
   inverterStatus: $("inverter-status"),
@@ -244,6 +297,9 @@ function setLoading(on) {
   if (els.batEmptyIn) {
     els.batEmptyIn.hidden = true;
     if (on) els.batEmptyIn.textContent = "";
+  }
+  if (els.genRuntime && on) {
+    els.genRuntime.hidden = true;
   }
   for (const bar of skeletonBars()) {
     if (!bar) continue;
@@ -640,6 +696,13 @@ function renderData(d) {
   els.genWatts.textContent = genOn ? Math.abs(Math.round(gridW)) : "0";
   els.genVolts.textContent = genOn ? gridV.toFixed(0) : "--";
   els.genCard.className = genOn ? "card card-gen gen-active" : "card card-gen";
+
+  if (d.systemId) {
+    const now = Date.now();
+    const genState = updateGeneratorRuntime(loadGeneratorRuntimeState(d.systemId), genOn, now);
+    saveGeneratorRuntimeState(d.systemId, genState);
+    renderGeneratorRuntime(totalGeneratorRuntimeSec(genState, now));
+  }
 
   /* Footer */
   const ts = d.timestamp || "--";
@@ -1716,6 +1779,55 @@ function renderAlertForm(sys) {
   return form;
 }
 
+function renderGridDetectForm(sys) {
+  const gridDetect = sys.gridDetect || {};
+  const form = document.createElement("div");
+  form.className = "manage-alerts manage-grid-detect";
+  form.innerHTML = `
+    <p class="manage-section-title">${escapeAttr(t("gridDetectTitle"))}</p>
+    <p class="manage-hint">${escapeAttr(t("gridDetectHint"))}</p>
+    <div class="alert-grid">
+      <div>
+        <label>${escapeAttr(t("gridDetectVoltage"))}</label>
+        <input type="number" class="grid-voltage" min="0" max="500" step="1" value="${gridDetect.voltageMin ?? 30}">
+      </div>
+      <div>
+        <label>${escapeAttr(t("gridDetectPower"))}</label>
+        <input type="number" class="grid-power" min="0" max="50000" step="1" value="${gridDetect.powerMin ?? 5}">
+      </div>
+    </div>
+    <button type="button" class="grid-save">${escapeAttr(t("gridDetectSave"))}</button>
+    <p class="grid-msg" hidden></p>
+  `;
+
+  const msg = form.querySelector(".grid-msg");
+  form.querySelector(".grid-save").addEventListener("click", async () => {
+    msg.hidden = true;
+    const btn = form.querySelector(".grid-save");
+    btn.disabled = true;
+    btn.textContent = t("gridDetectSaving");
+    try {
+      const body = {
+        voltageMin: Number(form.querySelector(".grid-voltage").value),
+        powerMin: Number(form.querySelector(".grid-power").value),
+      };
+      sys.gridDetect = await api("PUT", `/api/systems/${sys.id}/grid-detect`, body);
+      msg.textContent = t("gridDetectSaved");
+      msg.className = "grid-msg alert-ok";
+      msg.hidden = false;
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "grid-msg alert-err";
+      msg.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t("gridDetectSave");
+    }
+  });
+
+  return form;
+}
+
 function openManageModal() {
   manageModal.hidden = false;
   syncPollIntervalSelect();
@@ -1748,6 +1860,7 @@ function openManageModal() {
     del.addEventListener("click", async () => {
       if (!confirm(t("removeConfirm", { name: sys.name }))) return;
       await api("DELETE", `/api/systems/${sys.id}`);
+      clearGeneratorRuntimeState(sys.id);
       await loadSystems();
       openManageModal();
       if (activeSystemId === sys.id && systems.length) {
@@ -1761,6 +1874,7 @@ function openManageModal() {
     top.appendChild(del);
     row.appendChild(top);
     row.appendChild(renderCredentialForm(sys));
+    row.appendChild(renderGridDetectForm(sys));
     row.appendChild(renderAlertForm(sys));
     manageList.appendChild(row);
   }
@@ -1877,6 +1991,7 @@ els.setupForm.addEventListener("submit", async (e) => {
 
 els.disconnectBtn.addEventListener("click", () => {
   clearConn();
+  clearAllGeneratorRuntimeStates();
   stopPolling();
   showSetup();
 });
