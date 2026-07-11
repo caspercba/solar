@@ -36,10 +36,10 @@ The project exists because:
 - [x] Production deployment docs (root README + Worker setup + staging runbook)
 - [x] Worker unit tests for adapters and API routes (Vitest + Miniflare)
 - [x] **Frontend unit tests** — pure helpers (formatting, CSV export, URL parsing) in Vitest + jsdom (`frontend/lib.js`, `frontend/test/`)
-- [x] **UI / E2E tests** — Playwright flows against mock Worker (setup, dashboard, chart, chart-nav, manage-credentials, poll-interval, mobile PTR)
+- [x] **UI / E2E tests** — Playwright flows against mock Worker (setup, dashboard, chart, chart-nav, manage-credentials, manage-systems, manage-alerts, poll-interval, mobile PTR)
 - [x] **CI runs all test suites** — worker + frontend unit + E2E on every PR (`.github/workflows/ci.yml`)
 
-All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0** (HEAD of `main`). Remaining work is narrower: a handful of previously-attempted features that never landed (see §5.4), and Phase 5 expansion (adapters beyond Victron's discovery spike, i18n is done, HA bridge is done).
+All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0** (HEAD of `main`). Remaining work is Phase 5 expansion (adapters beyond Victron's discovery spike) and deferred ADR 0002 phases.
 
 ---
 
@@ -264,17 +264,12 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [x] Credential rotation UX in manage systems modal (no delete/re-add required)
 - [x] Docker Compose local dev stack (mock Worker + static frontend)
 - [x] **Generator runtime tracking** — session-only counter (per-system, `localStorage`, resets on disconnect) shown on the generator card while `grid.active`; no KV archive per the vendor-only-history policy.
+- [x] **Settings hub redesign** — preferences + system list in the settings modal; per-system detail screen for credentials, grid label, detection thresholds, alerts, and remove
+- [x] **Per-system grid input label** — `gridInputLabel` field (`generator` | `grid`, default `generator`) at add time or in manage UI; cards and flow diagram render from it (§13 Q3)
+- [x] **Dashboard low-SOC warning on cards** — card styling and badge when SOC is below the user-configured `socWarnThreshold` preference (separate from webhook alert threshold)
+- [x] **Per-system generator detection thresholds** — configurable `gridDetect` voltage/power minima in manage UI
 
 ### 5.2 Service adapter roadmap — see §6.3 (Victron)
-
-### 5.3 Remaining gaps — not yet implemented
-
-These were previously attempted and did not land (see task board "failed" history); they remain real gaps, not just documentation drift:
-
-- [ ] **Per-system Generator vs Grid card label** — some systems are grid-tied without a generator; the dashboard always labels the grid-input card "Generator" (§13 Q3). Decision: add a per-system `sourceLabel` field (`generator` | `grid`, default `generator`) set in the manage-systems modal and echoed by `fetchData()`; frontend renders the card title from it.
-- [ ] **Dashboard low-SOC warning on cards** — the SOC card has no visual (color/badge) warning when battery is low; only the alert webhook (`alerts.lowSocThreshold`) reacts today, and only via cron, not in the polled UI. Reuse `alerts.lowSocThreshold` when configured, falling back to a sane default, to drive a card-level warning style.
-- [ ] **E2E: alerts configuration UI** — no Playwright coverage for the alert-threshold/webhook form in the manage modal.
-- [ ] **E2E: manage-systems add/remove flow** — `manage-credentials.spec.js` covers credential rotation only; add/remove-system flows are untested end-to-end.
 
 ---
 
@@ -366,14 +361,9 @@ All items from the previous gap list have landed: Vitest unification, vendor-onl
 
 Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, escaping, SOC/bar math) with a Vitest + jsdom suite under `frontend/test/`.
 
-#### 7.3.4 UI / E2E tests (Playwright) — closed, with two known gaps
+#### 7.3.4 UI / E2E tests (Playwright) — closed
 
-`e2e/tests/` covers setup, dashboard (cards/flow/compare, tabs, keyboard refresh, toast/retry), chart + chart-nav, credential rotation, poll interval, and mobile pull-to-refresh, against a mock Worker fixture (no real inverter credentials in CI).
-
-Not yet covered (see §5.3):
-
-- [ ] Alerts configuration UI (threshold/webhook form in manage modal)
-- [ ] Manage-systems add/remove flow (only credential rotation is covered today)
+`e2e/tests/` covers setup, dashboard (cards/flow/compare, tabs, keyboard refresh, toast/retry), chart + chart-nav, credential rotation, manage-systems add/remove, alerts configuration, poll interval, and mobile pull-to-refresh, against a mock Worker fixture (no real inverter credentials in CI).
 
 #### 7.3.5 CI — closed
 
@@ -438,7 +428,7 @@ Not yet covered (see §5.3):
 ### 10.2 Medium Impact
 
 5. **PWA** — done (`manifest.json`, service worker).
-6. **Alerts / notifications** — done. Webhook when SOC drops below threshold, via Worker cron trigger with per-system cooldown. Remaining gap: no card-level visual warning in the polled UI (§5.3), and no E2E coverage for the config form (§7.3.4).
+6. **Alerts / notifications** — done. Webhook when SOC drops below threshold via Worker cron trigger with per-system cooldown; card-level visual warning in the polled UI via `socWarnThreshold`; E2E coverage for the alerts config form.
 7. **Comparison view** — done (`/api/systems/all/data`-backed side-by-side cards, lowest-SOC/generator highlights).
 8. **Configurable thresholds** — done for low-battery (`alerts.lowSocThreshold`); generator-detection sensitivity (`gridV`/`gridW` thresholds in the adapter) is still a fixed constant, not user-configurable.
 9. **i18n** — done. EN/ES toggle, persisted in `localStorage`, covers dashboard, manage modal, themes, and compare view strings.
@@ -451,7 +441,7 @@ Not yet covered (see §5.3):
 13. **WebSocket push** — evaluated and deferred; see `discovery/WEBSOCKET_REALTIME.md`. Decision: keep HTTP polling.
 14. **Battery time-to-empty estimate** — done (cards + flow views).
 15. **Generator runtime tracking** — done. Session-only counter, per system, persisted in `localStorage`, resets on disconnect (§5.1).
-16. **E2E tests** — done for the core flows; alerts config and manage-systems add/remove remain uncovered (§7.3.4).
+16. **E2E tests** — done for the core flows including alerts config and manage-systems add/remove (§7.3.4).
 17. **Docker-compose local dev** — done (`docker-compose.yml`, `scripts/dev-local.js`).
 
 ---
@@ -467,8 +457,6 @@ Not yet covered (see §5.3):
 | **v1.0.0** | Initial release: cards + flow views, multi-system proxy, ShineMonitor + Growatt adapters |
 
 See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
-
-**Doc/version sync gap:** the `v1.3.0` git tag points at the current `main` tip, but `RELEASE_NOTES.md` still lists this content under `## Unreleased` (no `## v1.3.0` heading), and root `package.json` still reads `"version": "1.2.0"`. See the tracked task to close this out.
 
 ---
 
@@ -541,11 +529,11 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] i18n (ES)
 - [ ] Victron VRM adapter — discovery spike complete (ADR 0001); live-account validation, device-instance role mapping, and `worker/src/services/victron.js` implementation still open
 - [ ] Solis / Deye / SMA adapters — unstarted
-- [ ] Per-system Generator vs Grid card label (§5.3)
-- [ ] Dashboard low-SOC warning on cards (§5.3)
+- [x] Per-system grid input label (§5.1)
+- [x] Dashboard low-SOC warning on cards (§5.1)
 - [x] Generator runtime tracking (§5.1)
-- [ ] E2E coverage for alerts config UI and manage-systems add/remove (§7.3.4)
-- [ ] Close release-notes/version-number sync gap for v1.3.0 (§11)
+- [x] E2E coverage for alerts config UI and manage-systems add/remove (§7.3.4)
+- [x] Release-notes/version-number sync for v1.3.0 (§11)
 - [ ] Mutation audit log for admin API routes (ADR 0002 Phase 1 — defer until requested)
 - [ ] Per-user opaque API keys in KV (ADR 0002 Phase 2 — defer until multi-user requirement)
 
@@ -555,7 +543,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 
 1. **Hosting split** — Should frontend and worker share a Cloudflare account/project, or remain independently deployable? _(Still open; current setup keeps them independently deployable — Pages for frontend, Workers for backend.)_
 2. **SOC source of truth** — _Resolved._ Prefer API `BATTERY_SOC` when valid; show an "Estimated" badge when voltage-interpolated (implemented).
-3. **Generator vs grid** — Current UI labels grid input as "Generator"; some systems are grid-tied without a generator. _Decision made this pass:_ add a per-system `sourceLabel` field (`generator` | `grid`, default `generator`) — tracked as a task (§5.3).
+3. **Generator vs grid** — _Resolved._ Per-system `gridInputLabel` field (`generator` | `grid`, default `generator`) set at add time or in manage UI; cards and flow diagram render from it.
 4. **Credential rotation** — _Resolved._ In-place credential rotation UX shipped in the manage-systems modal; no delete/re-add required.
 5. **Multi-user access** — _Resolved (ADR 0002)._ Single shared `API_TOKEN` remains the default for households and trusted small groups. Add a **mutation-only audit log** (Phase 1) when attribution is needed; add **per-user opaque API keys in KV** with `read` / `admin` roles (Phase 2) only when independent revoke or read-only access is required. Cloudflare Access is optional for admin/token-minting surfaces, not primary end-user auth. JWT and third-party IdP rejected for this static-frontend architecture.
 
@@ -572,6 +560,4 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 | Voltage-based SOC inaccurate | Prefer API SOC; show "estimated" badge when interpolated |
 | Vendor history gaps / account offline | Accept limitation; clear empty/error states with retry; yesterday fallback for ShineMonitor realtime |
 | Vendor rate limits on multi-day fetches | Cache vendor responses in-memory per isolate; limit summary `days` param |
-| `RELEASE_NOTES.md` / `package.json` version lag behind the `v1.3.0` git tag | Sync docs and version number as part of the next release task (§11) |
-| No card-level low-SOC visual warning; alerts config and manage-add/remove flows lack E2E coverage | Tracked as open work (§5.3, §7.3.4) |
-| Generator-detection thresholds (`gridV`/`gridW`) are fixed constants, not user-configurable | Acceptable for now; revisit if a system's detection proves unreliable |
+| Victron VRM attribute codes unverified against a live account | Discovery spike documents literature review only; live validation required before adapter implementation |
