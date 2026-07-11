@@ -1,6 +1,6 @@
 import { checkAuth, isAuthMisconfigured, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
 import { toHaPayload } from "./ha.js";
-import { logAdapterError } from "./logger.js";
+import { logAdapterError, auditLog } from "./logger.js";
 import { checkDataRateLimit, getRateLimitKey, rateLimitResponse } from "./rateLimit.js";
 import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
 import {
@@ -33,6 +33,32 @@ function forAdapter(raw, env) {
 
 function generateId() {
   return crypto.randomUUID();
+}
+
+/**
+ * Build the shared context for an audit-log entry (ADR 0002 Phase 1).
+ * `actorId` is hardcoded to "shared" until per-user tokens (Phase 2) land.
+ */
+function auditContext(request, action, resource = null) {
+  return {
+    actorId: "shared",
+    action,
+    resource,
+    method: request.method,
+    path: new URL(request.url).pathname,
+    clientIp: request.headers.get("CF-Connecting-IP") || null,
+    requestId: crypto.randomUUID(),
+  };
+}
+
+/** Emit the audit entry for a mutating route and pass the response through. */
+function auditedResponse(env, ctx, response) {
+  auditLog(env, {
+    ...ctx,
+    outcome: response.status < 400 ? "success" : "error",
+    status: response.status,
+  });
+  return response;
 }
 
 function enforceDataRateLimit(request, env, origin) {
@@ -117,14 +143,15 @@ export default {
     if (path === "/api/systems" && request.method === "POST") {
       const body = await request.json();
       const { service, name, user, password, plantId, deviceKey, deviceMode, gridInputLabel } = body;
+      const auditCtx = auditContext(request, "system.create");
 
       if (!service || !user || !password) {
-        return errorResponse("Missing required fields: service, user, password", 400, origin);
+        return auditedResponse(env, auditCtx, errorResponse("Missing required fields: service, user, password", 400, origin));
       }
 
       const adapter = ADAPTERS[service];
       if (!adapter) {
-        return errorResponse(`Unsupported service: ${service}. Supported: ${Object.keys(ADAPTERS).join(", ")}`, 400, origin);
+        return auditedResponse(env, auditCtx, errorResponse(`Unsupported service: ${service}. Supported: ${Object.keys(ADAPTERS).join(", ")}`, 400, origin));
       }
 
       let discovered;
@@ -140,23 +167,23 @@ export default {
           route: "POST /api/systems",
           error: err,
         });
-        return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
+        return auditedResponse(env, auditCtx, errorResponse(`Discovery failed: ${err.message}`, 502, origin));
       }
 
       if (discovered.requiresPlantSelection) {
-        return jsonResponse({
+        return auditedResponse(env, auditCtx, jsonResponse({
           requiresPlantSelection: true,
           plants: discovered.plants,
-        }, 200, origin);
+        }, 200, origin));
       }
 
       if (discovered.requiresDeviceSelection) {
-        return jsonResponse({
+        return auditedResponse(env, auditCtx, jsonResponse({
           requiresDeviceSelection: true,
           plantId: discovered.plantId,
           plantName: discovered.plantName,
           devices: discovered.deviceOptions,
-        }, 200, origin);
+        }, 200, origin));
       }
 
       const id = generateId();
@@ -177,26 +204,27 @@ export default {
       index.push({ id, name: systemName, service });
       await saveIndex(env, index);
 
-      return jsonResponse({ id, name: systemName, service, discovered }, 201, origin);
+      return auditedResponse(env, { ...auditCtx, resource: id }, jsonResponse({ id, name: systemName, service, discovered }, 201, origin));
     }
 
     // PUT /api/systems/:id/credentials — rotate portal username/password and re-discover
     const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
     if (credentialsMatch && request.method === "PUT") {
       const id = credentialsMatch[1];
+      const auditCtx = auditContext(request, "credentials.rotate", id);
       const raw = await loadSystemConfig(env, id);
-      if (!raw) return errorResponse("System not found", 404, origin);
+      if (!raw) return auditedResponse(env, auditCtx, errorResponse("System not found", 404, origin));
 
       const body = await request.json();
       const { user, password, plantId: bodyPlantId } = body;
 
       if (!user || !password) {
-        return errorResponse("Missing required fields: user, password", 400, origin);
+        return auditedResponse(env, auditCtx, errorResponse("Missing required fields: user, password", 400, origin));
       }
 
       const adapter = ADAPTERS[raw.service];
       if (!adapter) {
-        return errorResponse(`No adapter for service: ${raw.service}`, 500, origin);
+        return auditedResponse(env, auditCtx, errorResponse(`No adapter for service: ${raw.service}`, 500, origin));
       }
 
       const plantId = bodyPlantId || raw.credentials?.plantId || null;
@@ -211,14 +239,14 @@ export default {
           route: "PUT /api/systems/:id/credentials",
           error: err,
         });
-        return errorResponse(`Discovery failed: ${err.message}`, 502, origin);
+        return auditedResponse(env, auditCtx, errorResponse(`Discovery failed: ${err.message}`, 502, origin));
       }
 
       if (discovered.requiresPlantSelection) {
-        return jsonResponse({
+        return auditedResponse(env, auditCtx, jsonResponse({
           requiresPlantSelection: true,
           plants: discovered.plants,
-        }, 200, origin);
+        }, 200, origin));
       }
 
       const updatedConfig = {
@@ -228,23 +256,24 @@ export default {
 
       await saveSystemConfig(env, updatedConfig);
 
-      return jsonResponse({
+      return auditedResponse(env, auditCtx, jsonResponse({
         id: raw.id,
         name: raw.name,
         service: raw.service,
         username: user,
         discovered,
-      }, 200, origin);
+      }, 200, origin));
     }
 
     // PUT /api/systems/:id/alerts — update alert thresholds and webhook
     const alertsMatch = path.match(/^\/api\/systems\/([^/]+)\/alerts$/);
     if (alertsMatch && request.method === "PUT") {
       const id = alertsMatch[1];
+      const auditCtx = auditContext(request, "alerts.update", id);
       const body = await request.json();
       const updated = await updateSystemAlerts(env, id, body);
-      if (!updated) return errorResponse("System not found", 404, origin);
-      return jsonResponse(publicAlerts(updated), 200, origin);
+      if (!updated) return auditedResponse(env, auditCtx, errorResponse("System not found", 404, origin));
+      return auditedResponse(env, auditCtx, jsonResponse(publicAlerts(updated), 200, origin));
     }
 
     // GET /api/systems/:id/alerts — read alert settings
@@ -295,12 +324,13 @@ export default {
     const deleteMatch = path.match(/^\/api\/systems\/([^/]+)$/);
     if (deleteMatch && request.method === "DELETE") {
       const id = deleteMatch[1];
+      const auditCtx = auditContext(request, "system.delete", id);
       await env.SYSTEMS.delete(`system:${id}`);
       await deleteAlertState(env, id);
       const index = await listSystems(env);
       const updated = index.filter(s => s.id !== id);
       await saveIndex(env, updated);
-      return jsonResponse({ ok: true }, 200, origin);
+      return auditedResponse(env, auditCtx, jsonResponse({ ok: true }, 200, origin));
     }
 
     // GET /api/systems/all/data — fetch data for all systems (must be before :id/data)

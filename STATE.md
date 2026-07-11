@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-07-09_
+_Last updated: 2026-07-11_
 
 ## Done
 
@@ -70,6 +70,7 @@ _Last updated: 2026-07-09_
 - **Dashboard low-SOC warning** — card styling and badge when SOC is below the user-configured `socWarnThreshold` preference (separate from webhook alert threshold)
 - **Per-system generator detection thresholds** — configurable `gridDetect` voltage/power minima in manage UI (`PUT /api/systems/:id/grid-detect`)
 - **Release doc sync** — `RELEASE_NOTES.md` has `## v1.3.0`; root `package.json` reads `"version": "1.3.0"`
+- **Mutation audit log (ADR 0002 Phase 1)** — `auditLog()` in `worker/src/logger.js`; structured `audit` JSON entries (actorId, action, resource, method, path, clientIp, outcome, status, requestId) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`; read routes unaffected; `actorId` hardcoded `"shared"` until Phase 2 per-user keys; reuses existing `logger.js` redaction rules; tests in `routes.test.js`
 
 ## In Progress
 
@@ -87,8 +88,7 @@ _Priority order after this planning pass. Phases 1–4 are complete at v1.3.0; r
 
 **Deferred (ADR 0002 — implement when requested):**
 
-4. Mutation audit log for admin routes (Phase 1)
-5. Per-user opaque API keys in KV with `read`/`admin` roles (Phase 2)
+4. Per-user opaque API keys in KV with `read`/`admin` roles (Phase 2)
 
 ## Blocked
 
@@ -107,7 +107,7 @@ _None._
 - **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV.
 - **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
 - **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
-- **Multi-user access (ADR 0002)** — shared `API_TOKEN` default; optional mutation audit log and per-user opaque KV keys with `read`/`admin` roles when needed; Cloudflare Access for admin surfaces only.
+- **Multi-user access (ADR 0002)** — shared `API_TOKEN` default; mutation audit log implemented (Phase 1); optional per-user opaque KV keys with `read`/`admin` roles when needed (Phase 2); Cloudflare Access for admin surfaces only.
 
 ## Blocked / Open Questions
 
