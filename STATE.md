@@ -70,7 +70,8 @@ _Last updated: 2026-07-11_
 - **Dashboard low-SOC warning** — card styling and badge when SOC is below the user-configured `socWarnThreshold` preference (separate from webhook alert threshold)
 - **Per-system generator detection thresholds** — configurable `gridDetect` voltage/power minima in manage UI (`PUT /api/systems/:id/grid-detect`)
 - **Release doc sync** — `RELEASE_NOTES.md` has `## v1.3.0`; root `package.json` reads `"version": "1.3.0"`
-- **Mutation audit log (ADR 0002 Phase 1)** — `auditLog()` in `worker/src/logger.js`; structured `audit` JSON entries (actorId, action, resource, method, path, clientIp, outcome, status, requestId) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`; read routes unaffected; `actorId` hardcoded `"shared"` until Phase 2 per-user keys; reuses existing `logger.js` redaction rules; tests in `routes.test.js`
+- **Mutation audit log (ADR 0002 Phase 1)** — `auditLog()` in `worker/src/logger.js`; structured `audit` JSON entries (actorId, action, resource, method, path, clientIp, outcome, status, requestId) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`, `POST /api/admin/tokens`, `DELETE /api/admin/tokens/:id`; read routes unaffected; `actorId` is `"shared"` for the legacy token or the caller's own token id for per-user keys; reuses existing `logger.js` redaction rules; tests in `routes.test.js`
+- **Per-user opaque API keys in KV (ADR 0002 Phase 2)** — `worker/src/tokens.js`: SHA-256-hashed token registry (`token:<hash>`, `token-id:<id>`, `_index_tokens`), opaque 32-byte base64url tokens, `read`/`admin` roles, optional `expiresAt`, revoke-by-id. `checkAuth` (`worker/src/auth.js`) is now async: legacy `API_TOKEN` checked first as a no-KV-read fast path resolving to `actorId: "shared"`/`admin` (no migration needed — it keeps working unchanged); falls back to KV lookup for per-user tokens, rejecting revoked/expired entries. All mutating routes (`POST`/`PUT`/`DELETE`) return `403` for `read`-role callers. New admin-only routes: `POST`/`GET /api/admin/tokens`, `DELETE /api/admin/tokens/:id` — minting requires an existing `admin` token (no separate bootstrap secret). Rate-limit keying (`worker/src/rateLimit.js`) now gates off `auth.openMode` (true only in the true no-token-configured dev case) instead of `env.API_TOKEN` presence, so KV-only deployments are still rate-limited. Tests: `tokens.test.js`, `auth.test.js` (revoked/expired coverage), `routes.test.js` (role enforcement, independent revoke, admin token routes), `rateLimit.test.js`.
 
 ## In Progress
 
@@ -78,7 +79,7 @@ _None._
 
 ## Up Next
 
-_Priority order after this planning pass. Phases 1–4 are complete at v1.3.0; remaining work is Phase 5 expansion and deferred ADR 0002 phases. See PLAN.md §5.2, §12, and §13 for full detail._
+_Priority order after this planning pass. Phases 1–4 are complete at v1.3.0; ADR 0002 Phases 1–2 are also complete. Remaining work is Phase 5 expansion. See PLAN.md §5.2, §12, and §13 for full detail._
 
 **Phase 5 expansion (no urgency):**
 
@@ -86,9 +87,9 @@ _Priority order after this planning pass. Phases 1–4 are complete at v1.3.0; r
 2. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`); revisit only if polling proves insufficient
 3. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
 
-**Deferred (ADR 0002 — implement when requested):**
+**Deferred (ADR 0002 Phase 3 — implement when requested):**
 
-4. Per-user opaque API keys in KV with `read`/`admin` roles (Phase 2)
+4. Cloudflare Access on admin/token-minting surfaces (operator hardening only, not primary auth)
 
 ## Blocked
 
@@ -107,7 +108,7 @@ _None._
 - **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV.
 - **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
 - **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
-- **Multi-user access (ADR 0002)** — shared `API_TOKEN` default; mutation audit log implemented (Phase 1); optional per-user opaque KV keys with `read`/`admin` roles when needed (Phase 2); Cloudflare Access for admin surfaces only.
+- **Multi-user access (ADR 0002)** — shared `API_TOKEN` remains the default and needs no migration; mutation audit log (Phase 1) and per-user opaque KV keys with `read`/`admin` roles (Phase 2) are both implemented; Cloudflare Access (Phase 3) deferred to admin surfaces only, implement when requested.
 
 ## Blocked / Open Questions
 

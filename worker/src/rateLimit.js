@@ -9,10 +9,17 @@ const buckets = new Map();
 
 /**
  * Extract the bearer token used as the rate-limit key.
- * Returns null when API_TOKEN is unset (dev open mode — no rate limiting).
+ * Returns null when the request authenticated via dev open mode (no token
+ * configured at all — see `auth.js` `checkAuth`), so unlimited local/dev
+ * traffic isn't throttled. Keying off the raw bearer string (rather than
+ * `auth.actorId`) means the legacy shared token and every per-user KV token
+ * (ADR 0002 Phase 2) are rate-limited independently.
+ * @param {Request} request
+ * @param {object} env
+ * @param {{ openMode?: boolean }} [auth] - result of `checkAuth`
  */
-export function getRateLimitKey(request, env) {
-  if (!env.API_TOKEN) return null;
+export function getRateLimitKey(request, env, auth) {
+  if (auth?.openMode) return null;
 
   const header = request.headers.get("Authorization") || "";
   const match = header.match(/^Bearer\s+(.+)$/i);

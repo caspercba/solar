@@ -20,18 +20,24 @@ describe("rateLimit", () => {
   });
 
   describe("getRateLimitKey", () => {
-    it("returns null when API_TOKEN is not configured", () => {
-      expect(getRateLimitKey(makeRequest("Bearer anything"), {})).toBeNull();
+    it("returns null when the request authenticated via dev open mode", () => {
+      expect(getRateLimitKey(makeRequest("Bearer anything"), {}, { openMode: true })).toBeNull();
     });
 
-    it("returns the bearer token when configured", () => {
+    it("returns the bearer token for an authenticated legacy-token request", () => {
       const env = { API_TOKEN: "secret" };
-      expect(getRateLimitKey(makeRequest("Bearer secret"), env)).toBe("secret");
-      expect(getRateLimitKey(makeRequest("Bearer other"), env)).toBe("other");
+      const auth = { ok: true, actorId: "shared", role: "admin", openMode: false };
+      expect(getRateLimitKey(makeRequest("Bearer secret"), env, auth)).toBe("secret");
+      expect(getRateLimitKey(makeRequest("Bearer other"), env, auth)).toBe("other");
+    });
+
+    it("returns the bearer token for an authenticated per-user KV token request", () => {
+      const auth = { ok: true, actorId: "tok-1", role: "read", openMode: false };
+      expect(getRateLimitKey(makeRequest("Bearer per-user-token"), {}, auth)).toBe("per-user-token");
     });
 
     it("returns null when Authorization header is missing", () => {
-      expect(getRateLimitKey(makeRequest(), { API_TOKEN: "secret" })).toBeNull();
+      expect(getRateLimitKey(makeRequest(), { API_TOKEN: "secret" }, { openMode: false })).toBeNull();
     });
   });
 

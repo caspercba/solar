@@ -3,6 +3,7 @@ import { toHaPayload } from "./ha.js";
 import { logAdapterError, auditLog } from "./logger.js";
 import { checkDataRateLimit, getRateLimitKey, rateLimitResponse } from "./rateLimit.js";
 import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
+import { createToken, listTokens, revokeToken } from "./tokens.js";
 import {
   runScheduledAlerts,
   updateSystemAlerts,
@@ -35,15 +36,12 @@ function generateId() {
   return crypto.randomUUID();
 }
 
-/**
- * Build the shared context for an audit-log entry (ADR 0002 Phase 1).
- * `actorId` is hardcoded to "shared" until per-user tokens (Phase 2) land.
- */
-function auditContext(request, action, resource = null) {
+/** Build the shared context for an audit-log entry (ADR 0002 Phase 1 + 2). */
+function auditContext(request, action, resource, actorId) {
   return {
-    actorId: "shared",
+    actorId,
     action,
-    resource,
+    resource: resource ?? null,
     method: request.method,
     path: new URL(request.url).pathname,
     clientIp: request.headers.get("CF-Connecting-IP") || null,
@@ -61,8 +59,13 @@ function auditedResponse(env, ctx, response) {
   return response;
 }
 
-function enforceDataRateLimit(request, env, origin) {
-  const key = getRateLimitKey(request, env);
+/** Reject a mutation attempted with a read-role token (ADR 0002 Phase 2). */
+function forbiddenReadOnly(env, auditCtx, origin) {
+  return auditedResponse(env, auditCtx, errorResponse("Forbidden: read-only token cannot perform this action", 403, origin));
+}
+
+function enforceDataRateLimit(request, env, origin, auth) {
+  const key = getRateLimitKey(request, env, auth);
   const result = checkDataRateLimit(key);
   if (!result.allowed) {
     return rateLimitResponse(result.retryAfter, origin);
@@ -109,7 +112,8 @@ export default {
       return errorResponse("Service misconfigured: API_TOKEN is required in this environment", 503, origin);
     }
 
-    if (!checkAuth(request, env)) {
+    const auth = await checkAuth(request, env);
+    if (!auth.ok) {
       return errorResponse("Unauthorized", 401, origin);
     }
 
@@ -119,6 +123,45 @@ export default {
         { id: "shinemonitor", name: "ShineMonitor", fields: ["user", "password"] },
         { id: "growatt", name: "Growatt", fields: ["user", "password"] },
       ], 200, origin);
+    }
+
+    // POST /api/admin/tokens — mint a per-user opaque API key (ADR 0002 Phase 2, admin only)
+    if (path === "/api/admin/tokens" && request.method === "POST") {
+      const auditCtx = auditContext(request, "token.create", null, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
+      const body = await request.json();
+      const { label, role, expiresAt } = body || {};
+
+      let minted;
+      try {
+        minted = await createToken(env, { label, role, expiresAt });
+      } catch (err) {
+        return auditedResponse(env, auditCtx, errorResponse(err.message, 400, origin));
+      }
+
+      return auditedResponse(env, { ...auditCtx, resource: minted.id }, jsonResponse(minted, 201, origin));
+    }
+
+    // GET /api/admin/tokens — list minted API keys (never returns the plaintext token)
+    if (path === "/api/admin/tokens" && request.method === "GET") {
+      if (auth.role !== "admin") {
+        return errorResponse("Forbidden: read-only token cannot perform this action", 403, origin);
+      }
+      const tokens = await listTokens(env);
+      return jsonResponse(tokens, 200, origin);
+    }
+
+    // DELETE /api/admin/tokens/:id — revoke a per-user API key
+    const tokenMatch = path.match(/^\/api\/admin\/tokens\/([^/]+)$/);
+    if (tokenMatch && request.method === "DELETE") {
+      const id = tokenMatch[1];
+      const auditCtx = auditContext(request, "token.revoke", id, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
+      const revoked = await revokeToken(env, id);
+      if (!revoked) return auditedResponse(env, auditCtx, errorResponse("Token not found", 404, origin));
+      return auditedResponse(env, auditCtx, jsonResponse({ ok: true }, 200, origin));
     }
 
     // GET /api/systems — list all configured systems (without credentials)
@@ -143,7 +186,9 @@ export default {
     if (path === "/api/systems" && request.method === "POST") {
       const body = await request.json();
       const { service, name, user, password, plantId, deviceKey, deviceMode, gridInputLabel } = body;
-      const auditCtx = auditContext(request, "system.create");
+      const auditCtx = auditContext(request, "system.create", null, auth.actorId);
+
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
 
       if (!service || !user || !password) {
         return auditedResponse(env, auditCtx, errorResponse("Missing required fields: service, user, password", 400, origin));
@@ -211,7 +256,9 @@ export default {
     const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
     if (credentialsMatch && request.method === "PUT") {
       const id = credentialsMatch[1];
-      const auditCtx = auditContext(request, "credentials.rotate", id);
+      const auditCtx = auditContext(request, "credentials.rotate", id, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
       const raw = await loadSystemConfig(env, id);
       if (!raw) return auditedResponse(env, auditCtx, errorResponse("System not found", 404, origin));
 
@@ -269,7 +316,9 @@ export default {
     const alertsMatch = path.match(/^\/api\/systems\/([^/]+)\/alerts$/);
     if (alertsMatch && request.method === "PUT") {
       const id = alertsMatch[1];
-      const auditCtx = auditContext(request, "alerts.update", id);
+      const auditCtx = auditContext(request, "alerts.update", id, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
       const body = await request.json();
       const updated = await updateSystemAlerts(env, id, body);
       if (!updated) return auditedResponse(env, auditCtx, errorResponse("System not found", 404, origin));
@@ -288,6 +337,8 @@ export default {
     const gridDetectMatch = path.match(/^\/api\/systems\/([^/]+)\/grid-detect$/);
     if (gridDetectMatch && request.method === "PUT") {
       const id = gridDetectMatch[1];
+      if (auth.role !== "admin") return errorResponse("Forbidden: read-only token cannot perform this action", 403, origin);
+
       const body = await request.json();
       const updated = await updateSystemGridDetect(env, id, body);
       if (!updated) return errorResponse("System not found", 404, origin);
@@ -306,6 +357,8 @@ export default {
     const gridInputLabelMatch = path.match(/^\/api\/systems\/([^/]+)\/grid-input-label$/);
     if (gridInputLabelMatch && request.method === "PUT") {
       const id = gridInputLabelMatch[1];
+      if (auth.role !== "admin") return errorResponse("Forbidden: read-only token cannot perform this action", 403, origin);
+
       const body = await request.json();
       const updated = await updateSystemGridInputLabel(env, id, body);
       if (!updated) return errorResponse("System not found", 404, origin);
@@ -324,7 +377,9 @@ export default {
     const deleteMatch = path.match(/^\/api\/systems\/([^/]+)$/);
     if (deleteMatch && request.method === "DELETE") {
       const id = deleteMatch[1];
-      const auditCtx = auditContext(request, "system.delete", id);
+      const auditCtx = auditContext(request, "system.delete", id, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
       await env.SYSTEMS.delete(`system:${id}`);
       await deleteAlertState(env, id);
       const index = await listSystems(env);
@@ -335,7 +390,7 @@ export default {
 
     // GET /api/systems/all/data — fetch data for all systems (must be before :id/data)
     if (path === "/api/systems/all/data" && request.method === "GET") {
-      const limited = enforceDataRateLimit(request, env, origin);
+      const limited = enforceDataRateLimit(request, env, origin, auth);
       if (limited) return limited;
 
       const index = await listSystems(env);
@@ -366,7 +421,7 @@ export default {
     // GET /api/systems/:id/ha — flat JSON for Home Assistant REST sensors
     const haMatch = path.match(/^\/api\/systems\/([^/]+)\/ha$/);
     if (haMatch && request.method === "GET") {
-      const limited = enforceDataRateLimit(request, env, origin);
+      const limited = enforceDataRateLimit(request, env, origin, auth);
       if (limited) return limited;
 
       const id = haMatch[1];
@@ -393,7 +448,7 @@ export default {
     // GET /api/systems/:id/data — fetch real-time data for one system
     const dataMatch = path.match(/^\/api\/systems\/([^/]+)\/data$/);
     if (dataMatch && request.method === "GET") {
-      const limited = enforceDataRateLimit(request, env, origin);
+      const limited = enforceDataRateLimit(request, env, origin, auth);
       if (limited) return limited;
 
       const id = dataMatch[1];
