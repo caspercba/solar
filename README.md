@@ -382,10 +382,13 @@ Use only on trusted devices — the token appears in the URL and browser history
 | `GET` | `/api/systems/all/data` | Data for all systems |
 | `GET` | `/api/systems/:id/history?date=` | Intraday power series (vendor fetch on demand) |
 | `GET` | `/api/systems/:id/history/summary?days=7` | Daily energy totals for bar chart (vendor fetch on demand) |
+| `POST` | `/api/admin/tokens` | Mint a per-user opaque API key (`label`, `role: "read"\|"admin"`, optional `expiresAt`) — admin role required |
+| `GET` | `/api/admin/tokens` | List minted API keys (never returns the plaintext token) — admin role required |
+| `DELETE` | `/api/admin/tokens/:id` | Revoke one API key without affecting any other token — admin role required |
 
-All routes require `Authorization: Bearer <API_TOKEN>` when the secret is configured.
+All routes require `Authorization: Bearer <token>` when auth is configured. The token is either the legacy shared `API_TOKEN` secret (resolves to the `admin` role) or a per-user key minted via `POST /api/admin/tokens` (ADR 0002 Phase 2 — see [worker/DEPLOY.md §3.6](./worker/DEPLOY.md#36-shared-token-vs-per-user-keys)). Per-user keys carry a `read` or `admin` role; mutating routes (`POST`/`PUT`/`DELETE`) return `403` for `read`-role callers.
 
-**Rate limits:** Real-time data routes (`GET /api/systems/:id/data`, `GET /api/systems/:id/ha`, and `GET /api/systems/all/data`) are limited to **60 requests per minute per bearer token** (in-memory per Worker isolate). Exceeding the limit returns **429 Too Many Requests** with a `Retry-After` header (seconds until the window resets). Normal dashboard polling at 60 s intervals is well below this limit. Rate limiting is disabled when `API_TOKEN` is unset (dev open mode).
+**Rate limits:** Real-time data routes (`GET /api/systems/:id/data`, `GET /api/systems/:id/ha`, and `GET /api/systems/all/data`) are limited to **60 requests per minute per bearer token** (in-memory per Worker isolate) — legacy and per-user tokens are limited independently. Exceeding the limit returns **429 Too Many Requests** with a `Retry-After` header (seconds until the window resets). Normal dashboard polling at 60 s intervals is well below this limit. Rate limiting is disabled only in dev open mode (no `API_TOKEN` and no matching per-user token configured).
 
 ## Home Assistant integration
 

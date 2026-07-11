@@ -295,13 +295,52 @@ The Worker ships with a **single shared `API_TOKEN`** (ADR 0002 Phase 0). That i
 |----------|---------------------|
 | One household; family members all trust each other | **Shared token** — rotate via [§3.5](#35-api_token-rotation-runbook) when someone leaves or on a schedule |
 | Home Assistant or one automation using the API | **Shared token** — same bearer on read-only polls |
-| “Who deleted my system?” / compliance attribution | **Phase 1** — mutation-only audit log ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-1--mutation-audit-log-recommended-next-step-if-audit-is-the-driver)); implemented — structured `audit` JSON lines via `auditLog()` in `worker/src/logger.js` on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`; `actorId` is `"shared"` until Phase 2 per-user keys land |
-| Guest viewer, separate maintainer, or revoke one person without affecting others | **Phase 2** — per-user opaque API keys in KV with `read` / `admin` roles ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-2--per-user-opaque-api-keys-in-kv-when-multi-user-is-required)); defer until that requirement is concrete |
+| “Who deleted my system?” / compliance attribution | **Phase 1** — mutation-only audit log ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-1--mutation-audit-log-recommended-next-step-if-audit-is-the-driver)); implemented — structured `audit` JSON lines via `auditLog()` in `worker/src/logger.js` on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`, `POST /api/admin/tokens`, `DELETE /api/admin/tokens/:id`; `actorId` is `"shared"` for the legacy token or the token's own `id` for per-user keys |
+| Guest viewer, separate maintainer, or revoke one person without affecting others | **Phase 2** — per-user opaque API keys in KV with `read` / `admin` roles ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-2--per-user-opaque-api-keys-in-kv-when-multi-user-is-required)); **implemented** — see §3.6.1 |
 | Lock down token minting for an ops team | **Phase 3** — optional Cloudflare Access on admin surfaces only ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-3--cloudflare-access-optional-hardening-not-product-auth)) |
 
-**Shared token limitation:** Rotating or revoking access affects **every** client using that token. If that is unacceptable, do not work around it with multiple Worker deployments — plan for ADR 0002 Phase 2 per-user keys instead.
+**Shared token limitation:** Rotating or revoking access affects **every** client using that token. Per-user keys (§3.6.1) solve this without extra Worker deployments.
 
 Full decision record, alternatives considered, and implementation phases: **[docs/decisions/0002-multi-user-token-and-audit-log.md](../docs/decisions/0002-multi-user-token-and-audit-log.md)**.
+
+#### 3.6.1 Per-user API keys (ADR 0002 Phase 2)
+
+Per-user keys are **opaque random tokens** (32 bytes, base64url) stored hashed (SHA-256) in the `SYSTEMS` KV namespace alongside system configs. They are additive: the legacy `API_TOKEN` secret keeps working unchanged (checked first, with no KV read, and always resolves to the `"shared"` identity with the `admin` role) — **there is no migration step**.
+
+**Roles:**
+
+- `read` — GET routes only (dashboard polling, history, HA bridge, listing systems).
+- `admin` — all routes, including system CRUD, alert/grid-detect config, and minting/revoking other tokens.
+
+**Minting requires an existing admin-role token** (the legacy `API_TOKEN` or another minted `admin` key) — there is no separate bootstrap secret.
+
+```bash
+PROXY="https://solar-proxy.<subdomain>.workers.dev"
+TOKEN="YOUR_API_TOKEN"
+
+# Mint a read-only key for a guest or Home Assistant automation
+curl -sS -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"label": "guest-phone", "role": "read"}' \
+  "$PROXY/api/admin/tokens"
+# Response includes "token" — shown once, save it now:
+# { "id": "...", "token": "...", "label": "guest-phone", "role": "read", "createdAt": "...", "expiresAt": null }
+```
+
+Optional `expiresAt` (ISO 8601 string) auto-expires the key without a manual revoke.
+
+```bash
+# List minted keys (never returns the plaintext token or its hash)
+curl -sS -H "Authorization: Bearer $TOKEN" "$PROXY/api/admin/tokens"
+
+# Revoke one key by id — every other key (including the legacy shared token) keeps working
+curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" "$PROXY/api/admin/tokens/<id>"
+```
+
+**Frontend:** unchanged — paste the minted token into the setup screen's Access Token field instead of the shared `API_TOKEN`.
+
+**Rate limiting:** each bearer token (legacy or per-user) is limited independently (§ `worker/src/rateLimit.js`).
 
 ---
 
@@ -624,6 +663,9 @@ Requires `wrangler login` or `CLOUDFLARE_API_TOKEN` in the environment.
 | `_index` | JSON array `[{ id, name, service }, ...]` |
 | `system:<uuid>` | Full system config including encrypted `credentials` and optional `alerts` |
 | `alert-state:<uuid>` | Alert cooldown / breach state |
+| `token:<sha256-hex>` | Per-user API key registry entry: `{ id, label, role, createdAt, expiresAt, revokedAt }` (ADR 0002 Phase 2) |
+| `token-id:<uuid>` | Maps a token `id` to its hash, for revoke-by-id lookups |
+| `_index_tokens` | JSON array of minted key metadata (no secrets): `[{ id, label, role, prefix, createdAt, expiresAt, revokedAt }, ...]` |
 
 ### Useful commands
 

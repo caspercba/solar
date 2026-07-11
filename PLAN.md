@@ -1,6 +1,6 @@
 # Solar Dashboard — Project Plan
 
-_Last updated: 2026-07-09_
+_Last updated: 2026-07-11_
 
 ## 1. Project Definition
 
@@ -39,7 +39,7 @@ The project exists because:
 - [x] **UI / E2E tests** — Playwright flows against mock Worker (setup, dashboard, chart, chart-nav, manage-credentials, manage-systems, manage-alerts, poll-interval, mobile PTR)
 - [x] **CI runs all test suites** — worker + frontend unit + E2E on every PR (`.github/workflows/ci.yml`)
 
-All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0** (HEAD of `main`). Remaining work is Phase 5 expansion (adapters beyond Victron's discovery spike) and deferred ADR 0002 phases.
+All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0** (HEAD of `main`). ADR 0002 Phases 1–2 (mutation audit log, per-user opaque API keys) are also complete. Remaining work is Phase 5 expansion (adapters beyond Victron's discovery spike) and the optional ADR 0002 Phase 3 (Cloudflare Access for admin surfaces, not planned unless requested).
 
 ---
 
@@ -388,8 +388,8 @@ Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, esca
 | Discovery scripts | Env-var credentials | Already good; audit for committed secrets |
 | Growatt README | Credentials redacted | Done |
 | Structured logging | JSON error logs for adapter/alert failures (`worker/src/logger.js`) | Done; Sentry/APM remains optional (README "Sentry and third-party APM") |
-| Multi-user access | Single shared `API_TOKEN` (default) | Optional per-user opaque keys in KV when needed (ADR 0002 Phase 2) |
-| Admin audit trail | Mutation-only audit log (`auditLog()` in `worker/src/logger.js`) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id` | Done (ADR 0002 Phase 1); persisted sink (Logpush/Analytics Engine/KV) remains optional |
+| Multi-user access | Single shared `API_TOKEN` (default), plus optional per-user opaque keys in KV with `read`/`admin` roles | Done (ADR 0002 Phase 2) |
+| Admin audit trail | Mutation-only audit log (`auditLog()` in `worker/src/logger.js`) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`, `POST /api/admin/tokens`, `DELETE /api/admin/tokens/:id` | Done (ADR 0002 Phase 1 + 2); persisted sink (Logpush/Analytics Engine/KV) remains optional |
 
 ---
 
@@ -535,7 +535,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] E2E coverage for alerts config UI and manage-systems add/remove (§7.3.4)
 - [x] Release-notes/version-number sync for v1.3.0 (§11)
 - [x] Mutation audit log for admin API routes (ADR 0002 Phase 1)
-- [ ] Per-user opaque API keys in KV (ADR 0002 Phase 2 — defer until multi-user requirement)
+- [x] Per-user opaque API keys in KV (ADR 0002 Phase 2)
 
 ---
 
@@ -545,7 +545,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 2. **SOC source of truth** — _Resolved._ Prefer API `BATTERY_SOC` when valid; show an "Estimated" badge when voltage-interpolated (implemented).
 3. **Generator vs grid** — _Resolved._ Per-system `gridInputLabel` field (`generator` | `grid`, default `generator`) set at add time or in manage UI; cards and flow diagram render from it.
 4. **Credential rotation** — _Resolved._ In-place credential rotation UX shipped in the manage-systems modal; no delete/re-add required.
-5. **Multi-user access** — _Resolved (ADR 0002)._ Single shared `API_TOKEN` remains the default for households and trusted small groups. Add a **mutation-only audit log** (Phase 1) when attribution is needed; add **per-user opaque API keys in KV** with `read` / `admin` roles (Phase 2) only when independent revoke or read-only access is required. Cloudflare Access is optional for admin/token-minting surfaces, not primary end-user auth. JWT and third-party IdP rejected for this static-frontend architecture.
+5. **Multi-user access** — _Resolved (ADR 0002)._ Single shared `API_TOKEN` remains the default for households and trusted small groups. **Mutation-only audit log** (Phase 1) and **per-user opaque API keys in KV** with `read` / `admin` roles (Phase 2) are both implemented — mint/list/revoke via `POST`/`GET /api/admin/tokens` and `DELETE /api/admin/tokens/:id` (admin role required); the legacy `API_TOKEN` keeps working unchanged with no migration step. Cloudflare Access is optional for admin/token-minting surfaces, not primary end-user auth. JWT and third-party IdP rejected for this static-frontend architecture.
 
 ---
 

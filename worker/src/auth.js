@@ -1,16 +1,46 @@
-/**
- * Simple shared-token auth for the proxy.
- * The token is set as a Cloudflare Worker secret (API_TOKEN).
- * Clients send it via `Authorization: Bearer <token>` header.
- */
-export function checkAuth(request, env) {
-  const token = env.API_TOKEN;
-  if (!token) return !isProductionGuardEnabled(env); // no token = open, unless deployed
+import { lookupToken } from "./tokens.js";
 
+/**
+ * Auth for the proxy — a legacy shared token (ADR 0002 Phase 0) plus an
+ * optional per-user opaque key registry in KV (ADR 0002 Phase 2).
+ *
+ * The legacy `API_TOKEN` secret, when set, is checked first as a fast path
+ * with no KV read and always resolves to the "shared"/admin identity — this
+ * means existing single-token deployments keep working unchanged; there is
+ * no migration step to import it into the KV registry.
+ *
+ * Per-user tokens are opaque random values minted via `tokens.js` and looked
+ * up by SHA-256 hash. They carry a `read` or `admin` role; callers enforce
+ * role requirements on mutating routes (see `worker/src/index.js`).
+ *
+ * @param {Request} request
+ * @param {object} env
+ * @returns {Promise<{ ok: true, actorId: string, role: "read"|"admin", openMode: boolean } | { ok: false }>}
+ */
+export async function checkAuth(request, env) {
   const header = request.headers.get("Authorization") || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match) return false;
-  return match[1] === token;
+  const presented = match ? match[1] : null;
+
+  const legacyToken = env.API_TOKEN;
+
+  if (legacyToken) {
+    if (presented === legacyToken) {
+      return { ok: true, actorId: "shared", role: "admin", openMode: false };
+    }
+    const entry = presented ? await lookupToken(env, presented) : null;
+    if (entry) return { ok: true, actorId: entry.id, role: entry.role, openMode: false };
+    return { ok: false };
+  }
+
+  // No legacy secret configured — a KV per-user token still authenticates.
+  const entry = presented ? await lookupToken(env, presented) : null;
+  if (entry) return { ok: true, actorId: entry.id, role: entry.role, openMode: false };
+
+  if (isProductionGuardEnabled(env)) return { ok: false };
+
+  // Dev convenience: no token configured at all = open, unauthenticated access.
+  return { ok: true, actorId: "dev", role: "admin", openMode: true };
 }
 
 /**

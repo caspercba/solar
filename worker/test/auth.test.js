@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { checkAuth, isProductionGuardEnabled, isAuthMisconfigured } from "../src/auth.js";
+import { createToken } from "../src/tokens.js";
+import { createMockKV } from "./helpers.js";
 
 function makeRequest(authHeader) {
   const headers = new Headers();
@@ -7,40 +9,117 @@ function makeRequest(authHeader) {
   return new Request("https://example.com/api/systems", { headers });
 }
 
+function env(overrides = {}) {
+  return { SYSTEMS: createMockKV(), ...overrides };
+}
+
 describe("checkAuth", () => {
-  it("allows all requests when API_TOKEN is not configured", () => {
-    const env = {};
-    expect(checkAuth(makeRequest(), env)).toBe(true);
-    expect(checkAuth(makeRequest("Bearer wrong"), env)).toBe(true);
+  it("allows all requests when no token is configured (dev open mode)", async () => {
+    const e = env();
+    expect(await checkAuth(makeRequest(), e)).toEqual({ ok: true, actorId: "dev", role: "admin", openMode: true });
+    expect(await checkAuth(makeRequest("Bearer wrong"), e)).toEqual({ ok: true, actorId: "dev", role: "admin", openMode: true });
   });
 
-  it("allows requests with a valid Bearer token", () => {
-    const env = { API_TOKEN: "secret-token" };
-    expect(checkAuth(makeRequest("Bearer secret-token"), env)).toBe(true);
+  it("allows requests with a valid legacy Bearer token", async () => {
+    const e = env({ API_TOKEN: "secret-token" });
+    expect(await checkAuth(makeRequest("Bearer secret-token"), e)).toEqual({
+      ok: true,
+      actorId: "shared",
+      role: "admin",
+      openMode: false,
+    });
   });
 
-  it("rejects requests with a missing Authorization header", () => {
-    const env = { API_TOKEN: "secret-token" };
-    expect(checkAuth(makeRequest(), env)).toBe(false);
+  it("rejects requests with a missing Authorization header", async () => {
+    const e = env({ API_TOKEN: "secret-token" });
+    expect(await checkAuth(makeRequest(), e)).toEqual({ ok: false });
   });
 
-  it("rejects requests with an invalid Bearer token", () => {
-    const env = { API_TOKEN: "secret-token" };
-    expect(checkAuth(makeRequest("Bearer wrong-token"), env)).toBe(false);
-    expect(checkAuth(makeRequest("Basic secret-token"), env)).toBe(false);
+  it("rejects requests with an invalid Bearer token", async () => {
+    const e = env({ API_TOKEN: "secret-token" });
+    expect(await checkAuth(makeRequest("Bearer wrong-token"), e)).toEqual({ ok: false });
+    expect(await checkAuth(makeRequest("Basic secret-token"), e)).toEqual({ ok: false });
   });
 
-  it("rejects all requests when PRODUCTION is enabled and API_TOKEN is unset", () => {
-    const env = { PRODUCTION: "true" };
-    expect(checkAuth(makeRequest(), env)).toBe(false);
-    expect(checkAuth(makeRequest("Bearer anything"), env)).toBe(false);
+  it("rejects all requests when PRODUCTION is enabled and API_TOKEN is unset", async () => {
+    const e = env({ PRODUCTION: "true" });
+    expect(await checkAuth(makeRequest(), e)).toEqual({ ok: false });
+    expect(await checkAuth(makeRequest("Bearer anything"), e)).toEqual({ ok: false });
   });
 
-  it("still enforces the token normally when PRODUCTION and API_TOKEN are both set", () => {
-    const env = { PRODUCTION: "true", API_TOKEN: "secret-token" };
-    expect(checkAuth(makeRequest("Bearer secret-token"), env)).toBe(true);
-    expect(checkAuth(makeRequest("Bearer wrong-token"), env)).toBe(false);
-    expect(checkAuth(makeRequest(), env)).toBe(false);
+  it("still enforces the token normally when PRODUCTION and API_TOKEN are both set", async () => {
+    const e = env({ PRODUCTION: "true", API_TOKEN: "secret-token" });
+    expect(await checkAuth(makeRequest("Bearer secret-token"), e)).toEqual({
+      ok: true,
+      actorId: "shared",
+      role: "admin",
+      openMode: false,
+    });
+    expect(await checkAuth(makeRequest("Bearer wrong-token"), e)).toEqual({ ok: false });
+    expect(await checkAuth(makeRequest(), e)).toEqual({ ok: false });
+  });
+
+  describe("per-user KV tokens (ADR 0002 Phase 2)", () => {
+    it("authenticates a valid admin-role token alongside the legacy shared token", async () => {
+      const e = env({ API_TOKEN: "secret-token" });
+      const minted = await createToken(e, { label: "ops", role: "admin" });
+
+      expect(await checkAuth(makeRequest(`Bearer ${minted.token}`), e)).toEqual({
+        ok: true,
+        actorId: minted.id,
+        role: "admin",
+        openMode: false,
+      });
+    });
+
+    it("authenticates a valid read-role token", async () => {
+      const e = env({ API_TOKEN: "secret-token" });
+      const minted = await createToken(e, { label: "guest", role: "read" });
+
+      expect(await checkAuth(makeRequest(`Bearer ${minted.token}`), e)).toEqual({
+        ok: true,
+        actorId: minted.id,
+        role: "read",
+        openMode: false,
+      });
+    });
+
+    it("authenticates a KV token even when no legacy API_TOKEN secret is set", async () => {
+      const e = env();
+      const minted = await createToken(e, { label: "solo", role: "read" });
+
+      expect(await checkAuth(makeRequest(`Bearer ${minted.token}`), e)).toEqual({
+        ok: true,
+        actorId: minted.id,
+        role: "read",
+        openMode: false,
+      });
+    });
+
+    it("rejects a revoked token", async () => {
+      const { revokeToken } = await import("../src/tokens.js");
+      const e = env({ API_TOKEN: "secret-token" });
+      const minted = await createToken(e, { label: "temp", role: "admin" });
+      await revokeToken(e, minted.id);
+
+      expect(await checkAuth(makeRequest(`Bearer ${minted.token}`), e)).toEqual({ ok: false });
+    });
+
+    it("rejects an expired token", async () => {
+      const e = env({ API_TOKEN: "secret-token" });
+      const minted = await createToken(e, {
+        label: "temp",
+        role: "admin",
+        expiresAt: "2020-01-01T00:00:00.000Z",
+      });
+
+      expect(await checkAuth(makeRequest(`Bearer ${minted.token}`), e)).toEqual({ ok: false });
+    });
+
+    it("rejects an unknown token", async () => {
+      const e = env({ API_TOKEN: "secret-token" });
+      expect(await checkAuth(makeRequest("Bearer not-minted-anywhere"), e)).toEqual({ ok: false });
+    });
   });
 });
 

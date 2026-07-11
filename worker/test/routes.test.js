@@ -1604,4 +1604,162 @@ describe("worker routes", () => {
       consoleLog.mockRestore();
     });
   });
+
+  describe("per-user API keys and roles (ADR 0002 Phase 2)", () => {
+    async function mintToken(systems, role, label = "test-key") {
+      const res = await call(
+        request("/api/admin/tokens", { method: "POST", headers: AUTH, body: { label, role } }),
+        systems,
+      );
+      expect(res.status).toBe(201);
+      return res.json();
+    }
+
+    it("POST /api/admin/tokens mints a token (admin only)", async () => {
+      const systems = env();
+      const minted = await mintToken(systems, "read", "guest");
+      expect(minted.token).toBeTruthy();
+      expect(minted.role).toBe("read");
+      expect(minted.id).toBeTruthy();
+    });
+
+    it("POST /api/admin/tokens is forbidden for a read-role caller", async () => {
+      const systems = env();
+      const guest = await mintToken(systems, "read", "guest");
+
+      const res = await call(
+        request("/api/admin/tokens", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${guest.token}` },
+          body: { label: "escalate", role: "admin" },
+        }),
+        systems,
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("a minted admin-role token can perform mutating routes", async () => {
+      const systems = env();
+      const admin = await mintToken(systems, "admin", "maintainer");
+      await systems.SYSTEMS.put("_index", JSON.stringify([
+        { id: "s1", name: "Cabin", service: "growatt" },
+      ]));
+      await systems.SYSTEMS.put("system:s1", JSON.stringify({ id: "s1", name: "Cabin", service: "growatt" }));
+
+      const res = await call(
+        request("/api/systems/s1", { method: "DELETE", headers: { Authorization: `Bearer ${admin.token}` } }),
+        systems,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("a minted read-role token is blocked from mutating routes: POST /api/systems", async () => {
+      const systems = env();
+      const guest = await mintToken(systems, "read", "guest");
+
+      const res = await call(
+        request("/api/systems", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${guest.token}` },
+          body: { service: "growatt", user: "u", password: "p" },
+        }),
+        systems,
+      );
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "Forbidden: read-only token cannot perform this action" });
+    });
+
+    it("a minted read-role token is blocked from mutating routes: DELETE /api/systems/:id", async () => {
+      const systems = env();
+      const guest = await mintToken(systems, "read", "guest");
+      await systems.SYSTEMS.put("_index", JSON.stringify([
+        { id: "s1", name: "Cabin", service: "growatt" },
+      ]));
+      await systems.SYSTEMS.put("system:s1", JSON.stringify({ id: "s1", name: "Cabin", service: "growatt" }));
+
+      const res = await call(
+        request("/api/systems/s1", { method: "DELETE", headers: { Authorization: `Bearer ${guest.token}` } }),
+        systems,
+      );
+      expect(res.status).toBe(403);
+
+      const stillThere = await systems.SYSTEMS.get("system:s1", "json");
+      expect(stillThere).toBeTruthy();
+    });
+
+    it("a minted read-role token is blocked from mutating routes: PUT /api/systems/:id/alerts", async () => {
+      const systems = env();
+      const guest = await mintToken(systems, "read", "guest");
+      await systems.SYSTEMS.put("system:s1", JSON.stringify({ id: "s1", name: "Cabin", service: "growatt" }));
+
+      const res = await call(
+        request("/api/systems/s1/alerts", {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${guest.token}` },
+          body: { enabled: true },
+        }),
+        systems,
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("a minted read-role token can still use read routes", async () => {
+      const systems = env();
+      const guest = await mintToken(systems, "read", "guest");
+      await systems.SYSTEMS.put("_index", JSON.stringify([]));
+
+      const res = await call(
+        request("/api/systems", { headers: { Authorization: `Bearer ${guest.token}` } }),
+        systems,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("GET /api/admin/tokens lists minted keys without exposing plaintext", async () => {
+      const systems = env();
+      await mintToken(systems, "read", "guest");
+      await mintToken(systems, "admin", "maintainer");
+
+      const res = await call(request("/api/admin/tokens", { headers: AUTH }), systems);
+      expect(res.status).toBe(200);
+      const list = await res.json();
+      expect(list).toHaveLength(2);
+      for (const entry of list) {
+        expect(entry).not.toHaveProperty("token");
+      }
+    });
+
+    it("DELETE /api/admin/tokens/:id revokes one token independently of others", async () => {
+      const systems = env();
+      const guest = await mintToken(systems, "read", "guest");
+      const maintainer = await mintToken(systems, "admin", "maintainer");
+
+      const revokeRes = await call(
+        request(`/api/admin/tokens/${guest.id}`, { method: "DELETE", headers: AUTH }),
+        systems,
+      );
+      expect(revokeRes.status).toBe(200);
+
+      const revokedAttempt = await call(
+        request("/api/systems", { headers: { Authorization: `Bearer ${guest.token}` } }),
+        systems,
+      );
+      expect(revokedAttempt.status).toBe(401);
+
+      const stillValid = await call(
+        request("/api/systems", { headers: { Authorization: `Bearer ${maintainer.token}` } }),
+        systems,
+      );
+      expect(stillValid.status).toBe(200);
+    });
+
+    it("DELETE /api/admin/tokens/:id returns 404 for an unknown id", async () => {
+      const systems = env();
+      const res = await call(
+        request("/api/admin/tokens/does-not-exist", { method: "DELETE", headers: AUTH }),
+        systems,
+      );
+      expect(res.status).toBe(404);
+    });
+  });
 });
