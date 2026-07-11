@@ -170,17 +170,138 @@ https://your-user.github.io,https://solar-dashboard.pages.dev
 - **Set** — browser requests from listed origins receive CORS headers; others get `403`.
 - **Unset** — dev mode reflects the request `Origin` (or `*`), suitable for local testing only.
 
-### 3.4 List / rotate secrets
+### 3.4 List secrets
 
 ```bash
 # List secret names (not values)
 npx wrangler secret list
-
-# Overwrite a secret
-openssl rand -base64 32 | npx wrangler secret put API_TOKEN
 ```
 
-After rotating `API_TOKEN`, update the access token in every frontend client (setup screen or bookmark URL).
+To rotate `API_TOKEN`, follow the runbook in [§3.5](#35-api_token-rotation-runbook). For guidance on shared vs per-user tokens, see [§3.6](#36-shared-token-vs-per-user-keys).
+
+### 3.5 API_TOKEN rotation runbook
+
+Rotate the shared bearer token when you suspect a leak, a trusted person no longer needs access, or on a routine schedule (e.g. annually). The Worker stores **one** `API_TOKEN` value — `wrangler secret put` replaces it immediately, so the previous token stops working as soon as the new secret is deployed. Plan client updates before you rotate if multiple people or devices use the dashboard.
+
+**Decision context:** This is [ADR 0002 Phase 0](../docs/decisions/0002-multi-user-token-and-audit-log.md) — the default model for households and trusted small groups. See [§3.6](#36-shared-token-vs-per-user-keys) when you need per-user revoke instead of rotating for everyone.
+
+#### Step 1 — Generate a new token
+
+On a trusted machine, generate a strong random value and save it in a password manager until clients are updated (do not commit or paste into chat):
+
+```bash
+openssl rand -base64 32
+```
+
+Copy the output — you will need it for `wrangler secret put` and for each frontend client.
+
+#### Step 2 — Deploy the secret
+
+From `worker/`, overwrite the Worker secret with the **same** value from Step 1. Wrangler prompts for the value — paste it when asked:
+
+```bash
+cd worker
+npx wrangler secret put API_TOKEN
+```
+
+Or pipe stdin without echoing the token to the shell history (set `NEW_TOKEN` from your password manager):
+
+```bash
+printf '%s' "$NEW_TOKEN" | npx wrangler secret put API_TOKEN
+```
+
+**Staging first (recommended):** rotate on staging, verify clients against the staging Worker URL, then repeat for production:
+
+```bash
+npx wrangler secret put API_TOKEN --env staging
+# ... verify (Step 4) against staging URL ...
+npx wrangler secret put API_TOKEN
+```
+
+No `wrangler deploy` is required — secret updates take effect on the next request to the live Worker.
+
+#### Step 3 — Update every client
+
+Update the access token everywhere it is stored. Missing one client causes `401 Unauthorized` until fixed.
+
+| Client | Where to update |
+|--------|-----------------|
+| **Dashboard setup screen** | Open the app → settings / setup → paste new token → save (writes `localStorage`) |
+| **Home-screen bookmark** | Replace `token=` in the URL query string, or recreate the bookmark from setup |
+| **Home Assistant / scripts** | Update REST sensor or automation headers (`Authorization: Bearer …`) |
+| **curl / Postman / ops notes** | Replace stored token in shell history, password manager, or runbooks |
+
+Bookmark format (trusted devices only — token is visible in the URL):
+
+```text
+https://your-frontend.example/?proxy=https://solar-proxy.example.workers.dev&token=NEW_API_TOKEN
+```
+
+**Tip:** If several family members use separate phones, coordinate so everyone updates within the same window right after Step 2.
+
+#### Step 4 — Verify
+
+Confirm the new token works and the old token is rejected:
+
+```bash
+PROXY="https://solar-proxy.<subdomain>.workers.dev"
+NEW_TOKEN="<paste-new-token>"
+OLD_TOKEN="<paste-old-token-if-still-available>"
+
+# New token — expect 200 and JSON (empty array or system list)
+curl -sS -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $NEW_TOKEN" \
+  "$PROXY/api/systems"
+# Expected: 200
+
+# Old token — expect 401
+curl -sS -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $OLD_TOKEN" \
+  "$PROXY/api/systems"
+# Expected: 401
+
+# Health still open without auth
+curl -sS "$PROXY/api/health"
+# Expected: {"ok":true,"version":"..."}
+```
+
+Also open the frontend on a phone or desktop: connection status dot should be green and realtime data should load.
+
+#### Step 5 — Retire the old token
+
+There is no separate “disable old token” step — Cloudflare keeps only the latest `API_TOKEN` value. After Step 2:
+
+1. **Delete** the old token from password managers, bookmarks, HA config, and any shared notes.
+2. **Do not** store the new token in git, screenshots, or CI logs.
+3. If rotation was triggered by a suspected leak, assume the old token was compromised; no further Worker action is needed once clients use the new value.
+
+**Rollback:** If clients break after a bad rotation, run `npx wrangler secret put API_TOKEN` again with the previous value (only if you still have it). There is no secret version history in the dashboard.
+
+#### Rotation checklist
+
+| Step | Action | Done |
+|------|--------|------|
+| 1 | Generate new random token; store securely | ☐ |
+| 2 | `wrangler secret put API_TOKEN` (staging first if used) | ☐ |
+| 3 | Update setup screen, bookmarks, HA, scripts | ☐ |
+| 4 | `curl` / UI verify new token 200, old token 401 | ☐ |
+| 5 | Delete old token from all stores | ☐ |
+
+### 3.6 Shared token vs per-user keys
+
+The Worker ships with a **single shared `API_TOKEN`** (ADR 0002 Phase 0). That is the right default for most deployments.
+
+| Scenario | Recommended approach |
+|----------|---------------------|
+| One household; family members all trust each other | **Shared token** — rotate via [§3.5](#35-api_token-rotation-runbook) when someone leaves or on a schedule |
+| Home Assistant or one automation using the API | **Shared token** — same bearer on read-only polls |
+| “Who deleted my system?” / compliance attribution | **Phase 1** — mutation-only audit log ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-1--mutation-audit-log-recommended-next-step-if-audit-is-the-driver)); not implemented yet |
+| Guest viewer, separate maintainer, or revoke one person without affecting others | **Phase 2** — per-user opaque API keys in KV with `read` / `admin` roles ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-2--per-user-opaque-api-keys-in-kv-when-multi-user-is-required)); defer until that requirement is concrete |
+| Lock down token minting for an ops team | **Phase 3** — optional Cloudflare Access on admin surfaces only ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-3--cloudflare-access-optional-hardening-not-product-auth)) |
+
+**Shared token limitation:** Rotating or revoking access affects **every** client using that token. If that is unacceptable, do not work around it with multiple Worker deployments — plan for ADR 0002 Phase 2 per-user keys instead.
+
+Full decision record, alternatives considered, and implementation phases: **[docs/decisions/0002-multi-user-token-and-audit-log.md](../docs/decisions/0002-multi-user-token-and-audit-log.md)**.
 
 ---
 
@@ -524,7 +645,7 @@ npx wrangler deployments list
 
 | Secret | Steps |
 |--------|-------|
-| **API_TOKEN** | `wrangler secret put API_TOKEN` → update all frontends |
+| **API_TOKEN** | Full runbook: [§3.5 API_TOKEN rotation](#35-api_token-rotation-runbook). Shared vs per-user keys: [§3.6](#36-shared-token-vs-per-user-keys) and [ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md). |
 | **PRODUCTION** | `echo "true" \| wrangler secret put PRODUCTION` once per deployed environment (production and staging); never set locally |
 | **CREDENTIALS_KEY** | Generate new key → existing encrypted data needs re-discovery or migration; plan downtime |
 | **Inverter password** | Delete system in UI and re-add, or extend Worker with a credential-update route (not built-in today) |
@@ -570,5 +691,6 @@ npm test                       # Vitest + Miniflare
 |----------|-------------|
 | [Root README](../README.md) | Architecture, frontend hosting, API overview |
 | [PLAN.md](../PLAN.md) | Roadmap and design decisions |
+| [ADR 0002 — Multi-user token and audit log](../docs/decisions/0002-multi-user-token-and-audit-log.md) | Shared token default, rotation (Phase 0), audit log and per-user keys roadmap |
 | [wrangler.toml](./wrangler.toml) | Worker name, KV binding, cron schedule |
 | [discovery/](../discovery/) | Vendor API references for debugging adapter issues |
