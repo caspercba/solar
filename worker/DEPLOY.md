@@ -295,7 +295,7 @@ The Worker ships with a **single shared `API_TOKEN`** (ADR 0002 Phase 0). That i
 |----------|---------------------|
 | One household; family members all trust each other | **Shared token** — rotate via [§3.5](#35-api_token-rotation-runbook) when someone leaves or on a schedule |
 | Home Assistant or one automation using the API | **Shared token** — same bearer on read-only polls |
-| “Who deleted my system?” / compliance attribution | **Phase 1** — mutation-only audit log ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-1--mutation-audit-log-recommended-next-step-if-audit-is-the-driver)); not implemented yet |
+| “Who deleted my system?” / compliance attribution | **Phase 1** — mutation-only audit log ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-1--mutation-audit-log-recommended-next-step-if-audit-is-the-driver)); implemented — structured `audit` JSON lines via `auditLog()` in `worker/src/logger.js` on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`; `actorId` is `"shared"` until Phase 2 per-user keys land |
 | Guest viewer, separate maintainer, or revoke one person without affecting others | **Phase 2** — per-user opaque API keys in KV with `read` / `admin` roles ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-2--per-user-opaque-api-keys-in-kv-when-multi-user-is-required)); defer until that requirement is concrete |
 | Lock down token minting for an ops team | **Phase 3** — optional Cloudflare Access on admin surfaces only ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-3--cloudflare-access-optional-hardening-not-product-auth)) |
 

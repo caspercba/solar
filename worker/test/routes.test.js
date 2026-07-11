@@ -1330,4 +1330,278 @@ describe("worker routes", () => {
     );
     expect(blocked.status).toBe(429);
   });
+
+  describe("audit log (ADR 0002 Phase 1)", () => {
+    function auditEntries(consoleLogSpy) {
+      return consoleLogSpy.mock.calls
+        .map((c) => {
+          try {
+            return JSON.parse(c[0]);
+          } catch {
+            return null;
+          }
+        })
+        .filter((entry) => entry?.event === "audit");
+    }
+
+    it("POST /api/systems emits an audit entry on success with actorId, action, resource, outcome, clientIp", async () => {
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      globalThis.fetch = vi.fn(async (url) => {
+        const u = String(url);
+        if (u.includes("action=auth")) {
+          return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+        }
+        if (u.includes("queryPlantsInfo")) {
+          return Response.json({ err: 0, dat: { info: [{ pid: 1, pname: "Solar Farm" }] } });
+        }
+        if (u.includes("queryPlantInfo")) {
+          return Response.json({
+            err: 0,
+            dat: { name: "Solar Farm", nominalPower: "5", address: { timezone: 0 } },
+          });
+        }
+        if (u.includes("queryPlantDeviceStatus")) {
+          return Response.json({
+            err: 0,
+            dat: { collector: [{ pn: "P1", device: [{ devcode: 2, sn: "SN", devaddr: 3 }] }] },
+          });
+        }
+        throw new Error(`Unexpected fetch: ${u}`);
+      });
+
+      const systems = env();
+      const res = await call(
+        request("/api/systems", {
+          method: "POST",
+          headers: { ...AUTH, "CF-Connecting-IP": "203.0.113.7" },
+          body: {
+            service: "shinemonitor",
+            name: "My Plant",
+            user: "user@test.com",
+            password: "super-secret-password",
+          },
+        }),
+        systems,
+      );
+      expect(res.status).toBe(201);
+      const json = await res.json();
+
+      const entries = auditEntries(consoleLog);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        actorId: "shared",
+        action: "system.create",
+        resource: json.id,
+        method: "POST",
+        path: "/api/systems",
+        clientIp: "203.0.113.7",
+        outcome: "success",
+        status: 201,
+      });
+      expect(entries[0].requestId).toBeTruthy();
+      expect(JSON.stringify(entries[0])).not.toContain("super-secret-password");
+
+      consoleLog.mockRestore();
+    });
+
+    it("POST /api/systems emits an audit entry with outcome error and null resource on validation failure", async () => {
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const res = await call(
+        request("/api/systems", {
+          method: "POST",
+          headers: AUTH,
+          body: { service: "growatt" },
+        }),
+        env(),
+      );
+      expect(res.status).toBe(400);
+
+      const entries = auditEntries(consoleLog);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        actorId: "shared",
+        action: "system.create",
+        resource: null,
+        outcome: "error",
+        status: 400,
+      });
+
+      consoleLog.mockRestore();
+    });
+
+    it("PUT /api/systems/:id/credentials emits an audit entry and redacts the password", async () => {
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      globalThis.fetch = vi.fn(async (url) => {
+        const u = String(url);
+        if (u.includes("action=auth")) {
+          return Response.json({ err: 0, dat: { secret: "s", token: "t" } });
+        }
+        if (u.includes("queryPlantsInfo")) {
+          return Response.json({ err: 0, dat: { info: [{ pid: 1, pname: "Solar Farm" }] } });
+        }
+        if (u.includes("queryPlantInfo")) {
+          return Response.json({
+            err: 0,
+            dat: { name: "Solar Farm", nominalPower: "5", address: { timezone: 0 } },
+          });
+        }
+        if (u.includes("queryPlantDeviceStatus")) {
+          return Response.json({
+            err: 0,
+            dat: { collector: [{ pn: "P1", device: [{ devcode: 2, sn: "SN", devaddr: 3 }] }] },
+          });
+        }
+        throw new Error(`Unexpected fetch: ${u}`);
+      });
+
+      const systems = env();
+      await systems.SYSTEMS.put("_index", JSON.stringify([
+        { id: "sm1", name: "Solar Farm", service: "shinemonitor" },
+      ]));
+      await systems.SYSTEMS.put("system:sm1", JSON.stringify({
+        id: "sm1",
+        name: "Solar Farm",
+        service: "shinemonitor",
+        credentials: { user: "old@test.com", pwdSha1: "x", plantId: 1, device: { pn: "P1", sn: "SN", devcode: 2, devaddr: 3 } },
+      }));
+
+      const res = await call(
+        request("/api/systems/sm1/credentials", {
+          method: "PUT",
+          headers: AUTH,
+          body: { user: "new@test.com", password: "rotated-secret" },
+        }),
+        systems,
+      );
+      expect(res.status).toBe(200);
+
+      const entries = auditEntries(consoleLog);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        actorId: "shared",
+        action: "credentials.rotate",
+        resource: "sm1",
+        method: "PUT",
+        path: "/api/systems/sm1/credentials",
+        outcome: "success",
+        status: 200,
+      });
+      expect(JSON.stringify(entries[0])).not.toContain("rotated-secret");
+
+      consoleLog.mockRestore();
+    });
+
+    it("PUT /api/systems/:id/alerts emits an audit entry", async () => {
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const systems = env();
+      await systems.SYSTEMS.put("_index", JSON.stringify([
+        { id: "s1", name: "Site", service: "growatt" },
+      ]));
+      await systems.SYSTEMS.put("system:s1", JSON.stringify({
+        id: "s1",
+        name: "Site",
+        service: "growatt",
+        credentials: { user: "u", password: "p" },
+      }));
+
+      const res = await call(
+        request("/api/systems/s1/alerts", {
+          method: "PUT",
+          headers: AUTH,
+          body: { enabled: true, webhookUrl: "https://hooks.example/alert" },
+        }),
+        systems,
+      );
+      expect(res.status).toBe(200);
+
+      const entries = auditEntries(consoleLog);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        actorId: "shared",
+        action: "alerts.update",
+        resource: "s1",
+        method: "PUT",
+        path: "/api/systems/s1/alerts",
+        outcome: "success",
+        status: 200,
+      });
+      expect(JSON.stringify(entries[0])).not.toContain("hooks.example/alert");
+
+      consoleLog.mockRestore();
+    });
+
+    it("PUT /api/systems/:id/alerts emits an audit entry with outcome error for unknown system", async () => {
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const res = await call(
+        request("/api/systems/missing/alerts", {
+          method: "PUT",
+          headers: AUTH,
+          body: { enabled: true },
+        }),
+        env(),
+      );
+      expect(res.status).toBe(404);
+
+      const entries = auditEntries(consoleLog);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        action: "alerts.update",
+        resource: "missing",
+        outcome: "error",
+        status: 404,
+      });
+
+      consoleLog.mockRestore();
+    });
+
+    it("DELETE /api/systems/:id emits an audit entry", async () => {
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const systems = env();
+      await systems.SYSTEMS.put("_index", JSON.stringify([
+        { id: "del-me", name: "Gone", service: "growatt" },
+      ]));
+      await systems.SYSTEMS.put("system:del-me", JSON.stringify({ id: "del-me" }));
+
+      const res = await call(
+        request("/api/systems/del-me", { method: "DELETE", headers: AUTH }),
+        systems,
+      );
+      expect(res.status).toBe(200);
+
+      const entries = auditEntries(consoleLog);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        actorId: "shared",
+        action: "system.delete",
+        resource: "del-me",
+        method: "DELETE",
+        path: "/api/systems/del-me",
+        outcome: "success",
+        status: 200,
+      });
+
+      consoleLog.mockRestore();
+    });
+
+    it("does not emit an audit entry for read-only routes", async () => {
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      const systems = env();
+      await systems.SYSTEMS.put("_index", JSON.stringify([]));
+
+      await call(request("/api/systems", { headers: AUTH }), systems);
+      await call(request("/api/systems/all/data", { headers: AUTH }), systems);
+
+      const entries = auditEntries(consoleLog);
+      expect(entries).toHaveLength(0);
+
+      consoleLog.mockRestore();
+    });
+  });
 });

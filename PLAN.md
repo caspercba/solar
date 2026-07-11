@@ -389,7 +389,7 @@ Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, esca
 | Growatt README | Credentials redacted | Done |
 | Structured logging | JSON error logs for adapter/alert failures (`worker/src/logger.js`) | Done; Sentry/APM remains optional (README "Sentry and third-party APM") |
 | Multi-user access | Single shared `API_TOKEN` (default) | Optional per-user opaque keys in KV when needed (ADR 0002 Phase 2) |
-| Admin audit trail | None | Mutation-only audit log on system CRUD / credentials / alerts (ADR 0002 Phase 1) |
+| Admin audit trail | Mutation-only audit log (`auditLog()` in `worker/src/logger.js`) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id` | Done (ADR 0002 Phase 1); persisted sink (Logpush/Analytics Engine/KV) remains optional |
 
 ---
 
@@ -534,7 +534,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] Generator runtime tracking (§5.1)
 - [x] E2E coverage for alerts config UI and manage-systems add/remove (§7.3.4)
 - [x] Release-notes/version-number sync for v1.3.0 (§11)
-- [ ] Mutation audit log for admin API routes (ADR 0002 Phase 1 — defer until requested)
+- [x] Mutation audit log for admin API routes (ADR 0002 Phase 1)
 - [ ] Per-user opaque API keys in KV (ADR 0002 Phase 2 — defer until multi-user requirement)
 
 ---

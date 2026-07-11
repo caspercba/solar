@@ -111,6 +111,29 @@ export function logWarn(event, fields) {
 }
 
 /**
+ * Emit a structured audit-log entry for a mutating admin API call (ADR 0002 Phase 1).
+ * Only call this for state-changing routes — never for polling/read routes.
+ * Redaction rules are the same as `logEvent`; never pass raw tokens or passwords in `fields`.
+ * @param {object} env
+ * @param {object} fields
+ * @param {string} fields.actorId - Stable identity of the caller (e.g. "shared" for the legacy single token).
+ * @param {string} fields.action - e.g. "system.create", "system.delete", "credentials.rotate", "alerts.update"
+ * @param {string|null} [fields.resource] - System UUID when applicable
+ * @param {string} fields.method
+ * @param {string} fields.path
+ * @param {string|null} [fields.clientIp]
+ * @param {"success"|"error"} fields.outcome
+ * @param {number} [fields.status]
+ * @param {string} [fields.requestId]
+ * @returns {Record<string, unknown>}
+ */
+export function auditLog(env, fields = {}) {
+  const entry = logEvent("info", "audit", fields);
+  recordObservability(env, entry);
+  return entry;
+}
+
+/**
  * Optional production sinks: Workers Analytics Engine (env.ANALYTICS binding).
  * Never throws — observability must not break request handling.
  * @param {object} env
