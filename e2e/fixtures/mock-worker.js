@@ -14,11 +14,13 @@ import {
   MOCK_SYSTEM_ID,
   MOCK_TOKEN,
   EMPTY_HISTORY_DATE,
+  defaultAlerts,
   health,
   systems,
   realtimeData,
   historyData,
   historySummary,
+  resetSystems,
 } from "./payloads.js";
 
 export { EMPTY_HISTORY_DATE };
@@ -44,6 +46,8 @@ function error(message, status = 400, origin = "*") {
   return json({ error: message }, status, origin);
 }
 
+let mockSystemCounter = 0;
+
 function checkAuth(request) {
   const token = process.env.MOCK_WORKER_TOKEN || MOCK_TOKEN;
   const header = request.headers.get("Authorization") || "";
@@ -54,6 +58,44 @@ function checkAuth(request) {
 
 function resolveOrigin(request) {
   return request.headers.get("Origin") || "*";
+}
+
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+/** Mirror worker/src/alerts.js normalization for E2E PUT /alerts. */
+function normalizeAlerts(alerts = {}) {
+  const merged = { ...defaultAlerts, ...alerts };
+  merged.lowSocThreshold = clampNumber(
+    merged.lowSocThreshold,
+    0,
+    100,
+    defaultAlerts.lowSocThreshold,
+  );
+  merged.cooldownMinutes = clampNumber(
+    merged.cooldownMinutes,
+    5,
+    1440,
+    defaultAlerts.cooldownMinutes,
+  );
+  merged.webhookUrl = String(merged.webhookUrl || "").trim();
+  return merged;
+}
+
+function publicAlerts(alerts) {
+  const normalized = normalizeAlerts(alerts);
+  return {
+    enabled: normalized.enabled,
+    webhookUrl: normalized.webhookUrl,
+    lowSocThreshold: normalized.lowSocThreshold,
+    notifyLowSoc: normalized.notifyLowSoc,
+    notifyGenerator: normalized.notifyGenerator,
+    cooldownMinutes: normalized.cooldownMinutes,
+    webhookConfigured: Boolean(normalized.webhookUrl),
+  };
 }
 
 /**
@@ -77,6 +119,14 @@ export async function handleMockWorkerRequest(request) {
     return json(health, 200, origin);
   }
 
+  // Test-only: restore the default mock systems list. Not part of the real
+  // Worker API — used by E2E specs that add/remove systems to avoid leaking
+  // state into other spec files sharing this mock Worker process.
+  if (path === "/__mock__/reset-systems" && request.method === "POST") {
+    resetSystems();
+    return json({ ok: true }, 200, origin);
+  }
+
   if (!checkAuth(request)) {
     return error("Unauthorized", 401, origin);
   }
@@ -85,8 +135,68 @@ export async function handleMockWorkerRequest(request) {
     return json(systems, 200, origin);
   }
 
+  if (path === "/api/systems" && request.method === "POST") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+
+    const { service, name, user, password } = body || {};
+    if (!service || !user || !password) {
+      return error("Missing required fields: service, user, password", 400, origin);
+    }
+    if (service !== "shinemonitor" && service !== "growatt") {
+      return error(`Unsupported service: ${service}`, 400, origin);
+    }
+    if (password === "bad-password") {
+      return error("Discovery failed: Invalid credentials", 502, origin);
+    }
+
+    mockSystemCounter += 1;
+    const id = `e2e-added-${mockSystemCounter}`;
+    const systemName = name || `Mock ${service} system`;
+    const newSystem = { id, name: systemName, service, username: user, alerts: { ...defaultAlerts } };
+    systems.push(newSystem);
+
+    return json({ id, name: systemName, service, discovered: { plantName: systemName } }, 201, origin);
+  }
+
+  const systemIdMatch = path.match(/^\/api\/systems\/([^/]+)$/);
+  if (systemIdMatch && request.method === "DELETE") {
+    const id = systemIdMatch[1];
+    const idx = systems.findIndex((s) => s.id === id);
+    if (idx === -1) return error("System not found", 404, origin);
+    systems.splice(idx, 1);
+    return json({ ok: true }, 200, origin);
+  }
+
   if (path === "/api/systems/all/data" && request.method === "GET") {
     return json(systems.map((s) => realtimeData(s.id)), 200, origin);
+  }
+
+  const alertsMatch = path.match(/^\/api\/systems\/([^/]+)\/alerts$/);
+  if (alertsMatch && request.method === "PUT") {
+    const id = alertsMatch[1];
+    const sys = systems.find((s) => s.id === id);
+    if (!sys) return error("System not found", 404, origin);
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+
+    const current = normalizeAlerts(sys.alerts);
+    const updated = normalizeAlerts({
+      ...current,
+      ...body,
+      webhookUrl: body.webhookUrl != null ? body.webhookUrl : current.webhookUrl,
+    });
+    sys.alerts = publicAlerts(updated);
+    return json(sys.alerts, 200, origin);
   }
 
   const credentialsMatch = path.match(/^\/api\/systems\/([^/]+)\/credentials$/);
@@ -118,6 +228,31 @@ export async function handleMockWorkerRequest(request) {
       username: user,
       discovered: { plantId: "mock-plant-1" },
     }, 200, origin);
+  }
+
+  const gridInputLabelMatch = path.match(/^\/api\/systems\/([^/]+)\/grid-input-label$/);
+  if (gridInputLabelMatch && request.method === "PUT") {
+    const id = gridInputLabelMatch[1];
+    const sys = systems.find((s) => s.id === id);
+    if (!sys) return error("System not found", 404, origin);
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+
+    const value = String(body?.gridInputLabel || "generator").toLowerCase();
+    sys.gridInputLabel = value === "grid" ? "grid" : "generator";
+    return json({ gridInputLabel: sys.gridInputLabel }, 200, origin);
+  }
+
+  if (gridInputLabelMatch && request.method === "GET") {
+    const id = gridInputLabelMatch[1];
+    const sys = systems.find((s) => s.id === id);
+    if (!sys) return error("System not found", 404, origin);
+    return json({ gridInputLabel: sys.gridInputLabel || "generator" }, 200, origin);
   }
 
   const dataMatch = path.match(/^\/api\/systems\/([^/]+)\/data$/);

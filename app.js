@@ -29,6 +29,18 @@ import {
   getNextTheme,
   isEditableElement,
   matchesDashboardRefreshShortcut,
+  normalizeSocWarnThreshold,
+  isSocBelowWarnThreshold,
+  generatorRuntimeStorageKey,
+  GENERATOR_RUNTIME_STORAGE_PREFIX,
+  createGeneratorRuntimeState,
+  updateGeneratorRuntime,
+  totalGeneratorRuntimeSec,
+  formatGeneratorRuntime,
+  normalizeGridInputLabel,
+  gridInputCardKey,
+  gridInputFlowKey,
+  gridInputCompareOnKey,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -40,8 +52,27 @@ import {
   formatPollIntervalLabelI18n,
 } from "./frontend/i18n.js";
 
+function getSystemById(systemId) {
+  return systems.find((s) => s.id === systemId) || null;
+}
+
+function getGridInputLabel(systemId) {
+  return normalizeGridInputLabel(getSystemById(systemId)?.gridInputLabel);
+}
+
+function applyGridInputLabels(systemId) {
+  const label = getGridInputLabel(systemId);
+  if (els.genCardTitle) {
+    els.genCardTitle.textContent = t(gridInputCardKey(label));
+  }
+  if (fEls.flowGenLabel) {
+    fEls.flowGenLabel.textContent = t(gridInputFlowKey(label));
+  }
+}
+
 /* ── Config ── */
 const POLL_INTERVAL_KEY = "solar_poll_interval";
+const SOC_WARN_KEY = "solar_soc_warn_threshold";
 const CONN_KEY = "solar_conn";
 const VIEW_KEY = "solar_view";
 const ACTIVE_KEY = "solar_active";
@@ -53,6 +84,51 @@ function saveConn(data) { localStorage.setItem(CONN_KEY, JSON.stringify(data)); 
 function loadConn() { try { return JSON.parse(localStorage.getItem(CONN_KEY)); } catch { return null; } }
 function clearConn() { localStorage.removeItem(CONN_KEY); }
 
+/* ── Generator runtime (session-only, per system, resets on disconnect) ── */
+function loadGeneratorRuntimeState(systemId) {
+  try {
+    const raw = localStorage.getItem(generatorRuntimeStorageKey(systemId));
+    if (!raw) return createGeneratorRuntimeState();
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.accumulatedSec !== "number") return createGeneratorRuntimeState();
+    return { accumulatedSec: parsed.accumulatedSec, activeSince: parsed.activeSince ?? null };
+  } catch {
+    return createGeneratorRuntimeState();
+  }
+}
+
+function saveGeneratorRuntimeState(systemId, state) {
+  try {
+    localStorage.setItem(generatorRuntimeStorageKey(systemId), JSON.stringify(state));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+function clearGeneratorRuntimeState(systemId) {
+  localStorage.removeItem(generatorRuntimeStorageKey(systemId));
+}
+
+function clearAllGeneratorRuntimeStates() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(GENERATOR_RUNTIME_STORAGE_PREFIX)) keys.push(key);
+  }
+  for (const key of keys) localStorage.removeItem(key);
+}
+
+function renderGeneratorRuntime(totalSec) {
+  if (!els.genRuntime || !els.genRuntimeValue) return;
+  const label = formatGeneratorRuntime(totalSec, t);
+  if (label) {
+    els.genRuntimeValue.textContent = label;
+    els.genRuntime.hidden = false;
+  } else {
+    els.genRuntime.hidden = true;
+  }
+}
+
 function getPollIntervalSec() {
   return normalizePollIntervalSec(localStorage.getItem(POLL_INTERVAL_KEY));
 }
@@ -63,6 +139,14 @@ function getPollMs() {
 
 function savePollIntervalSec(sec) {
   localStorage.setItem(POLL_INTERVAL_KEY, String(normalizePollIntervalSec(sec)));
+}
+
+function getSocWarnThreshold() {
+  return normalizeSocWarnThreshold(localStorage.getItem(SOC_WARN_KEY));
+}
+
+function saveSocWarnThreshold(pct) {
+  localStorage.setItem(SOC_WARN_KEY, String(normalizeSocWarnThreshold(pct)));
 }
 
 function syncPollIntervalSelect() {
@@ -108,6 +192,8 @@ const els = {
   manageBtn: $("manage-btn"),
   statusDot: $("status-dot"),
   systemTabs: $("system-tabs"),
+  batCard: $("card-battery"),
+  batLowBadge: $("bat-low-badge"),
   batPct: $("bat-pct"),
   batBar: $("bat-bar"),
   batDirection: $("bat-direction"),
@@ -126,6 +212,9 @@ const els = {
   genWatts: $("gen-watts"),
   genVolts: $("gen-volts"),
   genCard: $("card-gen"),
+  genCardTitle: $("gen-card-title"),
+  genRuntime: $("gen-runtime"),
+  genRuntimeValue: $("gen-runtime-value"),
   lastUpdate: $("last-update"),
   energyToday: $("energy-today"),
   inverterStatus: $("inverter-status"),
@@ -183,6 +272,7 @@ const fEls = {
   fnHouseV: $("fn-house-v"),
   fnBatV: $("fn-bat-v"),
   fnBatDetail: $("fn-bat-detail"),
+  flowGenLabel: $("flow-gen-label"),
 };
 
 /* ── Modals ── */
@@ -191,6 +281,11 @@ const addForm = $("add-system-form");
 const addError = $("add-error");
 const manageModal = $("manage-modal");
 const manageList = $("manage-list");
+const detailModal = $("system-detail-modal");
+const detailTitle = $("detail-title");
+const detailBody = $("detail-body");
+const detailBack = $("detail-back");
+const detailRemove = $("detail-remove");
 
 /* ── State ── */
 let systems = [];
@@ -231,6 +326,9 @@ function setLoading(on) {
   if (els.batEmptyIn) {
     els.batEmptyIn.hidden = true;
     if (on) els.batEmptyIn.textContent = "";
+  }
+  if (els.genRuntime && on) {
+    els.genRuntime.hidden = true;
   }
   for (const bar of skeletonBars()) {
     if (!bar) continue;
@@ -307,7 +405,7 @@ function setCompareLoading(on) {
           <span class="compare-value">-- W</span>
         </div>
         <div class="compare-metric compare-metric-gen">
-          <span class="compare-label">${t("cardGenerator")}</span>
+          <span class="compare-label">${t(gridInputCardKey(sys.gridInputLabel))}</span>
           <span class="compare-value">--</span>
         </div>
       </div>
@@ -331,6 +429,7 @@ function renderComparison(allData) {
     const hasError = !d || d.error;
     const genOn = !hasError && (d.grid?.active ?? false);
     const isLowest = !hasError && lowestIds.has(d.systemId);
+    const gridLabel = getGridInputLabel(d.systemId);
 
     card.className = "compare-card"
       + (isLowest ? " compare-lowest-soc" : "")
@@ -356,7 +455,7 @@ function renderComparison(allData) {
       badges.push(`<span class="compare-highlight compare-highlight-lowest">${t("compareLowestSoc")}</span>`);
     }
     if (genOn) {
-      badges.push(`<span class="compare-highlight compare-highlight-gen">${t("compareGeneratorOn")}</span>`);
+      badges.push(`<span class="compare-highlight compare-highlight-gen">${t(gridInputCompareOnKey(gridLabel))}</span>`);
     }
 
     card.innerHTML = `
@@ -379,7 +478,7 @@ function renderComparison(allData) {
           <span class="compare-value">${loadW} W</span>
         </div>
         <div class="compare-metric compare-metric-gen">
-          <span class="compare-label">${t("cardGenerator")}</span>
+          <span class="compare-label">${t(gridInputCardKey(gridLabel))}</span>
           <span class="gen-badge ${genOn ? "gen-on" : "gen-off"}">${genOn ? t("genOn") : t("genOff")}</span>
         </div>
       </div>
@@ -521,6 +620,7 @@ function renderSystemTabs() {
       hasData = false;
       setLoading(true);
       renderSystemTabs();
+      applyGridInputLabels(sys.id);
       if (currentView === "chart") {
         loadChartView();
       } else {
@@ -554,6 +654,7 @@ function renderData(d) {
   lastRenderData = d;
   setLoading(false);
   hasData = true;
+  applyGridInputLabels(d.systemId || activeSystemId);
 
   const bat = d.battery || {};
   const sol = d.solar || {};
@@ -568,6 +669,12 @@ function renderData(d) {
   const soc = bat.soc ?? 0;
   els.batPct.textContent = soc;
   setBar(els.batBar, soc);
+  const socLow = isSocBelowWarnThreshold(soc, getSocWarnThreshold());
+  if (els.batCard) els.batCard.classList.toggle("soc-low", socLow);
+  if (els.batLowBadge) {
+    els.batLowBadge.hidden = !socLow;
+    if (socLow) els.batLowBadge.title = t("socLowWarningTitle", { threshold: getSocWarnThreshold() });
+  }
   els.batVolts.textContent = (bat.voltage ?? 0).toFixed(1);
   els.batCurrent.textContent = Math.round(bat.current ?? 0);
 
@@ -621,6 +728,13 @@ function renderData(d) {
   els.genWatts.textContent = genOn ? Math.abs(Math.round(gridW)) : "0";
   els.genVolts.textContent = genOn ? gridV.toFixed(0) : "--";
   els.genCard.className = genOn ? "card card-gen gen-active" : "card card-gen";
+
+  if (d.systemId) {
+    const now = Date.now();
+    const genState = updateGeneratorRuntime(loadGeneratorRuntimeState(d.systemId), genOn, now);
+    saveGeneratorRuntimeState(d.systemId, genState);
+    renderGeneratorRuntime(totalGeneratorRuntimeSec(genState, now));
+  }
 
   /* Footer */
   const ts = d.timestamp || "--";
@@ -1431,6 +1545,7 @@ async function loadSystems() {
     activeSystemId = null;
   }
   renderSystemTabs();
+  applyGridInputLabels(activeSystemId);
 }
 
 /* ── Add System ── */
@@ -1503,6 +1618,7 @@ addForm.addEventListener("submit", async (e) => {
     name: $("add-name").value || undefined,
     user: $("add-user").value,
     password: $("add-pass").value,
+    gridInputLabel: $("add-grid-input-label").value,
   };
   if (!addPlantGroup.hidden && addPlantSelect.value) {
     body.plantId = addPlantSelect.value;
@@ -1697,9 +1813,111 @@ function renderAlertForm(sys) {
   return form;
 }
 
+function renderGridDetectForm(sys) {
+  const gridDetect = sys.gridDetect || {};
+  const form = document.createElement("div");
+  form.className = "manage-alerts manage-grid-detect";
+  form.innerHTML = `
+    <p class="manage-section-title">${escapeAttr(t("gridDetectTitle"))}</p>
+    <p class="manage-hint">${escapeAttr(t("gridDetectHint"))}</p>
+    <div class="alert-grid">
+      <div>
+        <label>${escapeAttr(t("gridDetectVoltage"))}</label>
+        <input type="number" class="grid-voltage" min="0" max="500" step="1" value="${gridDetect.voltageMin ?? 30}">
+      </div>
+      <div>
+        <label>${escapeAttr(t("gridDetectPower"))}</label>
+        <input type="number" class="grid-power" min="0" max="50000" step="1" value="${gridDetect.powerMin ?? 5}">
+      </div>
+    </div>
+    <button type="button" class="grid-save">${escapeAttr(t("gridDetectSave"))}</button>
+    <p class="grid-msg" hidden></p>
+  `;
+
+  const msg = form.querySelector(".grid-msg");
+  form.querySelector(".grid-save").addEventListener("click", async () => {
+    msg.hidden = true;
+    const btn = form.querySelector(".grid-save");
+    btn.disabled = true;
+    btn.textContent = t("gridDetectSaving");
+    try {
+      const body = {
+        voltageMin: Number(form.querySelector(".grid-voltage").value),
+        powerMin: Number(form.querySelector(".grid-power").value),
+      };
+      sys.gridDetect = await api("PUT", `/api/systems/${sys.id}/grid-detect`, body);
+      msg.textContent = t("gridDetectSaved");
+      msg.className = "grid-msg alert-ok";
+      msg.hidden = false;
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "grid-msg alert-err";
+      msg.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t("gridDetectSave");
+    }
+  });
+
+  return form;
+}
+
+function renderGridInputLabelForm(sys) {
+  const label = normalizeGridInputLabel(sys.gridInputLabel);
+  const form = document.createElement("div");
+  form.className = "manage-alerts manage-grid-input-label";
+  form.innerHTML = `
+    <p class="manage-section-title">${escapeAttr(t("gridInputLabelTitle"))}</p>
+    <p class="manage-hint">${escapeAttr(t("gridInputLabelHint"))}</p>
+    <select class="grid-input-label" aria-label="${escapeAttr(t("gridInputLabelTitle"))}">
+      <option value="generator">${escapeAttr(t("gridInputLabelGenerator"))}</option>
+      <option value="grid">${escapeAttr(t("gridInputLabelGrid"))}</option>
+    </select>
+    <button type="button" class="grid-input-label-save">${escapeAttr(t("gridInputLabelSave"))}</button>
+    <p class="grid-input-label-msg" hidden></p>
+  `;
+
+  const select = form.querySelector(".grid-input-label");
+  select.value = label;
+
+  const msg = form.querySelector(".grid-input-label-msg");
+  form.querySelector(".grid-input-label-save").addEventListener("click", async () => {
+    msg.hidden = true;
+    const btn = form.querySelector(".grid-input-label-save");
+    btn.disabled = true;
+    btn.textContent = t("gridInputLabelSaving");
+    try {
+      const result = await api("PUT", `/api/systems/${sys.id}/grid-input-label`, {
+        gridInputLabel: select.value,
+      });
+      sys.gridInputLabel = result.gridInputLabel;
+      if (sys.id === activeSystemId) {
+        applyGridInputLabels(sys.id);
+        if (lastRenderData) renderData(lastRenderData);
+      }
+      if (currentView === "compare" && lastCompareData) {
+        renderComparison(lastCompareData);
+      }
+      msg.textContent = t("gridInputLabelSaved");
+      msg.className = "grid-input-label-msg alert-ok";
+      msg.hidden = false;
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "grid-input-label-msg alert-err";
+      msg.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t("gridInputLabelSave");
+    }
+  });
+
+  return form;
+}
+
 function openManageModal() {
   manageModal.hidden = false;
   syncPollIntervalSelect();
+  syncSocWarnThresholdInput();
   updateThemeUi(getCurrentTheme());
   manageList.innerHTML = "";
 
@@ -1709,11 +1927,9 @@ function openManageModal() {
   }
 
   for (const sys of systems) {
-    const row = document.createElement("div");
-    row.className = "manage-row manage-row-expanded";
-
-    const top = document.createElement("div");
-    top.className = "manage-row-top";
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "manage-row";
 
     const info = document.createElement("div");
     info.className = "manage-info";
@@ -1722,33 +1938,60 @@ function openManageModal() {
       : "";
     info.innerHTML = `<strong>${sys.name}</strong><span class="manage-service">${sys.service}${alertBadge}</span>`;
 
-    const del = document.createElement("button");
-    del.className = "manage-delete";
-    del.textContent = t("remove");
-    del.addEventListener("click", async () => {
-      if (!confirm(t("removeConfirm", { name: sys.name }))) return;
-      await api("DELETE", `/api/systems/${sys.id}`);
-      await loadSystems();
-      openManageModal();
-      if (activeSystemId === sys.id && systems.length) {
-        activeSystemId = systems[0].id;
-        renderSystemTabs();
-        startPolling();
-      }
-    });
+    const chevron = document.createElement("span");
+    chevron.className = "manage-chevron";
+    chevron.textContent = "›";
+    chevron.setAttribute("aria-hidden", "true");
 
-    top.appendChild(info);
-    top.appendChild(del);
-    row.appendChild(top);
-    row.appendChild(renderCredentialForm(sys));
-    row.appendChild(renderAlertForm(sys));
+    row.appendChild(info);
+    row.appendChild(chevron);
+    row.addEventListener("click", () => openSystemDetail(sys.id));
     manageList.appendChild(row);
   }
+}
+
+let openDetailSysId = null;
+
+function openSystemDetail(sysId) {
+  const sys = systems.find((s) => s.id === sysId);
+  if (!sys) return;
+
+  openDetailSysId = sysId;
+  manageModal.hidden = true;
+  detailModal.hidden = false;
+  detailTitle.textContent = sys.name;
+  detailBody.innerHTML = "";
+  detailBody.appendChild(renderCredentialForm(sys));
+  detailBody.appendChild(renderGridInputLabelForm(sys));
+  detailBody.appendChild(renderGridDetectForm(sys));
+  detailBody.appendChild(renderAlertForm(sys));
+
+  detailRemove.onclick = async () => {
+    if (!confirm(t("removeConfirm", { name: sys.name }))) return;
+    await api("DELETE", `/api/systems/${sys.id}`);
+    clearGeneratorRuntimeState(sys.id);
+    await loadSystems();
+    openDetailSysId = null;
+    detailModal.hidden = true;
+    openManageModal();
+    if (activeSystemId === sys.id && systems.length) {
+      activeSystemId = systems[0].id;
+      renderSystemTabs();
+      startPolling();
+    }
+  };
+}
+
+function closeSystemDetail() {
+  openDetailSysId = null;
+  detailModal.hidden = true;
+  openManageModal();
 }
 
 els.manageBtn.addEventListener("click", openManageModal);
 $("manage-close").addEventListener("click", () => { manageModal.hidden = true; });
 $("manage-add").addEventListener("click", openAddModal);
+detailBack.addEventListener("click", closeSystemDetail);
 
 const pollIntervalSelect = $("poll-interval");
 
@@ -1766,6 +2009,7 @@ function changeLocale(locale) {
   applyTranslations();
   syncLangToggle();
   refreshPollIntervalOptions();
+  applyGridInputLabels(activeSystemId);
   renderSystemTabs();
   if (lastRenderData) renderData(lastRenderData);
   if (currentView === "compare" && lastCompareData) renderComparison(lastCompareData);
@@ -1781,7 +2025,8 @@ function changeLocale(locale) {
       renderEnergyChart(lastEnergySummary);
     }
   }
-  if (!manageModal.hidden) openManageModal();
+  if (!detailModal.hidden && openDetailSysId) openSystemDetail(openDetailSysId);
+  else if (!manageModal.hidden) openManageModal();
 }
 
 function initLangToggle() {
@@ -1795,6 +2040,21 @@ if (pollIntervalSelect) {
   pollIntervalSelect.addEventListener("change", () => {
     savePollIntervalSec(pollIntervalSelect.value);
     restartPollingIfActive();
+  });
+}
+
+const socWarnInput = $("soc-warn-threshold");
+
+function syncSocWarnThresholdInput() {
+  if (socWarnInput) socWarnInput.value = getSocWarnThreshold();
+}
+
+if (socWarnInput) {
+  syncSocWarnThresholdInput();
+  socWarnInput.addEventListener("change", () => {
+    saveSocWarnThreshold(socWarnInput.value);
+    syncSocWarnThresholdInput();
+    if (lastRenderData) renderData(lastRenderData);
   });
 }
 
@@ -1842,6 +2102,7 @@ els.setupForm.addEventListener("submit", async (e) => {
 
 els.disconnectBtn.addEventListener("click", () => {
   clearConn();
+  clearAllGeneratorRuntimeStates();
   stopPolling();
   showSetup();
 });

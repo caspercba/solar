@@ -259,6 +259,22 @@ export function formatWeatherStrip(weather) {
   return parts.length ? parts.join(" · ") : null;
 }
 
+export const DEFAULT_SOC_WARN_THRESHOLD = 20;
+export const MIN_SOC_WARN_THRESHOLD = 1;
+export const MAX_SOC_WARN_THRESHOLD = 90;
+
+/** Normalize a stored/user-entered low-SOC dashboard warning threshold to a safe integer percent. */
+export function normalizeSocWarnThreshold(value, defaultPct = DEFAULT_SOC_WARN_THRESHOLD) {
+  const n = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(n) || n < MIN_SOC_WARN_THRESHOLD || n > MAX_SOC_WARN_THRESHOLD) return defaultPct;
+  return n;
+}
+
+/** True when SOC is below the configured dashboard low-battery warning threshold. */
+export function isSocBelowWarnThreshold(soc, threshold = DEFAULT_SOC_WARN_THRESHOLD) {
+  return Number.isFinite(soc) && soc < threshold;
+}
+
 /** System IDs with the lowest finite battery SOC (ties included). Skips error entries. */
 export function findLowestSocIds(items) {
   let minSoc = Infinity;
@@ -312,6 +328,93 @@ export function getNextTheme(current) {
   const theme = normalizeTheme(current) || "dark";
   const idx = VALID_THEMES.indexOf(theme);
   return VALID_THEMES[(idx + 1) % VALID_THEMES.length];
+}
+
+export const GENERATOR_RUNTIME_STORAGE_PREFIX = "solar_gen_runtime_";
+
+/** localStorage key for a system's session generator runtime counter. */
+export function generatorRuntimeStorageKey(systemId) {
+  return `${GENERATOR_RUNTIME_STORAGE_PREFIX}${systemId}`;
+}
+
+/** Fresh (zeroed) generator runtime counter state. */
+export function createGeneratorRuntimeState() {
+  return { accumulatedSec: 0, activeSince: null };
+}
+
+/**
+ * Advance a generator runtime counter given the latest `grid.active` reading.
+ * Accumulates elapsed time each time `active` transitions from true to false;
+ * `activeSince` marks the start of an in-progress run so total time can be
+ * derived at any moment via totalGeneratorRuntimeSec (no per-tick writes needed).
+ */
+export function updateGeneratorRuntime(state, active, nowMs) {
+  const s = state || createGeneratorRuntimeState();
+  if (active) {
+    if (s.activeSince == null) return { accumulatedSec: s.accumulatedSec, activeSince: nowMs };
+    return s;
+  }
+  if (s.activeSince != null) {
+    const elapsedSec = Math.max(0, (nowMs - s.activeSince) / 1000);
+    return { accumulatedSec: s.accumulatedSec + elapsedSec, activeSince: null };
+  }
+  return s;
+}
+
+/** Total accumulated seconds, including an in-progress run at `nowMs`. */
+export function totalGeneratorRuntimeSec(state, nowMs) {
+  if (!state) return 0;
+  const activeExtra = state.activeSince != null ? Math.max(0, (nowMs - state.activeSince) / 1000) : 0;
+  return state.accumulatedSec + activeExtra;
+}
+
+/** English fallback strings for generator-runtime i18n keys (used when no `translate` is passed). */
+const GENERATOR_RUNTIME_EN = {
+  genRuntimeLessThanMinute: "<1m",
+  genRuntimeMinutes: "{m}m",
+  genRuntimeHours: "{h}h",
+  genRuntimeHoursMinutes: "{h}h {m}m",
+};
+
+function defaultGeneratorRuntimeTranslate(key, vars = {}) {
+  const template = GENERATOR_RUNTIME_EN[key] || key;
+  return template.replace(/\{(\w+)\}/g, (_, name) => (vars[name] != null ? vars[name] : ""));
+}
+
+/** Format accumulated generator runtime seconds as a compact duration (e.g. "2h 15m", "45m"). */
+export function formatGeneratorRuntime(totalSeconds, translate = defaultGeneratorRuntimeTranslate) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 1) return "";
+  const totalMin = Math.round(totalSeconds / 60);
+  if (totalMin < 1) return translate("genRuntimeLessThanMinute");
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h <= 0) return translate("genRuntimeMinutes", { m });
+  if (m === 0) return translate("genRuntimeHours", { h });
+  return translate("genRuntimeHoursMinutes", { h, m });
+}
+
+export const DEFAULT_GRID_INPUT_LABEL = "generator";
+export const GRID_INPUT_LABELS = ["generator", "grid"];
+
+/** Normalize stored grid input label to generator|grid (default generator). */
+export function normalizeGridInputLabel(label) {
+  const value = String(label ?? DEFAULT_GRID_INPUT_LABEL).toLowerCase();
+  return GRID_INPUT_LABELS.includes(value) ? value : DEFAULT_GRID_INPUT_LABEL;
+}
+
+/** i18n key for the cards/compare metric title. */
+export function gridInputCardKey(label) {
+  return normalizeGridInputLabel(label) === "grid" ? "cardGrid" : "cardGenerator";
+}
+
+/** i18n key for the flow diagram node label. */
+export function gridInputFlowKey(label) {
+  return normalizeGridInputLabel(label) === "grid" ? "flowGrid" : "flowGen";
+}
+
+/** i18n key for the compare-view active badge. */
+export function gridInputCompareOnKey(label) {
+  return normalizeGridInputLabel(label) === "grid" ? "compareGridOn" : "compareGeneratorOn";
 }
 
 /** True when the element accepts text entry (skip refresh shortcuts). */

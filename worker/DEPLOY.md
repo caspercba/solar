@@ -11,6 +11,7 @@ Step-by-step guide for deploying the **solar-proxy** Cloudflare Worker. A new op
 | **Worker** (`solar-proxy`) | Token-gated REST API that stores inverter credentials in KV and proxies ShineMonitor / Growatt APIs |
 | **Workers KV** (`SYSTEMS` binding) | System configs, encrypted credentials, alert cooldown state |
 | **Cron trigger** (optional) | Every 5 minutes — evaluates SOC / generator alerts and POSTs to configured webhooks |
+| **Analytics Engine** (optional) | Queryable error metrics from adapter and alert failures (`ANALYTICS` binding) |
 | **Secrets** | `API_TOKEN`, `PRODUCTION`, `CREDENTIALS_KEY`, `ALLOWED_ORIGINS` — never committed to git |
 
 The static frontend (repository root) is deployed separately — see the root [README](../README.md#host-the-frontend).
@@ -330,6 +331,85 @@ With alerts enabled and a reachable webhook, check webhook logs after triggering
 
 **Production cron verification:** Cloudflare Dashboard → **Workers & Pages** → **solar-proxy** → **Triggers** → confirm cron `*/5 * * * *` and inspect **Cron Events** for success/failure after a few minutes.
 
+### 6.4 Optional — Workers Analytics Engine (error metrics)
+
+The Worker emits **structured JSON logs** for adapter failures (502 responses), alert fetch failures, and webhook delivery errors. When an Analytics Engine dataset is bound, those same events are also written as queryable data points — no code changes or secrets required beyond the binding in `wrangler.toml`.
+
+**What gets recorded:** adapter discover/fetch/history errors and alert cron failures. Each data point includes:
+
+| Field | Content |
+|-------|---------|
+| `event` | e.g. `adapter_fetch_failed`, `alert_webhook_failed` |
+| `service` | `shinemonitor` or `growatt` |
+| `systemId` | Configured system UUID (when known) |
+| `route` | HTTP route or `scheduled/alerts` |
+| `message` | Redacted error summary (no credentials or webhook URLs) |
+
+**Local dev:** the binding is omitted from Miniflare/Vitest — logging goes to console only; `recordObservability` is a no-op.
+
+#### 6.4.1 Create datasets (one-time)
+
+1. Cloudflare Dashboard → **Workers & Pages** → **Analytics Engine** → **Create dataset**.
+2. Create **`solar_proxy_errors`** for production.
+3. (Optional) Create **`solar_proxy_errors_staging`** for the staging Worker.
+
+Dataset names must match `wrangler.toml`:
+
+```toml
+# Production (default deploy)
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "solar_proxy_errors"
+
+# Staging (wrangler deploy --env staging)
+[[env.staging.analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "solar_proxy_errors_staging"
+```
+
+#### 6.4.2 Deploy with binding
+
+After the dataset exists, deploy as usual:
+
+```bash
+cd worker
+npx wrangler deploy              # production
+npx wrangler deploy --env staging   # staging
+```
+
+Wrangler registers the `ANALYTICS` binding automatically — no `wrangler secret put` step.
+
+#### 6.4.3 Query and verify
+
+**Dashboard:** **Workers & Pages** → **Analytics Engine** → select the dataset → explore recent writes.
+
+**SQL (Workers Analytics SQL API):** example — error count by event in the last hour:
+
+```sql
+SELECT
+  blob1 AS event,
+  blob2 AS service,
+  COUNT(*) AS errors
+FROM solar_proxy_errors
+WHERE timestamp > NOW() - INTERVAL '1' HOUR
+  AND double1 = 1
+GROUP BY event, service
+ORDER BY errors DESC
+```
+
+**Smoke test:** trigger a known 502 (e.g. bad inverter credentials on discovery) and confirm a row appears within a few minutes:
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"service":"growatt","user":"bad","password":"bad"}' \
+  "$PROXY/api/systems"
+# Expected: 502; check dataset for event adapter_discover_failed
+```
+
+**Console logs** remain the primary debug path (`npx wrangler tail`). Analytics Engine complements logs with aggregations (error rates by system, service, route). See root [README § Observability](../README.md#observability) for Logpush and third-party APM options.
+
 ---
 
 ## 7. Production checklist
@@ -347,6 +427,7 @@ Use this before pointing users at a new deployment.
 | **Token not in git** | Secrets only via `wrangler secret put` | No tokens in repo, issues, or CI logs |
 | **Frontend token** | Same value as `API_TOKEN` in setup / bookmark | Setup screen connects successfully |
 | **Alerts (if used)** | `enabled: true` + valid `webhookUrl` per system | Cron Events show success; test webhook receives POST |
+| **Analytics Engine (optional)** | Create `solar_proxy_errors` dataset; binding in `wrangler.toml` | Trigger a 502; row appears in dataset with redacted message |
 | **Health monitoring** | Optional uptime check on `/api/health` | Returns `{ "ok": true }` |
 
 **Dev mode warning:** If `API_TOKEN` is unset **and** `PRODUCTION` is unset, the Worker accepts unauthenticated requests. This is intentional for local development only — always set `PRODUCTION=true` (§3.1a) on deployed Workers so a missing `API_TOKEN` fails closed (`503`) instead of running open.
