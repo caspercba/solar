@@ -185,6 +185,34 @@ test.describe("Manage modal — add/remove systems", () => {
     await expect(page.locator("#system-tabs .sys-tab.active")).toHaveText("New Growatt Site");
   });
 
+  test("adds a system with Grid label selected in the form", async ({ page }) => {
+    await openAddModal(page);
+
+    let postBody = null;
+    await page.route("**/api/systems", async (route) => {
+      if (route.request().method() === "POST") {
+        postBody = route.request().postDataJSON();
+      }
+      await route.continue();
+    });
+
+    await page.locator("#add-service").selectOption("shinemonitor");
+    await page.locator("#add-name").fill("Grid-Tied Site");
+    await page.locator("#add-user").fill("grid-user@example.com");
+    await page.locator("#add-pass").fill("grid-secret-password");
+    await page.locator("#add-grid-input-label").selectOption("grid");
+    await page.locator("#add-submit").click();
+
+    await expect(page.locator("#add-system-modal")).toBeHidden();
+    expect(postBody).toEqual({
+      service: "shinemonitor",
+      name: "Grid-Tied Site",
+      user: "grid-user@example.com",
+      password: "grid-secret-password",
+      gridInputLabel: "grid",
+    });
+  });
+
   test("shows discovery failure and keeps the modal open for retry", async ({ page }) => {
     await openAddModal(page);
     await page.route("**/api/systems", async (route) => {
