@@ -540,8 +540,10 @@ Add cases for your service id when registration changes behavior.
 Playwright specs in `e2e/tests/` exercise the static frontend against `e2e/fixtures/mock-worker.js` — a lightweight HTTP server that returns canned normalized JSON (no real inverter credentials).
 
 ```bash
-cd e2e && npm ci && npx playwright install chromium && npm test
+cd e2e && npm ci && npm test
 ```
+
+Chromium installs automatically at runtime via the `pretest` hook (`scripts/ensure-browser.js`) — no separate install step or baked image needed.
 
 When adding a brand that changes setup or chart behavior:
 

@@ -214,6 +214,16 @@ npm install
 npm test
 ```
 
+**E2E** (Playwright, against a mock Worker):
+
+```bash
+cd e2e
+npm ci
+npm test
+```
+
+Chromium is installed automatically at runtime — `npm test`'s `pretest` hook runs `npx playwright install --with-deps chromium` (falling back to a browser-only install without root). No baked image is required; see [e2e/README.md](./e2e/README.md) for details.
+
 ## CI/CD
 
 GitHub Actions runs on every push to `main`, on version tags, and on pull requests (`.github/workflows/ci.yml`):

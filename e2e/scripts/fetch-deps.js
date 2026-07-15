@@ -197,6 +197,9 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("[fetch-deps]", err);
-  process.exit(1);
+  // Best-effort supplement to `playwright install --with-deps` — if the
+  // Debian mirror is unreachable (e.g. restricted sandbox network), don't
+  // block the test run. Chromium may already have what it needs; if not,
+  // Playwright's own launch error will say so.
+  console.warn("[fetch-deps] skipped (could not fetch runtime libraries):", err.message || err);
 });
