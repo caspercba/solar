@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "postinstall": "chmod +x node_modules/7zip-bin/linux/arm64/7za 2>/dev/null || true",
-    "pretest": "node scripts/fetch-deps.js",
+    "pretest": "node scripts/ensure-browser.js && node scripts/fetch-deps.js",
     "test": "node scripts/run-tests.js",
     "test:ci": "playwright test",
     "test:ui": "playwright test --ui",

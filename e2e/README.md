@@ -5,12 +5,7 @@ Browser tests for the Solar Dashboard static frontend against a **mock Worker** 
 ## Prerequisites
 
 - Node.js 20+
-- Chromium (installed automatically by Playwright on first run)
-
-On Linux, either:
-
-- Run `sudo npx playwright install-deps chromium` (recommended on Debian/Ubuntu), **or**
-- Let `npm test` download minimal runtime libraries into `e2e/.deps/` (no root; used automatically via `pretest`)
+- Chromium — installed automatically at runtime, no baked image required. `npm test`'s `pretest` hook runs `scripts/ensure-browser.js`, which tries `npx playwright install --with-deps chromium` (root/sudo, e.g. CI) and falls back to a browser-only install plus `scripts/fetch-deps.js` (downloads minimal runtime libraries into `e2e/.deps/`, no root needed) when `--with-deps` isn't available.
 
 ## Quick start
 
@@ -27,7 +22,6 @@ Or run Playwright tests only:
 ```bash
 cd e2e
 npm ci
-npx playwright install chromium
 npm test
 ```
 
@@ -55,7 +49,7 @@ npx serve -l 3456 .
 cd e2e && CI= npm test
 ```
 
-Set `CI=1` to skip the user-space dependency bootstrap and rely on system libraries from `playwright install-deps`.
+Set `CI=1` to skip `fetch-deps.js`'s user-space library bootstrap and rely on system libraries from `playwright install-deps` (still runs `ensure-browser.js` to make sure the browser itself is installed).
 
 ### Environment variables
 
@@ -104,4 +98,4 @@ npx playwright install --with-deps chromium
 npm run test:ci
 ```
 
-Use `test:ci` in CI so `pretest` does not re-download Debian libraries.
+Use `test:ci` in CI so `pretest` (browser + Debian library bootstrap) doesn't run twice — the explicit `playwright install --with-deps chromium` step already covers it.

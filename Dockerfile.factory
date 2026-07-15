@@ -1,8 +1,0 @@
-FROM gordofast-worker-base
-
-# Playwright Chromium for e2e/, pinned to the lockfile resolve of @playwright/test
-# (e2e/package-lock.json → playwright@1.61.1). Browsers live outside the
-# per-uid cache so the orchestrator's runtime-uid override still finds them.
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-RUN npx -y playwright@1.61.1 install --with-deps chromium \
-    && chmod -R a+rwX /opt/playwright
