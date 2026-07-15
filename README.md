@@ -224,6 +224,8 @@ npm test
 
 Chromium is installed automatically at runtime — `npm test`'s `pretest` hook runs `npx playwright install --with-deps chromium` (falling back to a browser-only install without root). No baked image is required; see [e2e/README.md](./e2e/README.md) for details.
 
+**Smoke-tested** on the shared base image (no `Dockerfile.factory`): `npm ci && npm test` passed for `worker` (198 tests) and `frontend` (97 tests) with dependencies installed fresh at runtime. `e2e`'s `npm ci` also succeeded, but the Chromium download itself (not just the `--with-deps` apt step) can be blocked in network-restricted sandboxes that don't allowlist the Playwright CDN — expect that case in tightly locked-down environments.
+
 ## CI/CD
 
 GitHub Actions runs on every push to `main`, on version tags, and on pull requests (`.github/workflows/ci.yml`):
