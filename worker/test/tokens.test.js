@@ -36,7 +36,7 @@ describe("tokens", () => {
     const minted = await createToken(e, { label: "guest", role: "read" });
 
     const entry = await lookupToken(e, minted.token);
-    expect(entry).toEqual({ id: minted.id, label: "guest", role: "read" });
+    expect(entry).toEqual({ id: minted.id, label: "guest", role: "read", userId: null });
   });
 
   it("lookupToken returns null for an unknown token", async () => {
@@ -86,7 +86,7 @@ describe("tokens", () => {
     expect(await revokeToken(e, a.id)).toBe(true);
 
     expect(await lookupToken(e, a.token)).toBeNull();
-    expect(await lookupToken(e, b.token)).toEqual({ id: b.id, label: "bob", role: "admin" });
+    expect(await lookupToken(e, b.token)).toEqual({ id: b.id, label: "bob", role: "admin", userId: null });
 
     const index = await listTokens(e);
     const aEntry = index.find((t) => t.id === a.id);

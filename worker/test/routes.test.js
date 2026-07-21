@@ -1762,4 +1762,276 @@ describe("worker routes", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe("password users and invites (ADR 0003)", () => {
+    it("POST /api/admin/users bootstraps a password admin via API_TOKEN", async () => {
+      const systems = env();
+      const res = await call(
+        request("/api/admin/users", {
+          method: "POST",
+          headers: AUTH,
+          body: { username: "Owner", password: "password123", role: "admin" },
+        }),
+        systems,
+      );
+      expect(res.status).toBe(201);
+      const user = await res.json();
+      expect(user).toMatchObject({ username: "owner", role: "admin" });
+      expect(user).not.toHaveProperty("passwordHash");
+
+      const stored = await systems.SYSTEMS.get(`user:${user.id}`, "json");
+      expect(stored.passwordHash).toMatch(/^pbkdf2\$/);
+      expect(JSON.stringify(stored)).not.toContain("password123");
+    });
+
+    it("POST /api/auth/login returns a bearer session usable on protected routes", async () => {
+      const systems = env();
+      await call(
+        request("/api/admin/users", {
+          method: "POST",
+          headers: AUTH,
+          body: { username: "alice", password: "password123", role: "admin" },
+        }),
+        systems,
+      );
+
+      const login = await call(
+        request("/api/auth/login", {
+          method: "POST",
+          body: { username: "alice", password: "password123" },
+        }),
+        systems,
+      );
+      expect(login.status).toBe(200);
+      const session = await login.json();
+      expect(session.token).toBeTruthy();
+      expect(session).toMatchObject({ username: "alice", role: "admin" });
+
+      const me = await call(
+        request("/api/me", { headers: { Authorization: `Bearer ${session.token}` } }),
+        systems,
+      );
+      expect(me.status).toBe(200);
+      expect(await me.json()).toMatchObject({
+        username: "alice",
+        role: "admin",
+        userId: session.userId,
+        actorId: session.userId,
+      });
+
+      const systemsList = await call(
+        request("/api/systems", { headers: { Authorization: `Bearer ${session.token}` } }),
+        systems,
+      );
+      expect(systemsList.status).toBe(200);
+    });
+
+    it("POST /api/auth/logout revokes the session token", async () => {
+      const systems = env();
+      await call(
+        request("/api/admin/users", {
+          method: "POST",
+          headers: AUTH,
+          body: { username: "alice", password: "password123", role: "read" },
+        }),
+        systems,
+      );
+      const login = await call(
+        request("/api/auth/login", {
+          method: "POST",
+          body: { username: "alice", password: "password123" },
+        }),
+        systems,
+      );
+      const { token } = await login.json();
+
+      const logout = await call(
+        request("/api/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } }),
+        systems,
+      );
+      expect(logout.status).toBe(200);
+
+      const after = await call(
+        request("/api/me", { headers: { Authorization: `Bearer ${token}` } }),
+        systems,
+      );
+      expect(after.status).toBe(401);
+    });
+
+    it("invite accept creates user + session and rejects consumed invites", async () => {
+      const systems = env();
+      const mint = await call(
+        request("/api/admin/invites", {
+          method: "POST",
+          headers: AUTH,
+          body: { role: "read", label: "guest", frontendUrl: "https://dash.example" },
+        }),
+        systems,
+      );
+      expect(mint.status).toBe(201);
+      const invite = await mint.json();
+      expect(invite.invite).toBeTruthy();
+      expect(invite.url).toContain("invite=");
+
+      const accept = await call(
+        request("/api/auth/invite/accept", {
+          method: "POST",
+          body: { invite: invite.invite, username: "guest1", password: "password123" },
+        }),
+        systems,
+      );
+      expect(accept.status).toBe(201);
+      const session = await accept.json();
+      expect(session).toMatchObject({ username: "guest1", role: "read" });
+
+      const reuse = await call(
+        request("/api/auth/invite/accept", {
+          method: "POST",
+          body: { invite: invite.invite, username: "guest2", password: "password123" },
+        }),
+        systems,
+      );
+      expect(reuse.status).toBe(410);
+
+      const me = await call(
+        request("/api/me", { headers: { Authorization: `Bearer ${session.token}` } }),
+        systems,
+      );
+      expect(me.status).toBe(200);
+      expect((await me.json()).role).toBe("read");
+    });
+
+    it("revoked invite cannot be accepted", async () => {
+      const systems = env();
+      const mint = await call(
+        request("/api/admin/invites", {
+          method: "POST",
+          headers: AUTH,
+          body: { role: "read" },
+        }),
+        systems,
+      );
+      const invite = await mint.json();
+
+      const revoke = await call(
+        request(`/api/admin/invites/${invite.id}`, { method: "DELETE", headers: AUTH }),
+        systems,
+      );
+      expect(revoke.status).toBe(200);
+
+      const accept = await call(
+        request("/api/auth/invite/accept", {
+          method: "POST",
+          body: { invite: invite.invite, username: "x", password: "password123" },
+        }),
+        systems,
+      );
+      expect(accept.status).toBe(410);
+    });
+
+    it("refuses deleting the last admin via DELETE /api/admin/users/:id", async () => {
+      const systems = env();
+      const create = await call(
+        request("/api/admin/users", {
+          method: "POST",
+          headers: AUTH,
+          body: { username: "solo", password: "password123", role: "admin" },
+        }),
+        systems,
+      );
+      const user = await create.json();
+
+      const del = await call(
+        request(`/api/admin/users/${user.id}`, { method: "DELETE", headers: AUTH }),
+        systems,
+      );
+      expect(del.status).toBe(400);
+      expect(await del.json()).toEqual({ error: "Cannot disable the last admin" });
+    });
+
+    it("read-role session cannot hit admin routes", async () => {
+      const systems = env();
+      await call(
+        request("/api/admin/users", {
+          method: "POST",
+          headers: AUTH,
+          body: { username: "viewer", password: "password123", role: "read" },
+        }),
+        systems,
+      );
+      const login = await call(
+        request("/api/auth/login", {
+          method: "POST",
+          body: { username: "viewer", password: "password123" },
+        }),
+        systems,
+      );
+      const { token } = await login.json();
+      const headers = { Authorization: `Bearer ${token}` };
+
+      expect((await call(request("/api/admin/users", { headers }), systems)).status).toBe(403);
+      expect((await call(request("/api/admin/invites", { headers }), systems)).status).toBe(403);
+      expect(
+        (await call(
+          request("/api/systems", {
+            method: "POST",
+            headers,
+            body: { service: "growatt", user: "u", password: "p" },
+          }),
+          systems,
+        )).status,
+      ).toBe(403);
+    });
+
+    it("legacy API_TOKEN still authenticates alongside password users", async () => {
+      const systems = env();
+      await call(
+        request("/api/admin/users", {
+          method: "POST",
+          headers: AUTH,
+          body: { username: "alice", password: "password123", role: "admin" },
+        }),
+        systems,
+      );
+
+      const res = await call(request("/api/systems", { headers: AUTH }), systems);
+      expect(res.status).toBe(200);
+
+      const me = await call(request("/api/me", { headers: AUTH }), systems);
+      expect(await me.json()).toMatchObject({
+        actorId: "shared",
+        role: "admin",
+        userId: null,
+      });
+    });
+
+    it("POST /api/admin/invites/purge drops non-pending invites", async () => {
+      const systems = env();
+      const a = await (
+        await call(
+          request("/api/admin/invites", { method: "POST", headers: AUTH, body: { role: "read" } }),
+          systems,
+        )
+      ).json();
+      const b = await (
+        await call(
+          request("/api/admin/invites", { method: "POST", headers: AUTH, body: { role: "read" } }),
+          systems,
+        )
+      ).json();
+      await call(request(`/api/admin/invites/${b.id}`, { method: "DELETE", headers: AUTH }), systems);
+
+      const purge = await call(
+        request("/api/admin/invites/purge", { method: "POST", headers: AUTH }),
+        systems,
+      );
+      expect(purge.status).toBe(200);
+      expect(await purge.json()).toEqual({ purged: 1 });
+
+      const list = await call(request("/api/admin/invites", { headers: AUTH }), systems);
+      const invites = await list.json();
+      expect(invites).toHaveLength(1);
+      expect(invites[0].id).toBe(a.id);
+    });
+  });
 });

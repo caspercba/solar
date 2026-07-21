@@ -1,9 +1,33 @@
 import { checkAuth, isAuthMisconfigured, corsHeaders, jsonResponse, errorResponse, resolveCors } from "./auth.js";
 import { toHaPayload } from "./ha.js";
 import { logAdapterError, auditLog } from "./logger.js";
-import { checkDataRateLimit, getRateLimitKey, rateLimitResponse } from "./rateLimit.js";
+import {
+  checkDataRateLimit,
+  checkAuthRateLimit,
+  getRateLimitKey,
+  getAuthRateLimitKey,
+  rateLimitResponse,
+} from "./rateLimit.js";
 import { saveSystemConfig, loadSystemConfig } from "./credentials.js";
-import { createToken, listTokens, revokeToken } from "./tokens.js";
+import { createToken, listTokens, revokeToken, revokeTokensForUser } from "./tokens.js";
+import {
+  createUser,
+  listUsersPublic,
+  findUserByUsername,
+  verifyPassword,
+  disableUser,
+  deleteUser,
+  updateUser,
+  touchLastLogin,
+} from "./users.js";
+import {
+  createInvite,
+  listInvitesPublic,
+  assertInviteAcceptable,
+  markInviteConverted,
+  revokeInvite,
+  purgeInvites,
+} from "./invites.js";
 import {
   runScheduledAlerts,
   updateSystemAlerts,
@@ -73,6 +97,32 @@ function enforceDataRateLimit(request, env, origin, auth) {
   return null;
 }
 
+function enforceAuthRateLimit(request, origin, route) {
+  const key = getAuthRateLimitKey(request, route);
+  const result = checkAuthRateLimit(key);
+  if (!result.allowed) {
+    return rateLimitResponse(result.retryAfter, origin);
+  }
+  return null;
+}
+
+/** Issue a browser session token bound to a password user (ADR 0003). */
+async function issueSession(env, user) {
+  const minted = await createToken(env, {
+    label: `session:${user.username}`,
+    role: user.role,
+    userId: user.id,
+  });
+  await touchLastLogin(env, user.id);
+  return {
+    token: minted.token,
+    role: user.role,
+    username: user.username,
+    userId: user.id,
+    tokenId: minted.id,
+  };
+}
+
 async function listSystems(env) {
   const list = await env.SYSTEMS.get("_index", "json");
   if (!list) return [];
@@ -112,9 +162,253 @@ export default {
       return errorResponse("Service misconfigured: API_TOKEN is required in this environment", 503, origin);
     }
 
+    // --- Unauthenticated auth routes (ADR 0003) ---
+
+    // POST /api/auth/login — username + password → session bearer
+    if (path === "/api/auth/login" && request.method === "POST") {
+      const limited = enforceAuthRateLimit(request, origin, "login");
+      if (limited) return limited;
+
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return errorResponse("Invalid JSON body", 400, origin);
+      }
+      const { username, password } = body || {};
+      if (!username || !password) {
+        return errorResponse("Missing required fields: username, password", 400, origin);
+      }
+
+      const user = await findUserByUsername(env, username);
+      if (!user || user.disabledAt) {
+        return errorResponse("Invalid username or password", 401, origin);
+      }
+      const ok = await verifyPassword(password, user.passwordHash);
+      if (!ok) {
+        return errorResponse("Invalid username or password", 401, origin);
+      }
+
+      const session = await issueSession(env, user);
+      return jsonResponse(session, 200, origin);
+    }
+
+    // POST /api/auth/invite/accept — create user from invite + issue session (no prior auth)
+    if (path === "/api/auth/invite/accept" && request.method === "POST") {
+      const limited = enforceAuthRateLimit(request, origin, "invite-accept");
+      if (limited) return limited;
+
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return errorResponse("Invalid JSON body", 400, origin);
+      }
+      const { invite: inviteSecret, username, password } = body || {};
+      if (!inviteSecret || !username || !password) {
+        return errorResponse("Missing required fields: invite, username, password", 400, origin);
+      }
+
+      const check = await assertInviteAcceptable(env, inviteSecret);
+      if (!check.ok) return errorResponse(check.error, check.status, origin);
+
+      let user;
+      try {
+        user = await createUser(env, {
+          username,
+          password,
+          role: check.invite.role,
+          createdBy: check.invite.createdBy || `invite:${check.invite.id}`,
+        });
+      } catch (err) {
+        return errorResponse(err.message, 400, origin);
+      }
+
+      await markInviteConverted(env, check.invite.id, user.id);
+      const session = await issueSession(env, user);
+
+      auditLog(env, {
+        ...auditContext(request, "invite.accept", check.invite.id, user.id),
+        outcome: "success",
+        status: 201,
+      });
+
+      return jsonResponse(session, 201, origin);
+    }
+
     const auth = await checkAuth(request, env);
     if (!auth.ok) {
       return errorResponse("Unauthorized", 401, origin);
+    }
+
+    // POST /api/auth/logout — revoke the current session / opaque token
+    if (path === "/api/auth/logout" && request.method === "POST") {
+      if (auth.openMode || auth.actorId === "shared" || !auth.tokenId) {
+        // Legacy shared token / open mode cannot be revoked via this route.
+        return jsonResponse({ ok: true }, 200, origin);
+      }
+      await revokeToken(env, auth.tokenId);
+      return jsonResponse({ ok: true }, 200, origin);
+    }
+
+    // GET /api/me — current actor identity
+    if (path === "/api/me" && request.method === "GET") {
+      return jsonResponse({
+        userId: auth.userId,
+        tokenId: auth.tokenId,
+        username: auth.username,
+        role: auth.role,
+        actorId: auth.actorId,
+      }, 200, origin);
+    }
+
+    // --- Admin: password users (ADR 0003) ---
+
+    // GET /api/admin/users
+    if (path === "/api/admin/users" && request.method === "GET") {
+      if (auth.role !== "admin") {
+        return errorResponse("Forbidden: read-only token cannot perform this action", 403, origin);
+      }
+      return jsonResponse(await listUsersPublic(env), 200, origin);
+    }
+
+    // POST /api/admin/users — create user with password (bootstrap first admin via API_TOKEN)
+    if (path === "/api/admin/users" && request.method === "POST") {
+      const auditCtx = auditContext(request, "user.create", null, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return auditedResponse(env, auditCtx, errorResponse("Invalid JSON body", 400, origin));
+      }
+      const { username, password, role } = body || {};
+
+      let user;
+      try {
+        user = await createUser(env, {
+          username,
+          password,
+          role: role || "read",
+          createdBy: auth.actorId,
+        });
+      } catch (err) {
+        return auditedResponse(env, auditCtx, errorResponse(err.message, 400, origin));
+      }
+
+      return auditedResponse(env, { ...auditCtx, resource: user.id }, jsonResponse(user, 201, origin));
+    }
+
+    // PATCH /api/admin/users/:id — update role / re-enable / disable
+    const userMatch = path.match(/^\/api\/admin\/users\/([^/]+)$/);
+    if (userMatch && request.method === "PATCH") {
+      const id = userMatch[1];
+      const auditCtx = auditContext(request, "user.update", id, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return auditedResponse(env, auditCtx, errorResponse("Invalid JSON body", 400, origin));
+      }
+
+      const patch = {};
+      if (body?.role != null) patch.role = body.role;
+      if (body?.disabled != null) patch.disabled = Boolean(body.disabled);
+
+      const result = await updateUser(env, id, patch);
+      if (!result.ok) {
+        return auditedResponse(env, auditCtx, errorResponse(result.error, result.status, origin));
+      }
+
+      // Revoke sessions when disabled or role changes so stale bearers die immediately.
+      if (result.user.disabledAt || (patch.role != null)) {
+        await revokeTokensForUser(env, id);
+      }
+
+      return auditedResponse(env, auditCtx, jsonResponse(result.user, 200, origin));
+    }
+
+    // DELETE /api/admin/users/:id — soft-disable (default) or hard-delete (?hard=1)
+    if (userMatch && request.method === "DELETE") {
+      const id = userMatch[1];
+      const hard = url.searchParams.get("hard") === "1" || url.searchParams.get("hard") === "true";
+      const auditCtx = auditContext(request, hard ? "user.delete" : "user.disable", id, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
+      const result = hard ? await deleteUser(env, id) : await disableUser(env, id);
+      if (!result.ok) {
+        return auditedResponse(env, auditCtx, errorResponse(result.error, result.status, origin));
+      }
+
+      await revokeTokensForUser(env, id);
+      return auditedResponse(env, auditCtx, jsonResponse({ ok: true, user: result.user }, 200, origin));
+    }
+
+    // --- Admin: invites (ADR 0003) ---
+
+    // GET /api/admin/invites
+    if (path === "/api/admin/invites" && request.method === "GET") {
+      if (auth.role !== "admin") {
+        return errorResponse("Forbidden: read-only token cannot perform this action", 403, origin);
+      }
+      return jsonResponse(await listInvitesPublic(env), 200, origin);
+    }
+
+    // POST /api/admin/invites — mint invite; plaintext secret returned once
+    if (path === "/api/admin/invites" && request.method === "POST") {
+      const auditCtx = auditContext(request, "invite.create", null, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return auditedResponse(env, auditCtx, errorResponse("Invalid JSON body", 400, origin));
+      }
+      const { role, label, expiresAt, ttlMs, frontendUrl } = body || {};
+
+      let minted;
+      try {
+        minted = await createInvite(env, {
+          role: role || "read",
+          label,
+          createdBy: auth.actorId,
+          expiresAt: expiresAt || null,
+          ttlMs,
+          frontendUrl: frontendUrl || null,
+          proxyUrl: url.origin,
+        });
+      } catch (err) {
+        return auditedResponse(env, auditCtx, errorResponse(err.message, 400, origin));
+      }
+
+      return auditedResponse(env, { ...auditCtx, resource: minted.id }, jsonResponse(minted, 201, origin));
+    }
+
+    // POST /api/admin/invites/purge — drop non-pending invites from index
+    if (path === "/api/admin/invites/purge" && request.method === "POST") {
+      const auditCtx = auditContext(request, "invite.purge", null, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
+      const result = await purgeInvites(env);
+      return auditedResponse(env, auditCtx, jsonResponse(result, 200, origin));
+    }
+
+    // DELETE /api/admin/invites/:id — revoke pending invite
+    const inviteMatch = path.match(/^\/api\/admin\/invites\/([^/]+)$/);
+    if (inviteMatch && request.method === "DELETE") {
+      const id = inviteMatch[1];
+      const auditCtx = auditContext(request, "invite.revoke", id, auth.actorId);
+      if (auth.role !== "admin") return forbiddenReadOnly(env, auditCtx, origin);
+
+      const result = await revokeInvite(env, id);
+      if (!result.ok) {
+        return auditedResponse(env, auditCtx, errorResponse(result.error, result.status, origin));
+      }
+      return auditedResponse(env, auditCtx, jsonResponse({ ok: true, invite: result.invite }, 200, origin));
     }
 
     // GET /api/services — list supported service types
