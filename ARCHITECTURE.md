@@ -22,7 +22,7 @@ Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation det
 │  Cloudflare Worker (worker/)                                             │
 │  • checkAuth — legacy API_TOKEN, then KV opaque keys (ADR 0002)          │
 │  • Planned: login / invite-accept → session token bound to user (0003) │
-│  • Adapters: shinemonitor, growatt (+ victron planned)                   │
+│  • Adapters: shinemonitor, growatt                                       │
 │  • Optional cron: SOC / generator alert webhooks                         │
 │  • Rate limit + structured / audit logging                               │
 └───────────────┬─────────────────────────────┬────────────────────────────┘
@@ -30,7 +30,7 @@ Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation det
                 ▼                             ▼
 ┌───────────────────────────┐   ┌─────────────────────────────────────────┐
 │  Workers KV (SYSTEMS)     │   │  Vendor cloud APIs                      │
-│  systems, credentials,    │   │  ShineMonitor · Growatt · (Victron)     │
+│  systems, credentials,    │   │  ShineMonitor · Growatt                 │
 │  alert state, opaque keys │   │  History fetched on demand — not stored │
 │  Planned: users, invites  │   └─────────────────────────────────────────┘
 └───────────────────────────┘

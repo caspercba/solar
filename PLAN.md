@@ -43,7 +43,7 @@ The project exists because:
 - [x] **CI runs all test suites** — worker + frontend unit + E2E on every PR (`.github/workflows/ci.yml`)
 - [ ] **Multi-user accounts** — password login, admin magic-link invites (copy URL), invite conversion tracking, user list with roles (ADR 0003)
 
-All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0** (HEAD of `main`). ADR 0002 Phases 1–2 (mutation audit log, per-user opaque API keys) are also complete. Remaining work is Phase 5 expansion (Victron adapter, etc.), **ADR 0003 password users + magic-link invites** (§5.3, §12 Phase 5), and the optional ADR 0002 Phase 3 (Cloudflare Access for admin surfaces, not planned unless requested). See [ARCHITECTURE.md](./ARCHITECTURE.md) for the auth layering overview.
+All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0** (HEAD of `main`). ADR 0002 Phases 1–2 (mutation audit log, per-user opaque API keys) are also complete. Remaining work is Phase 5 expansion (optional further adapters), **ADR 0003 password users + magic-link invites** (§5.3, §12 Phase 5), and the optional ADR 0002 Phase 3 (Cloudflare Access for admin surfaces, not planned unless requested). See [ARCHITECTURE.md](./ARCHITECTURE.md) for the auth layering overview.
 
 ---
 
@@ -109,14 +109,13 @@ Full diagram, KV map, and auth layering: **[ARCHITECTURE.md](./ARCHITECTURE.md)*
 | `worker/DEPLOY.md` | Deployment runbook — secrets, KV, staging, cron, production checklist |
 | `discovery/` | ShineMonitor API reference + Python client |
 | `discovery/growatt/` | Growatt API reference + Python client |
-| `discovery/victron/` | Victron VRM discovery spike (not yet a live adapter) |
 | `discovery/ADAPTER_GUIDE.md` | Guide for adding a new inverter-brand adapter |
 | `worker/test/` | Worker unit tests (Vitest + `@cloudflare/vitest-pool-workers`) |
 | `frontend/lib.js` | Extracted pure helpers from `app.js` for unit testing |
 | `frontend/i18n.js` | EN/ES string tables and `t()` lookup |
 | `frontend/test/` | Frontend unit tests (Vitest + jsdom) |
 | `e2e/` | Playwright specs + mock Worker fixture |
-| `docs/decisions/` | ADRs (Victron spike, opaque tokens/audit, password users + invites) |
+| `docs/decisions/` | ADRs (opaque tokens/audit, password users + invites; 0001 Victron withdrawn) |
 | `ARCHITECTURE.md` | System + auth architecture (current and planned) |
 | `RELEASE_NOTES.md` | Version changelog |
 
@@ -287,7 +286,7 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [x] **Dashboard low-SOC warning on cards** — card styling and badge when SOC is below the user-configured `socWarnThreshold` preference (separate from webhook alert threshold)
 - [x] **Per-system generator detection thresholds** — configurable `gridDetect` voltage/power minima in manage UI
 
-### 5.2 Service adapter roadmap — see §6.3 (Victron)
+### 5.2 Service adapter roadmap — see §6 (ShineMonitor + Growatt shipped; Solis/Deye/SMA optional)
 
 ### 5.3 Multi-user accounts & invites (planned — ADR 0003)
 
@@ -335,15 +334,6 @@ Normative design: [docs/decisions/0003-password-users-and-magic-link-invites.md]
 - [x] `fetchHistorySummary` — daily solar/load kWh from vendor energy endpoints
 - [x] Weather data integration
 
-### 6.3 Victron VRM (`victron.js`) — not started, discovery only
-
-- [x] Discovery spike: auth, endpoints, feasibility vs. normalized contract (`discovery/victron/`)
-- [ ] Live verification against a real VRM account/token (attribute codes, `stats` interval enum)
-- [ ] Multi-device instance role mapping in `discover()` (battery monitor, solar charger(s), inverter)
-- [ ] `worker/src/services/victron.js` implementing `discover()` + `fetchData()`
-- [ ] `fetchHistory()` / `fetchHistorySummary()` via VRM `stats` endpoint
-- [ ] Register in `ADAPTERS` map and `/api/services`
-
 ---
 
 ## 7. Discovery & Documentation
@@ -362,7 +352,6 @@ Normative design: [docs/decisions/0003-password-users-and-magic-link-invites.md]
 ### 7.2 Planned
 
 - [x] Update README to reflect vendor-only history (KV snapshot docs removed; see README "Historical data (vendor APIs)")
-- [x] Victron VRM discovery spike (`discovery/victron/README.md`, `API.md`, `fetch_data.py`, `docs/decisions/0001-victron-vrm-third-adapter-spike.md`) — literature review only, not validated against a live account (see §6.3)
 
 ### 7.3 Testing
 
@@ -470,7 +459,7 @@ Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, esca
 
 ### 10.3 Nice to Have
 
-10. **Additional adapters** — Victron VRM, Solis, Deye, SMA (each needs a discovery pass like existing folders). Victron VRM discovery spike complete (`discovery/victron/`, ADR 0001) — official public API docs make it the lowest-risk of the three, but sites expose multiple devices per installation (battery monitor, solar chargers, inverter), so the adapter's `discover()` will need a device-instance role map, not a single serial like ShineMonitor/Growatt. Not yet validated against a live VRM account, and `worker/src/services/victron.js` doesn't exist yet. Solis/Deye remain unstarted.
+10. **Additional adapters** — Solis, Deye, SMA (each needs a discovery pass like existing folders when hardware access exists). Victron VRM was spiked then withdrawn (ADR 0001).
 11. **Home Assistant integration** — done (`worker/src/ha.js` REST bridge + README integration docs).
 12. **Dark/light theme toggle** — done, with persisted preference (system-preference auto-detection not implemented).
 13. **WebSocket push** — evaluated and deferred; see `discovery/WEBSOCKET_REALTIME.md`. Decision: keep HTTP polling.
@@ -562,8 +551,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] Third-party adapter framework documented (`discovery/ADAPTER_GUIDE.md`)
 - [x] Home Assistant bridge
 - [x] i18n (ES)
-- [ ] Victron VRM adapter — discovery spike complete (ADR 0001); live-account validation, device-instance role mapping, and `worker/src/services/victron.js` implementation still open
-- [ ] Solis / Deye / SMA adapters — unstarted
+- [ ] Solis / Deye / SMA adapters — unstarted (Victron withdrawn — ADR 0001)
 - [x] Per-system grid input label (§5.1)
 - [x] Dashboard low-SOC warning on cards (§5.1)
 - [x] Generator runtime tracking (§5.1)
@@ -599,4 +587,3 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 | Voltage-based SOC inaccurate | Prefer API SOC; show "estimated" badge when interpolated |
 | Vendor history gaps / account offline | Accept limitation; clear empty/error states with retry; yesterday fallback for ShineMonitor realtime |
 | Vendor rate limits on multi-day fetches | Cache vendor responses in-memory per isolate; limit summary `days` param |
-| Victron VRM attribute codes unverified against a live account | Discovery spike documents literature review only; live validation required before adapter implementation |

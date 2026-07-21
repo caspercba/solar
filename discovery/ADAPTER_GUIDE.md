@@ -45,10 +45,10 @@ discovery/
     └── fetch_data.py         ← Growatt Python client
 ```
 
-When adding a brand (e.g. Victron):
+When adding a brand (e.g. Solis):
 
 ```
-discovery/victron/
+discovery/solis/
 ├── README.md       # Quick start, env vars, security notes
 ├── API.md          # Full endpoint reference with example JSON
 └── fetch_data.py   # Minimal login + sample queries (stdlib or requests)
@@ -291,7 +291,7 @@ function buildCredentials(service, password, discovered) {
     };
   }
   // New brand:
-  if (service === "victron") {
+  if (service === "solis") {
     return { /* tokens, site ID, etc. */ };
   }
   return { password };
@@ -312,7 +312,7 @@ function buildCredentials(service, password, discovered) {
 ### 6.1 Create the service module
 
 ```
-worker/src/services/victron.js
+worker/src/services/solis.js
 ```
 
 Export `discover`, `fetchData`, and optionally `fetchHistory` / `fetchHistorySummary`.
@@ -322,9 +322,9 @@ Export `discover`, `fetchData`, and optionally `fetchHistory` / `fetchHistorySum
 In `worker/src/index.js`:
 
 ```js
-import * as victron from "./services/victron.js";
+import * as solis from "./services/solis.js";
 
-const ADAPTERS = { shinemonitor, growatt, victron };
+const ADAPTERS = { shinemonitor, growatt, solis };
 ```
 
 ### 6.3 Expose in `/api/services`
@@ -335,7 +335,7 @@ Add an entry so the setup UI shows the new service:
 return jsonResponse([
   { id: "shinemonitor", name: "ShineMonitor", fields: ["user", "password"] },
   { id: "growatt", name: "Growatt", fields: ["user", "password"] },
-  { id: "victron", name: "Victron VRM", fields: ["user", "password"] },
+  { id: "solis", name: "Solis", fields: ["user", "password"] },
 ], 200, origin);
 ```
 
@@ -456,9 +456,9 @@ cd worker && npm test
 ```
 worker/test/
 ├── helpers.js              # expectNormalizedShape, expectHistorySummaryShape, createMockKV
-├── victron.test.js         # your adapter tests
+├── solis.test.js           # your adapter tests
 ├── fixtures/
-│   └── victron/
+│   └── solis/
 │       ├── auth-success.json
 │       ├── realtime.json
 │       └── day-chart-2026-07-03.json
@@ -479,11 +479,11 @@ worker/test/
 
 ```js
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchData } from "../src/services/victron.js";
+import { fetchData } from "../src/services/solis.js";
 import { expectNormalizedShape } from "./helpers.js";
-import authFixture from "./fixtures/victron/auth-success.json";
+import authFixture from "./fixtures/solis/auth-success.json";
 
-describe("victron fetchData", () => {
+describe("solis fetchData", () => {
   let originalFetch;
 
   beforeEach(() => { originalFetch = globalThis.fetch; });
@@ -506,7 +506,7 @@ describe("victron fetchData", () => {
     });
 
     expectNormalizedShape(data);
-    expect(data.service).toBe("victron");
+    expect(data.service).toBe("solis");
   });
 });
 ```
@@ -514,7 +514,7 @@ describe("victron fetchData", () => {
 When adding a brand, update `expectNormalizedShape()` in `helpers.js` to accept the new `service` id:
 
 ```js
-service: expect.stringMatching(/^(shinemonitor|growatt|victron)$/),
+service: expect.stringMatching(/^(shinemonitor|growatt|solis)$/),
 ```
 
 ### 10.5 Recording fixtures

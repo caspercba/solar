@@ -60,7 +60,6 @@ _Last updated: 2026-07-21_
 - **Credential rotation UX** — edit portal username/password in manage-systems modal (`PUT /api/systems/:id/credentials`)
 - **Home Assistant REST bridge** — `GET /api/systems/:id/ha` flat snake_case payload
 - **Growatt weather strip** — optional temperature/condition/irradiance on cards view
-- **Victron VRM discovery spike** — `discovery/victron/` (README, API.md, `fetch_data.py`); literature review only, not validated against a live account; see ADR 0001
 - **Worker route edge cases** — CORS preflight and adapter 502 paths covered (`auth.test.js`)
 - **Planning pass (2026-07-09)** — PLAN.md and STATE.md reconciled against codebase and task board; Phases 1–4 complete at **v1.3.0** tag; confirmed via repo inspection (git tags, file tree, test files) rather than assumed from the prior doc snapshot
 - **Multi-user token / audit-log spike** — ADR 0002 (`docs/decisions/0002-multi-user-token-and-audit-log.md`): phased model (shared token default → mutation audit → optional per-user KV keys); JWT and Cloudflare Access as primary auth rejected
@@ -73,7 +72,8 @@ _Last updated: 2026-07-21_
 - **Mutation audit log (ADR 0002 Phase 1)** — `auditLog()` in `worker/src/logger.js`; structured `audit` JSON entries (actorId, action, resource, method, path, clientIp, outcome, status, requestId) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`, `POST /api/admin/tokens`, `DELETE /api/admin/tokens/:id`; read routes unaffected; `actorId` is `"shared"` for the legacy token or the caller's own token id for per-user keys; reuses existing `logger.js` redaction rules; tests in `routes.test.js`
 - **Per-user opaque API keys in KV (ADR 0002 Phase 2)** — `worker/src/tokens.js`: SHA-256-hashed token registry (`token:<hash>`, `token-id:<id>`, `_index_tokens`), opaque 32-byte base64url tokens, `read`/`admin` roles, optional `expiresAt`, revoke-by-id. `checkAuth` (`worker/src/auth.js`) is now async: legacy `API_TOKEN` checked first as a no-KV-read fast path resolving to `actorId: "shared"`/`admin` (no migration needed — it keeps working unchanged); falls back to KV lookup for per-user tokens, rejecting revoked/expired entries. All mutating routes (`POST`/`PUT`/`DELETE`) return `403` for `read`-role callers. New admin-only routes: `POST`/`GET /api/admin/tokens`, `DELETE /api/admin/tokens/:id` — minting requires an existing `admin` token (no separate bootstrap secret). Rate-limit keying (`worker/src/rateLimit.js`) now gates off `auth.openMode` (true only in the true no-token-configured dev case) instead of `env.API_TOKEN` presence, so KV-only deployments are still rate-limited. Tests: `tokens.test.js`, `auth.test.js` (revoked/expired coverage), `routes.test.js` (role enforcement, independent revoke, admin token routes), `rateLimit.test.js`.
 - **Planning pass (2026-07-21)** — ADR 0003 (password users + admin magic-link invites); [ARCHITECTURE.md](./ARCHITECTURE.md) added; PLAN/STATE updated for multi-user accounts (docs only, no code)
-- **Planning pass (2026-07-21, board)** — read PLAN.md §5.3 / §6.3 / §12 Phase 5; created backlog tasks SOLAR-0119…0123 (ADR 0003 Worker → Frontend → Tests; Victron live validation → adapter). No Solis/Deye/SMA or Cloudflare Access tasks (deferred / unstarted until requested). WebSocket remains deferred per `discovery/WEBSOCKET_REALTIME.md`.
+- **Planning pass (2026-07-21, board)** — read PLAN.md §5.3 / §12 Phase 5; created backlog tasks SOLAR-0119…0123 (ADR 0003 Worker → Frontend → Tests; Victron live validation → adapter). Victron later withdrawn (ADR 0001); cancel SOLAR-0120 / SOLAR-0123 on the board. No Solis/Deye/SMA or Cloudflare Access tasks yet. WebSocket remains deferred per `discovery/WEBSOCKET_REALTIME.md`.
+- **Victron VRM withdrawn (2026-07-21)** — removed `discovery/victron/`; ADR 0001 withdrawn; Solis/Deye/SMA remain optional Phase 5 candidates
 
 ## In Progress
 
@@ -91,15 +91,13 @@ _Priority order. Phases 1–4 and ADR 0002 Phases 1–2 are complete at v1.3.0. 
 
 **Phase 5 expansion (no urgency):**
 
-4. **SOLAR-0120** (low) — Victron VRM live-account validation (needs a real VRM token; discovery spike already in `discovery/victron/`)
-5. **SOLAR-0123** (low, depends on 0120) — Victron VRM adapter (`worker/src/services/victron.js` + register in `ADAPTERS`)
-6. Solis / Deye / SMA adapters — unstarted; no board tasks yet
-7. Optional Workers Analytics Engine dataset wiring (logger hook exists; binding commented in `wrangler.toml`)
+4. Solis / Deye / SMA adapters — unstarted; no board tasks yet (Victron withdrawn — cancel SOLAR-0120 / SOLAR-0123)
+5. Optional Workers Analytics Engine dataset wiring (logger hook exists; binding commented in `wrangler.toml`)
 
 **Deferred (no board tasks):**
 
-8. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`)
-9. Cloudflare Access on admin/token-minting surfaces (ADR 0002 Phase 3 — implement when requested)
+6. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`)
+7. Cloudflare Access on admin/token-minting surfaces (ADR 0002 Phase 3 — implement when requested)
 
 ## Blocked
 
