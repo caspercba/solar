@@ -15,20 +15,39 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("Setup screen", () => {
-  test("shows error on invalid token", async ({ page }) => {
-    await loginViaSetupForm(page, { token: "wrong-token" });
+  test("shows error on invalid password", async ({ page }) => {
+    await loginViaSetupForm(page, { password: "wrong-password" });
 
     await expect(page.locator("#setup-screen")).toBeVisible();
     await expect(page.locator("#setup-error")).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator("#setup-error")).toContainText(/invalid token/i);
+    await expect(page.locator("#setup-error")).toContainText(/invalid username or password/i);
   });
 
-  test("connects with valid token and shows dashboard", async ({ page }) => {
+  test("shows error for disabled user", async ({ page }) => {
+    await loginViaSetupForm(page, { username: "disabled", password: "anything" });
+
+    await expect(page.locator("#setup-screen")).toBeVisible();
+    await expect(page.locator("#setup-error")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#setup-error")).toContainText(/invalid username or password/i);
+  });
+
+  test("signs in with username/password and shows dashboard", async ({ page }) => {
     await loginViaSetupForm(page);
 
     await expect(page.locator("#dashboard-screen")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#setup-screen")).toBeHidden();
     await expect(page.locator("#system-tabs")).toBeVisible();
+  });
+
+  test("password login stores session bearer in localStorage", async ({ page }) => {
+    await loginViaSetupForm(page);
+
+    await expect(page.locator("#dashboard-screen")).toBeVisible({ timeout: 15_000 });
+    const stored = await page.evaluate(() => localStorage.getItem("solar_conn"));
+    expect(stored).toBeTruthy();
+    const conn = JSON.parse(stored);
+    expect(conn.url).toBe(MOCK_WORKER_URL);
+    expect(conn.token).toBe(MOCK_TOKEN);
   });
 
   test("deep-link auto-login works", async ({ page }) => {

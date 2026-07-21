@@ -14,7 +14,8 @@ From the repository root:
 ```bash
 # Docker (recommended) — mock Worker + dashboard
 npm run dev
-# open http://localhost:8080 — proxy http://localhost:8787, token e2e-test-token
+# open http://localhost:8080 — proxy http://localhost:8787, user e2e-user / e2e-password
+# (legacy deep-link still accepts token e2e-test-token)
 ```
 
 Or run Playwright tests only:
@@ -32,7 +33,7 @@ Playwright starts two local servers automatically:
 | Mock Worker | `http://127.0.0.1:8790` | JSON API (`fixtures/mock-worker.js`) |
 | Static frontend | `http://127.0.0.1:3456` | Serves repo root (`index.html`, `app.js`, …) |
 
-Mock auth token: `e2e-test-token` (defined in `fixtures/payloads.js`).
+Mock password login: `e2e-user` / `e2e-password` → session bearer `e2e-test-token` (defined in `fixtures/payloads.js`).
 
 ## Manual server mode
 
@@ -58,13 +59,15 @@ Set `CI=1` to skip `fetch-deps.js`'s user-space library bootstrap and rely on sy
 | `MOCK_WORKER_PORT` | `8790` | Mock Worker listen port |
 | `MOCK_WORKER_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `FRONTEND_PORT` | `3456` | Static file server port |
-| `MOCK_WORKER_TOKEN` | `e2e-test-token` | Bearer token expected by mock Worker |
+| `MOCK_WORKER_TOKEN` | `e2e-test-token` | Session bearer returned by login / accepted on protected routes |
+| `MOCK_WORKER_USER` | `e2e-user` | Username for `POST /api/auth/login` |
+| `MOCK_WORKER_PASSWORD` | `e2e-password` | Password for `POST /api/auth/login` |
 
 ## Test coverage
 
 | Spec | Flows |
 |------|-------|
-| `tests/setup.spec.js` | Invalid token error, valid login, deep-link auto-login |
+| `tests/setup.spec.js` | Invalid password / disabled user errors, password login, deep-link auto-login |
 | `tests/dashboard.spec.js` | Cards SOC/watts, flow charge/discharge classes, system tabs, view toggle `localStorage` |
 | `tests/chart.spec.js` | History chart with mock data, empty state for date `2026-01-01` |
 | `tests/mobile-ptr.spec.js` | Pull-to-refresh smoke (mobile viewport) |

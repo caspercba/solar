@@ -13,6 +13,8 @@ import { pathToFileURL } from "node:url";
 import {
   MOCK_SYSTEM_ID,
   MOCK_TOKEN,
+  MOCK_USER,
+  MOCK_PASSWORD,
   EMPTY_HISTORY_DATE,
   defaultAlerts,
   health,
@@ -23,7 +25,7 @@ import {
   resetSystems,
 } from "./payloads.js";
 
-export { EMPTY_HISTORY_DATE };
+export { EMPTY_HISTORY_DATE, MOCK_USER, MOCK_PASSWORD };
 
 export const MOCK_PORT = Number(process.env.MOCK_WORKER_PORT) || 8790;
 export const MOCK_HOST = process.env.MOCK_WORKER_HOST || "127.0.0.1";
@@ -117,6 +119,42 @@ export async function handleMockWorkerRequest(request) {
 
   if (path === "/api/health" && request.method === "GET") {
     return json(health, 200, origin);
+  }
+
+  // POST /api/auth/login — username + password → session bearer (ADR 0003)
+  if (path === "/api/auth/login" && request.method === "POST") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+    const { username, password } = body || {};
+    if (!username || !password) {
+      return error("Missing required fields: username, password", 400, origin);
+    }
+
+    const expectedUser = (process.env.MOCK_WORKER_USER || MOCK_USER).toLowerCase();
+    const expectedPass = process.env.MOCK_WORKER_PASSWORD || MOCK_PASSWORD;
+    const userNorm = String(username).trim().toLowerCase();
+
+    // Mirror Worker: disabled accounts and bad passwords share one message.
+    if (userNorm === "disabled" || userNorm !== expectedUser || password !== expectedPass) {
+      return error("Invalid username or password", 401, origin);
+    }
+
+    const token = process.env.MOCK_WORKER_TOKEN || MOCK_TOKEN;
+    return json(
+      {
+        token,
+        role: "admin",
+        username: expectedUser,
+        userId: "e2e-mock-user",
+        tokenId: "e2e-mock-session",
+      },
+      200,
+      origin,
+    );
   }
 
   // Test-only: restore the default mock systems list. Not part of the real
@@ -339,8 +377,10 @@ export function startMockWorker(port = MOCK_PORT) {
 
   server.listen(port, MOCK_HOST, () => {
     const token = process.env.MOCK_WORKER_TOKEN || MOCK_TOKEN;
+    const user = process.env.MOCK_WORKER_USER || MOCK_USER;
     const displayHost = MOCK_HOST === "0.0.0.0" ? "localhost" : MOCK_HOST;
     console.log(`[mock-worker] listening on http://${displayHost}:${port}`);
+    console.log(`[mock-worker] login: ${user} / (MOCK_WORKER_PASSWORD)`);
     console.log(`[mock-worker] Bearer token: ${token}`);
     console.log(`[mock-worker] mock system id: ${MOCK_SYSTEM_ID}`);
   });
@@ -348,6 +388,6 @@ export function startMockWorker(port = MOCK_PORT) {
   return server;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   startMockWorker(MOCK_PORT);
 }

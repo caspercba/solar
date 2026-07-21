@@ -16,13 +16,13 @@ describe("i18n", () => {
   });
 
   it("defaults to English", () => {
-    expect(t("connect")).toBe("Connect");
+    expect(t("signIn")).toBe("Sign in");
     expect(t("cardBattery")).toBe("Battery");
   });
 
   it("switches to Spanish", () => {
     setLocale("es");
-    expect(t("connect")).toBe("Conectar");
+    expect(t("signIn")).toBe("Iniciar sesión");
     expect(t("cardBattery")).toBe("Batería");
     expect(t("tabCards")).toBe("Tarjetas");
   });
@@ -90,5 +90,24 @@ describe("i18n", () => {
     expect(t("flowGrid")).toBe("RED");
     expect(t("compareUnavailable")).toBe("No disponible");
     expect(t("compareLoadError")).toBe("No se pudieron cargar los datos de comparación.");
+  });
+
+  it("translates password-login keys in English", () => {
+    expect(t("setupSubtitle")).toBe("Sign in to your proxy");
+    expect(t("signIn")).toBe("Sign in");
+    expect(t("signingIn")).toBe("Signing in…");
+    expect(t("loginInvalidCredentials")).toBe("Invalid username or password");
+    expect(t("loginRateLimited")).toMatch(/Too many login attempts/);
+    expect(t("loginFailed")).toMatch(/Could not sign in/);
+  });
+
+  it("translates password-login keys in Spanish", () => {
+    setLocale("es");
+    expect(t("setupSubtitle")).toBe("Inicia sesión en tu proxy");
+    expect(t("signIn")).toBe("Iniciar sesión");
+    expect(t("signingIn")).toBe("Iniciando sesión…");
+    expect(t("loginInvalidCredentials")).toBe("Usuario o contraseña no válidos");
+    expect(t("loginRateLimited")).toMatch(/Demasiados intentos/);
+    expect(t("loginFailed")).toMatch(/No se pudo iniciar sesión/);
   });
 });

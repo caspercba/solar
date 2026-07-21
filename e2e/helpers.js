@@ -1,10 +1,16 @@
 import { expect } from "@playwright/test";
-import { MOCK_TOKEN, EMPTY_HISTORY_DATE, ESTIMATED_SOC_HISTORY_DATE } from "./fixtures/payloads.js";
+import {
+  MOCK_TOKEN,
+  MOCK_USER,
+  MOCK_PASSWORD,
+  EMPTY_HISTORY_DATE,
+  ESTIMATED_SOC_HISTORY_DATE,
+} from "./fixtures/payloads.js";
 
 export const MOCK_WORKER_PORT = Number(process.env.MOCK_WORKER_PORT) || 8790;
 export const FRONTEND_PORT = Number(process.env.FRONTEND_PORT) || 3456;
 export const MOCK_WORKER_URL = `http://127.0.0.1:${MOCK_WORKER_PORT}`;
-export { MOCK_TOKEN, EMPTY_HISTORY_DATE, ESTIMATED_SOC_HISTORY_DATE };
+export { MOCK_TOKEN, MOCK_USER, MOCK_PASSWORD, EMPTY_HISTORY_DATE, ESTIMATED_SOC_HISTORY_DATE };
 
 /**
  * Reference "today" for chart/week-strip fixtures (mock history payloads are
@@ -42,11 +48,19 @@ export async function loginViaDeepLink(page, token = MOCK_TOKEN) {
   await expect(page.locator("#dashboard-screen")).toBeVisible();
 }
 
-export async function loginViaSetupForm(page, { url = MOCK_WORKER_URL, token = MOCK_TOKEN } = {}) {
+export async function loginViaSetupForm(
+  page,
+  {
+    url = MOCK_WORKER_URL,
+    username = MOCK_USER,
+    password = MOCK_PASSWORD,
+  } = {},
+) {
   await page.goto("/");
   await expect(page.locator("#setup-screen")).toBeVisible();
   await page.locator("#setup-url").fill(url);
-  await page.locator("#setup-token").fill(token);
+  await page.locator("#setup-user").fill(username);
+  await page.locator("#setup-pass").fill(password);
   await page.locator("#setup-btn").click();
 }
 

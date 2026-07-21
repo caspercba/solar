@@ -22,11 +22,11 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=17">
+  <link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
 
-  <!-- Setup screen (first-time: enter proxy token) -->
+  <!-- Setup screen (username/password login → session bearer) -->
   <div id="setup-screen" class="screen" hidden>
     <div class="setup-theme-wrap">
       <button type="button" id="setup-theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
@@ -34,7 +34,7 @@
     <div class="login-card">
       <div class="login-icon">&#9728;</div>
       <h1 data-i18n="appTitle">Solar Dashboard</h1>
-      <p class="login-subtitle" data-i18n="setupSubtitle">Connect to your proxy</p>
+      <p class="login-subtitle" data-i18n="setupSubtitle">Sign in to your proxy</p>
       <div class="lang-toggle" role="group" aria-labelledby="setup-lang-label">
         <span id="setup-lang-label" class="lang-label" data-i18n="language">Language</span>
         <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
@@ -43,8 +43,9 @@
       <form id="setup-form" autocomplete="on">
         <input type="url" id="setup-url" data-i18n-placeholder="proxyUrl" placeholder="Proxy URL" autocomplete="url" required
                value="https://solar-proxy.gaspar-solar.workers.dev">
-        <input type="password" id="setup-token" data-i18n-placeholder="accessToken" placeholder="Access Token" autocomplete="current-password" required>
-        <button type="submit" id="setup-btn" data-i18n="connect">Connect</button>
+        <input type="text" id="setup-user" data-i18n-placeholder="username" placeholder="Username" autocomplete="username" required spellcheck="false">
+        <input type="password" id="setup-pass" data-i18n-placeholder="password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" id="setup-btn" data-i18n="signIn">Sign in</button>
       </form>
       <p id="setup-error" class="error" hidden></p>
     </div>
@@ -353,6 +354,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=17"></script>
+  <script type="module" src="app.js?v=18"></script>
 </body>
 </html>

@@ -5,6 +5,10 @@ export const MOCK_SYSTEM_ID_2 = "e2e-mock-cabin-002";
 
 export const MOCK_TOKEN = "e2e-test-token";
 
+/** Password-login credentials accepted by the mock Worker (ADR 0003). */
+export const MOCK_USER = "e2e-user";
+export const MOCK_PASSWORD = "e2e-password";
+
 /** Date query param that returns empty intraday history (chart empty state). */
 export const EMPTY_HISTORY_DATE = "2026-01-01";
 
