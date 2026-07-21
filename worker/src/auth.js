@@ -1,8 +1,10 @@
 import { lookupToken } from "./tokens.js";
+import { getUser } from "./users.js";
 
 /**
  * Auth for the proxy — a legacy shared token (ADR 0002 Phase 0) plus an
- * optional per-user opaque key registry in KV (ADR 0002 Phase 2).
+ * optional per-user opaque key registry in KV (ADR 0002 Phase 2), including
+ * password-login session tokens bound to a `userId` (ADR 0003).
  *
  * The legacy `API_TOKEN` secret, when set, is checked first as a fast path
  * with no KV read and always resolves to the "shared"/admin identity — this
@@ -15,7 +17,7 @@ import { lookupToken } from "./tokens.js";
  *
  * @param {Request} request
  * @param {object} env
- * @returns {Promise<{ ok: true, actorId: string, role: "read"|"admin", openMode: boolean } | { ok: false }>}
+ * @returns {Promise<{ ok: true, actorId: string, role: "read"|"admin", openMode: boolean, userId: string|null, tokenId: string|null, username: string|null } | { ok: false }>}
  */
 export async function checkAuth(request, env) {
   const header = request.headers.get("Authorization") || "";
@@ -26,21 +28,70 @@ export async function checkAuth(request, env) {
 
   if (legacyToken) {
     if (presented === legacyToken) {
-      return { ok: true, actorId: "shared", role: "admin", openMode: false };
+      return {
+        ok: true,
+        actorId: "shared",
+        role: "admin",
+        openMode: false,
+        userId: null,
+        tokenId: null,
+        username: null,
+      };
     }
     const entry = presented ? await lookupToken(env, presented) : null;
-    if (entry) return { ok: true, actorId: entry.id, role: entry.role, openMode: false };
+    if (entry) return authFromTokenEntry(env, entry);
     return { ok: false };
   }
 
   // No legacy secret configured — a KV per-user token still authenticates.
   const entry = presented ? await lookupToken(env, presented) : null;
-  if (entry) return { ok: true, actorId: entry.id, role: entry.role, openMode: false };
+  if (entry) return authFromTokenEntry(env, entry);
 
   if (isProductionGuardEnabled(env)) return { ok: false };
 
   // Dev convenience: no token configured at all = open, unauthenticated access.
-  return { ok: true, actorId: "dev", role: "admin", openMode: true };
+  return {
+    ok: true,
+    actorId: "dev",
+    role: "admin",
+    openMode: true,
+    userId: null,
+    tokenId: null,
+    username: null,
+  };
+}
+
+/**
+ * Build an auth result from a KV token registry entry.
+ * Session tokens (ADR 0003) attribute `actorId` to the bound user when present.
+ */
+async function authFromTokenEntry(env, entry) {
+  let username = null;
+  if (entry.userId) {
+    const user = await getUser(env, entry.userId);
+    if (!user || user.disabledAt) return { ok: false };
+    // Role follows the live user record so demotions take effect without re-login.
+    username = user.username;
+    return {
+      ok: true,
+      actorId: entry.userId,
+      role: user.role,
+      openMode: false,
+      userId: entry.userId,
+      tokenId: entry.id,
+      username,
+    };
+  }
+
+  return {
+    ok: true,
+    actorId: entry.id,
+    role: entry.role,
+    openMode: false,
+    userId: null,
+    tokenId: entry.id,
+    username: null,
+  };
 }
 
 /**

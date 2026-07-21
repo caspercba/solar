@@ -297,6 +297,7 @@ The Worker ships with a **single shared `API_TOKEN`** (ADR 0002 Phase 0). That i
 | Home Assistant or one automation using the API | **Shared token** — same bearer on read-only polls |
 | “Who deleted my system?” / compliance attribution | **Phase 1** — mutation-only audit log ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-1--mutation-audit-log-recommended-next-step-if-audit-is-the-driver)); implemented — structured `audit` JSON lines via `auditLog()` in `worker/src/logger.js` on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`, `POST /api/admin/tokens`, `DELETE /api/admin/tokens/:id`; `actorId` is `"shared"` for the legacy token or the token's own `id` for per-user keys |
 | Guest viewer, separate maintainer, or revoke one person without affecting others | **Phase 2** — per-user opaque API keys in KV with `read` / `admin` roles ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-2--per-user-opaque-api-keys-in-kv-when-multi-user-is-required)); **implemented** — see §3.6.1 |
+| Human username/password login, magic-link invites, admin user directory | **ADR 0003** — password users + invites ([ADR 0003](../docs/decisions/0003-password-users-and-magic-link-invites.md)); **implemented** — see §3.6.2 |
 | Lock down token minting for an ops team | **Phase 3** — optional Cloudflare Access on admin surfaces only ([ADR 0002](../docs/decisions/0002-multi-user-token-and-audit-log.md#phase-3--cloudflare-access-optional-hardening-not-product-auth)) |
 
 **Shared token limitation:** Rotating or revoking access affects **every** client using that token. Per-user keys (§3.6.1) solve this without extra Worker deployments.
@@ -341,6 +342,61 @@ curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" "$PROXY/api/admin/tokens/<i
 **Frontend:** unchanged — paste the minted token into the setup screen's Access Token field instead of the shared `API_TOKEN`.
 
 **Rate limiting:** each bearer token (legacy or per-user) is limited independently (§ `worker/src/rateLimit.js`).
+
+#### 3.6.2 Password users and magic-link invites (ADR 0003)
+
+Human accounts use **username + password** login. Sessions are opaque KV tokens (same registry as §3.6.1) bound to a `userId`. Machine clients keep using the shared `API_TOKEN` or minted opaque keys.
+
+**Bootstrap the first password admin** with the legacy `API_TOKEN` (or any existing admin-role bearer). There is no separate bootstrap secret:
+
+```bash
+PROXY="https://solar-proxy.<subdomain>.workers.dev"
+TOKEN="YOUR_API_TOKEN"
+
+# Create the first admin user (username is stored lowercase)
+curl -sS -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"owner","password":"choose-a-strong-password","role":"admin"}' \
+  "$PROXY/api/admin/users"
+# { "id": "...", "username": "owner", "role": "admin", "createdAt": "...", ... }
+```
+
+After that, day-to-day ops can use password login (no need to paste `API_TOKEN` into the browser):
+
+```bash
+# Login → opaque session bearer (store in localStorage / frontend setup like any other token)
+curl -sS -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"username":"owner","password":"choose-a-strong-password"}' \
+  "$PROXY/api/auth/login"
+# { "token": "...", "role": "admin", "username": "owner", "userId": "...", "tokenId": "..." }
+
+# Who am I?
+curl -sS -H "Authorization: Bearer <session-token>" "$PROXY/api/me"
+
+# Logout revokes that session token
+curl -sS -X POST -H "Authorization: Bearer <session-token>" "$PROXY/api/auth/logout"
+```
+
+**Invite a new user** (admin copies the magic link out-of-band — the Worker does not send email):
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"read","label":"neighbor Ana","frontendUrl":"https://your-frontend.example"}' \
+  "$PROXY/api/admin/invites"
+# { "id": "...", "invite": "<secret once>", "url": "https://your-frontend.example/?proxy=...&invite=...", "expiresAt": "..." }
+```
+
+The invitee opens the URL, sets username + password via `POST /api/auth/invite/accept` (`{ invite, username, password }`). Pending invites can be revoked (`DELETE /api/admin/invites/:id`); stale converted/revoked/expired entries can be purged (`POST /api/admin/invites/purge`).
+
+**Last-admin protection:** you cannot disable, delete, or demote the final active `admin` user.
+
+**Passwords** are stored as PBKDF2-SHA-256 hashes only; **invite secrets** are stored as SHA-256 hashes only (same pattern as opaque API keys). Login and invite-accept are rate-limited per client IP.
+
+Full decision record: **[docs/decisions/0003-password-users-and-magic-link-invites.md](../docs/decisions/0003-password-users-and-magic-link-invites.md)**.
 
 ---
 

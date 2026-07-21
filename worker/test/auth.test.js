@@ -16,8 +16,24 @@ function env(overrides = {}) {
 describe("checkAuth", () => {
   it("allows all requests when no token is configured (dev open mode)", async () => {
     const e = env();
-    expect(await checkAuth(makeRequest(), e)).toEqual({ ok: true, actorId: "dev", role: "admin", openMode: true });
-    expect(await checkAuth(makeRequest("Bearer wrong"), e)).toEqual({ ok: true, actorId: "dev", role: "admin", openMode: true });
+    expect(await checkAuth(makeRequest(), e)).toEqual({
+      ok: true,
+      actorId: "dev",
+      role: "admin",
+      openMode: true,
+      userId: null,
+      tokenId: null,
+      username: null,
+    });
+    expect(await checkAuth(makeRequest("Bearer wrong"), e)).toEqual({
+      ok: true,
+      actorId: "dev",
+      role: "admin",
+      openMode: true,
+      userId: null,
+      tokenId: null,
+      username: null,
+    });
   });
 
   it("allows requests with a valid legacy Bearer token", async () => {
@@ -27,6 +43,9 @@ describe("checkAuth", () => {
       actorId: "shared",
       role: "admin",
       openMode: false,
+      userId: null,
+      tokenId: null,
+      username: null,
     });
   });
 
@@ -54,6 +73,9 @@ describe("checkAuth", () => {
       actorId: "shared",
       role: "admin",
       openMode: false,
+      userId: null,
+      tokenId: null,
+      username: null,
     });
     expect(await checkAuth(makeRequest("Bearer wrong-token"), e)).toEqual({ ok: false });
     expect(await checkAuth(makeRequest(), e)).toEqual({ ok: false });
@@ -69,6 +91,9 @@ describe("checkAuth", () => {
         actorId: minted.id,
         role: "admin",
         openMode: false,
+        userId: null,
+        tokenId: minted.id,
+        username: null,
       });
     });
 
@@ -81,6 +106,9 @@ describe("checkAuth", () => {
         actorId: minted.id,
         role: "read",
         openMode: false,
+        userId: null,
+        tokenId: minted.id,
+        username: null,
       });
     });
 
@@ -93,6 +121,9 @@ describe("checkAuth", () => {
         actorId: minted.id,
         role: "read",
         openMode: false,
+        userId: null,
+        tokenId: minted.id,
+        username: null,
       });
     });
 
@@ -119,6 +150,34 @@ describe("checkAuth", () => {
     it("rejects an unknown token", async () => {
       const e = env({ API_TOKEN: "secret-token" });
       expect(await checkAuth(makeRequest("Bearer not-minted-anywhere"), e)).toEqual({ ok: false });
+    });
+
+    it("authenticates a password-user session and attributes actorId to the user", async () => {
+      const { createUser } = await import("../src/users.js");
+      const e = env({ API_TOKEN: "secret-token" });
+      const user = await createUser(e, { username: "alice", password: "password123", role: "admin" });
+      const minted = await createToken(e, { label: "session:alice", role: "admin", userId: user.id });
+
+      expect(await checkAuth(makeRequest(`Bearer ${minted.token}`), e)).toEqual({
+        ok: true,
+        actorId: user.id,
+        role: "admin",
+        openMode: false,
+        userId: user.id,
+        tokenId: minted.id,
+        username: "alice",
+      });
+    });
+
+    it("rejects a session whose user has been disabled", async () => {
+      const { createUser, disableUser } = await import("../src/users.js");
+      const e = env({ API_TOKEN: "secret-token" });
+      await createUser(e, { username: "keeper", password: "password123", role: "admin" });
+      const user = await createUser(e, { username: "alice", password: "password123", role: "admin" });
+      const minted = await createToken(e, { label: "session:alice", role: "admin", userId: user.id });
+      await disableUser(e, user.id);
+
+      expect(await checkAuth(makeRequest(`Bearer ${minted.token}`), e)).toEqual({ ok: false });
     });
   });
 });

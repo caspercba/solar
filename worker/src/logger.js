@@ -2,7 +2,7 @@ const REDACTED = "[redacted]";
 
 /** Keys whose values must never appear in logs (case-insensitive). */
 const SENSITIVE_KEY_RE =
-  /^(password|pwd|pwdsha1|token|secret|authorization|bearer|api[_-]?token|credentials[_-]?key|jsessionid|cookie|webhookurl|webhook[_-]?url)$/i;
+  /^(password|passwordhash|pwd|pwdsha1|token|secret|invite|authorization|bearer|api[_-]?token|credentials[_-]?key|jsessionid|cookie|webhookurl|webhook[_-]?url)$/i;
 
 /** Bearer tokens embedded in free-text messages. */
 const BEARER_RE = /Bearer\s+\S+/gi;

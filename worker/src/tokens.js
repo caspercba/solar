@@ -1,10 +1,13 @@
 /**
  * Per-user opaque API key registry in KV (ADR 0002 Phase 2).
  *
+ * Also used for browser session tokens issued after password login / invite
+ * accept (ADR 0003) — those entries carry an optional `userId` binding.
+ *
  * KV layout:
- *   token:<sha256(token)>  -> { id, label, role, createdAt, expiresAt, revokedAt }
+ *   token:<sha256(token)>  -> { id, label, role, createdAt, expiresAt, revokedAt, userId? }
  *   token-id:<id>          -> sha256(token)   (lookup for revoke by id; not exposed via API)
- *   _index_tokens          -> [{ id, label, role, prefix, createdAt, expiresAt, revokedAt }, ...]
+ *   _index_tokens          -> [{ id, label, role, prefix, createdAt, expiresAt, revokedAt, userId? }, ...]
  *
  * Tokens are opaque random values (32 bytes, base64url) — never JWTs. Only the
  * SHA-256 hash is ever persisted; the plaintext token is returned once at
@@ -45,12 +48,12 @@ async function saveTokenIndex(env, index) {
 }
 
 /**
- * Mint a new per-user API key.
+ * Mint a new per-user API key (or browser session token when `userId` is set).
  * @param {object} env
- * @param {{ label?: string, role: "read"|"admin", expiresAt?: string|null }} opts
- * @returns {Promise<{ id: string, token: string, label: string, role: string, createdAt: string, expiresAt: string|null }>}
+ * @param {{ label?: string, role: "read"|"admin", expiresAt?: string|null, userId?: string|null }} opts
+ * @returns {Promise<{ id: string, token: string, label: string, role: string, createdAt: string, expiresAt: string|null, userId: string|null }>}
  */
-export async function createToken(env, { label = "", role, expiresAt = null } = {}) {
+export async function createToken(env, { label = "", role, expiresAt = null, userId = null } = {}) {
   if (!ROLES.includes(role)) {
     throw new Error(`Invalid role: ${role}. Expected one of: ${ROLES.join(", ")}`);
   }
@@ -62,22 +65,39 @@ export async function createToken(env, { label = "", role, expiresAt = null } = 
   const token = generateOpaqueToken();
   const hash = await hashToken(token);
   const createdAt = new Date().toISOString();
-  const entry = { id, label, role, createdAt, expiresAt: expiresAt || null, revokedAt: null };
+  const entry = {
+    id,
+    label,
+    role,
+    createdAt,
+    expiresAt: expiresAt || null,
+    revokedAt: null,
+    userId: userId || null,
+  };
 
   await env.SYSTEMS.put(`token:${hash}`, JSON.stringify(entry));
   await env.SYSTEMS.put(`token-id:${id}`, hash);
 
   const index = await listTokens(env);
-  index.push({ id, label, role, prefix: token.slice(0, 8), createdAt, expiresAt: entry.expiresAt, revokedAt: null });
+  index.push({
+    id,
+    label,
+    role,
+    prefix: token.slice(0, 8),
+    createdAt,
+    expiresAt: entry.expiresAt,
+    revokedAt: null,
+    userId: entry.userId,
+  });
   await saveTokenIndex(env, index);
 
-  return { id, token, label, role, createdAt, expiresAt: entry.expiresAt };
+  return { id, token, label, role, createdAt, expiresAt: entry.expiresAt, userId: entry.userId };
 }
 
 /**
  * Validate a presented bearer token against the KV registry.
  * Returns null for unknown, revoked, or expired tokens.
- * @returns {Promise<{ id: string, label: string, role: string }|null>}
+ * @returns {Promise<{ id: string, label: string, role: string, userId: string|null }|null>}
  */
 export async function lookupToken(env, token) {
   if (!env?.SYSTEMS || !token) return null;
@@ -88,7 +108,7 @@ export async function lookupToken(env, token) {
   if (entry.revokedAt) return null;
   if (entry.expiresAt && Date.now() >= Date.parse(entry.expiresAt)) return null;
 
-  return { id: entry.id, label: entry.label, role: entry.role };
+  return { id: entry.id, label: entry.label, role: entry.role, userId: entry.userId || null };
 }
 
 /** Revoke a token by id. Returns false when the id is unknown. */
@@ -107,4 +127,31 @@ export async function revokeToken(env, id) {
   await saveTokenIndex(env, updated);
 
   return true;
+}
+
+/**
+ * Revoke every non-revoked token bound to a password user (ADR 0003 sessions + keys).
+ * @returns {Promise<number>} number of tokens revoked
+ */
+export async function revokeTokensForUser(env, userId) {
+  if (!userId) return 0;
+  const index = await listTokens(env);
+  let count = 0;
+  for (const t of index) {
+    if (t.userId === userId && !t.revokedAt) {
+      const ok = await revokeToken(env, t.id);
+      if (ok) count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Look up a token entry by its id (including revoked). Returns null if unknown.
+ */
+export async function getTokenById(env, id) {
+  if (!env?.SYSTEMS || !id) return null;
+  const hash = await env.SYSTEMS.get(`token-id:${id}`);
+  if (!hash) return null;
+  return env.SYSTEMS.get(`token:${hash}`, "json");
 }
