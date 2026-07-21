@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 
@@ -334,6 +334,40 @@
         <div id="manage-list" class="manage-list"></div>
       </section>
 
+      <!-- Admin: mint magic-link invite (ADR 0003) — shown only for admin role -->
+      <section id="admin-invite-section" class="settings-section" hidden>
+        <h3 class="settings-section-title" data-i18n="adminInviteTitle">Invite user</h3>
+        <p class="manage-hint" data-i18n="adminInviteHint">Create a magic link to send out-of-band. The app does not send email.</p>
+        <form id="admin-invite-form" class="manage-credentials admin-invite-form" autocomplete="off">
+          <label for="invite-role" data-i18n="adminInviteRole">Role</label>
+          <select id="invite-role" required>
+            <option value="read" data-i18n="roleRead" selected>Read</option>
+            <option value="admin" data-i18n="roleAdmin">Admin</option>
+          </select>
+          <label for="invite-label" data-i18n="adminInviteLabel">Label (optional)</label>
+          <input type="text" id="invite-label" data-i18n-placeholder="adminInviteLabelPlaceholder" placeholder="e.g. neighbor Ana" maxlength="80" spellcheck="false">
+          <label for="invite-ttl" data-i18n="adminInviteTtl">Expires in</label>
+          <select id="invite-ttl">
+            <option value="" data-i18n="adminInviteTtlDefault">7 days (default)</option>
+            <option value="86400000" data-i18n="adminInviteTtl1d">1 day</option>
+            <option value="259200000" data-i18n="adminInviteTtl3d">3 days</option>
+            <option value="604800000" data-i18n="adminInviteTtl7d">7 days</option>
+            <option value="1209600000" data-i18n="adminInviteTtl14d">14 days</option>
+            <option value="2592000000" data-i18n="adminInviteTtl30d">30 days</option>
+          </select>
+          <button type="submit" id="invite-mint-btn" class="cred-save" data-i18n="adminInviteCreate">Create magic link</button>
+          <p id="invite-mint-msg" class="cred-msg" hidden></p>
+        </form>
+        <div id="invite-result" class="invite-result" hidden>
+          <p class="manage-hint invite-once-note" data-i18n="adminInviteOnceNote">Copy now — this link is shown only once.</p>
+          <div class="invite-url-row">
+            <input type="text" id="invite-url" class="invite-url" readonly aria-label="Magic link URL">
+            <button type="button" id="invite-copy-btn" class="invite-copy-btn" data-i18n="adminInviteCopy">Copy</button>
+          </div>
+          <p id="invite-expires" class="manage-hint" hidden></p>
+        </div>
+      </section>
+
       <div class="modal-actions">
         <button type="button" id="manage-close" data-i18n="close">Close</button>
       </div>
@@ -354,6 +388,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=18"></script>
+  <script type="module" src="app.js?v=19"></script>
 </body>
 </html>

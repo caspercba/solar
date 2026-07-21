@@ -1465,6 +1465,56 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .cred-ok { color: var(--accent-bat); }
 .cred-err { color: var(--error); }
 
+.admin-invite-form { margin-bottom: .5rem; }
+
+.invite-result {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  padding: .75rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--accent-sol);
+  margin-bottom: .5rem;
+}
+
+.invite-once-note {
+  color: var(--accent-sol);
+  margin: 0;
+}
+
+.invite-url-row {
+  display: flex;
+  gap: .45rem;
+  align-items: stretch;
+}
+
+.invite-url {
+  flex: 1;
+  min-width: 0;
+  padding: .5rem .65rem;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: .75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.invite-copy-btn {
+  flex-shrink: 0;
+  padding: .45rem .85rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent-sol);
+  background: var(--accent-sol);
+  color: var(--accent-on);
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.invite-copy-btn:hover { filter: brightness(1.08); }
+
 .manage-alerts label {
   font-size: .75rem;
   color: var(--text-dim);

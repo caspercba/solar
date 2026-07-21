@@ -176,6 +176,38 @@ async function api(method, path, body) {
   return json;
 }
 
+/** Current actor from GET /api/me (role gates admin UI). */
+let currentActor = null;
+
+async function refreshCurrentActor() {
+  try {
+    currentActor = await api("GET", "/api/me");
+  } catch {
+    currentActor = null;
+  }
+  return currentActor;
+}
+
+function isAdminActor() {
+  return currentActor?.role === "admin";
+}
+
+/** Page origin for Worker-built magic links (strip query/hash; drop index.html). */
+function inviteFrontendUrl() {
+  try {
+    const u = new URL(location.href);
+    u.search = "";
+    u.hash = "";
+    if (u.pathname.endsWith("/index.html")) {
+      u.pathname = u.pathname.slice(0, -"index.html".length) || "/";
+    }
+    const href = u.toString();
+    return href.endsWith("/") && u.pathname !== "/" ? href.slice(0, -1) : href;
+  } catch {
+    return location.origin;
+  }
+}
+
 /* ── DOM refs ── */
 const $ = (id) => document.getElementById(id);
 
@@ -227,6 +259,17 @@ const els = {
   themeBtn: $("theme-btn"),
   setupThemeBtn: $("setup-theme-btn"),
   themeSelect: $("theme-select"),
+  adminInviteSection: $("admin-invite-section"),
+  adminInviteForm: $("admin-invite-form"),
+  inviteRole: $("invite-role"),
+  inviteLabel: $("invite-label"),
+  inviteTtl: $("invite-ttl"),
+  inviteMintBtn: $("invite-mint-btn"),
+  inviteMintMsg: $("invite-mint-msg"),
+  inviteResult: $("invite-result"),
+  inviteUrl: $("invite-url"),
+  inviteCopyBtn: $("invite-copy-btn"),
+  inviteExpires: $("invite-expires"),
 };
 
 const fEls = {
@@ -557,6 +600,8 @@ function setBatRate(absAmps) {
 function showSetup() {
   els.setupScreen.hidden = false;
   els.dashScreen.hidden = true;
+  currentActor = null;
+  hideAdminInviteSection();
   if (els.setupPass) els.setupPass.value = "";
   if (els.setupError) {
     els.setupError.hidden = true;
@@ -1920,12 +1965,91 @@ function renderGridInputLabelForm(sys) {
   return form;
 }
 
-function openManageModal() {
+function hideAdminInviteSection() {
+  if (els.adminInviteSection) els.adminInviteSection.hidden = true;
+  clearInviteResult();
+}
+
+function clearInviteResult() {
+  if (els.inviteResult) els.inviteResult.hidden = true;
+  if (els.inviteUrl) els.inviteUrl.value = "";
+  if (els.inviteExpires) {
+    els.inviteExpires.hidden = true;
+    els.inviteExpires.textContent = "";
+  }
+  if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
+  if (els.inviteMintMsg) {
+    els.inviteMintMsg.hidden = true;
+    els.inviteMintMsg.textContent = "";
+    els.inviteMintMsg.className = "cred-msg";
+  }
+}
+
+function syncAdminInviteSection() {
+  if (!els.adminInviteSection) return;
+  const show = isAdminActor();
+  els.adminInviteSection.hidden = !show;
+  if (!show) clearInviteResult();
+}
+
+function showInviteMinted(minted) {
+  if (!els.inviteResult || !els.inviteUrl) return;
+  els.inviteUrl.value = minted.url || "";
+  els.inviteResult.hidden = false;
+  if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
+  if (els.inviteExpires) {
+    if (minted.expiresAt) {
+      let when = minted.expiresAt;
+      try {
+        when = new Date(minted.expiresAt).toLocaleString();
+      } catch {
+        /* keep ISO */
+      }
+      els.inviteExpires.textContent = t("adminInviteExpires", { when });
+      els.inviteExpires.hidden = false;
+    } else {
+      els.inviteExpires.hidden = true;
+      els.inviteExpires.textContent = "";
+    }
+  }
+  if (els.inviteMintMsg) {
+    els.inviteMintMsg.textContent = t("adminInviteCreated");
+    els.inviteMintMsg.className = "cred-msg cred-ok";
+    els.inviteMintMsg.hidden = false;
+  }
+}
+
+async function copyInviteUrl() {
+  const url = els.inviteUrl?.value;
+  if (!url) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      els.inviteUrl.focus();
+      els.inviteUrl.select();
+      if (!document.execCommand("copy")) throw new Error("copy failed");
+    }
+    if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopied");
+  } catch {
+    els.inviteUrl?.focus();
+    els.inviteUrl?.select();
+    if (els.inviteMintMsg) {
+      els.inviteMintMsg.textContent = t("adminInviteCopyFailed");
+      els.inviteMintMsg.className = "cred-msg cred-err";
+      els.inviteMintMsg.hidden = false;
+    }
+  }
+}
+
+async function openManageModal() {
   manageModal.hidden = false;
   syncPollIntervalSelect();
   syncSocWarnThresholdInput();
   updateThemeUi(getCurrentTheme());
   manageList.innerHTML = "";
+  await refreshCurrentActor();
+  syncAdminInviteSection();
 
   if (!systems.length) {
     manageList.innerHTML = `<p class="manage-empty">${t("noSystems")}</p>`;
@@ -1995,9 +2119,61 @@ function closeSystemDetail() {
 }
 
 els.manageBtn.addEventListener("click", openManageModal);
-$("manage-close").addEventListener("click", () => { manageModal.hidden = true; });
+$("manage-close").addEventListener("click", () => {
+  manageModal.hidden = true;
+  clearInviteResult();
+});
 $("manage-add").addEventListener("click", openAddModal);
 detailBack.addEventListener("click", closeSystemDetail);
+
+if (els.adminInviteForm) {
+  els.adminInviteForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!isAdminActor()) return;
+
+    clearInviteResult();
+    const btn = els.inviteMintBtn;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = t("adminInviteCreating");
+    }
+
+    const body = {
+      role: els.inviteRole?.value || "read",
+      frontendUrl: inviteFrontendUrl(),
+    };
+    const label = els.inviteLabel?.value?.trim();
+    if (label) body.label = label;
+    const ttlRaw = els.inviteTtl?.value;
+    if (ttlRaw) {
+      const ttlMs = Number(ttlRaw);
+      if (Number.isFinite(ttlMs) && ttlMs > 0) body.ttlMs = ttlMs;
+    }
+
+    try {
+      const minted = await api("POST", "/api/admin/invites", body);
+      showInviteMinted(minted);
+      if (els.inviteLabel) els.inviteLabel.value = "";
+      if (els.inviteTtl) els.inviteTtl.value = "";
+      if (els.inviteRole) els.inviteRole.value = "read";
+    } catch (err) {
+      if (els.inviteMintMsg) {
+        els.inviteMintMsg.textContent = err.message || t("adminInviteFailed");
+        els.inviteMintMsg.className = "cred-msg cred-err";
+        els.inviteMintMsg.hidden = false;
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = t("adminInviteCreate");
+      }
+    }
+  });
+}
+
+if (els.inviteCopyBtn) {
+  els.inviteCopyBtn.addEventListener("click", () => copyInviteUrl());
+}
 
 const pollIntervalSelect = $("poll-interval");
 
@@ -2033,6 +2209,10 @@ function changeLocale(locale) {
   }
   if (!detailModal.hidden && openDetailSysId) openSystemDetail(openDetailSysId);
   else if (!manageModal.hidden) openManageModal();
+  if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
+  if (els.inviteMintBtn && !els.inviteMintBtn.disabled) {
+    els.inviteMintBtn.textContent = t("adminInviteCreate");
+  }
 }
 
 function initLangToggle() {
@@ -2111,6 +2291,14 @@ els.setupForm.addEventListener("submit", async (e) => {
 
     saveConn({ url, token });
     if (els.setupPass) els.setupPass.value = "";
+    currentActor = {
+      role: json.role || null,
+      username: json.username || null,
+      userId: json.userId || null,
+      tokenId: json.tokenId || null,
+      actorId: json.userId || json.tokenId || null,
+    };
+    await refreshCurrentActor();
     await loadSystems();
     showDash();
     setView(localStorage.getItem(VIEW_KEY) || "cards");
@@ -2232,6 +2420,7 @@ setView(localStorage.getItem(VIEW_KEY) || "cards", { persist: false });
   }
 
   try {
+    await refreshCurrentActor();
     await loadSystems();
     showDash();
     setView(localStorage.getItem(VIEW_KEY) || "cards");
