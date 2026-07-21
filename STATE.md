@@ -79,7 +79,6 @@ _Last updated: 2026-07-21_
 
 - (developer) SOLAR-0125 — Frontend: username/password login screen (ADR 0003) — **blocked on Worker 0138** (deps retargeted; no `/api/auth/login` on main yet)
 - (developer) SOLAR-0130 — Frontend: admin invites list, revoke, purge (ADR 0003) — **blocked on Worker 0141**
-- (planner) SOLAR-0124 — Read PLAN.md / create ≥20 tasks _(this pass — completing)_
 
 ## Up Next
 
