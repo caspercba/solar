@@ -184,7 +184,8 @@ const els = {
   dashScreen: $("dashboard-screen"),
   setupForm: $("setup-form"),
   setupUrl: $("setup-url"),
-  setupToken: $("setup-token"),
+  setupUser: $("setup-user"),
+  setupPass: $("setup-pass"),
   setupBtn: $("setup-btn"),
   setupError: $("setup-error"),
   headerTitle: $("header-title"),
@@ -556,6 +557,11 @@ function setBatRate(absAmps) {
 function showSetup() {
   els.setupScreen.hidden = false;
   els.dashScreen.hidden = true;
+  if (els.setupPass) els.setupPass.value = "";
+  if (els.setupError) {
+    els.setupError.hidden = true;
+    els.setupError.textContent = "";
+  }
 }
 
 function showDash() {
@@ -2064,24 +2070,47 @@ if (els.themeSelect) {
   els.themeSelect.addEventListener("change", () => applyTheme(els.themeSelect.value));
 }
 
-/* ── Setup (proxy connection) ── */
+/* ── Setup (username/password → session bearer) ── */
 els.setupForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   els.setupError.hidden = true;
   els.setupBtn.disabled = true;
-  els.setupBtn.textContent = t("connecting");
+  els.setupBtn.textContent = t("signingIn");
 
   const url = els.setupUrl.value.trim().replace(/\/+$/, "");
-  const token = els.setupToken.value.trim();
+  const username = els.setupUser.value.trim();
+  const password = els.setupPass.value;
 
   try {
-    const resp = await fetch(`${url}/api/systems`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    if (!resp.ok) throw new Error(t("invalidTokenOrUrl"));
-    await resp.json();
+    let resp;
+    try {
+      resp = await fetch(`${url}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+    } catch {
+      throw new Error(t("loginFailed"));
+    }
+
+    let json = null;
+    try {
+      json = await resp.json();
+    } catch {
+      /* non-JSON body */
+    }
+
+    if (!resp.ok) {
+      if (resp.status === 401) throw new Error(t("loginInvalidCredentials"));
+      if (resp.status === 429) throw new Error(t("loginRateLimited"));
+      throw new Error((json && json.error) || t("loginFailed"));
+    }
+
+    const token = json && json.token;
+    if (!token) throw new Error(t("loginFailed"));
 
     saveConn({ url, token });
+    if (els.setupPass) els.setupPass.value = "";
     await loadSystems();
     showDash();
     setView(localStorage.getItem(VIEW_KEY) || "cards");
@@ -2096,7 +2125,7 @@ els.setupForm.addEventListener("submit", async (e) => {
     els.setupError.hidden = false;
   } finally {
     els.setupBtn.disabled = false;
-    els.setupBtn.textContent = t("connect");
+    els.setupBtn.textContent = t("signIn");
   }
 });
 
