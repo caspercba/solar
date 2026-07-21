@@ -41,6 +41,10 @@ import {
   gridInputCardKey,
   gridInputFlowKey,
   gridInputCompareOnKey,
+  inviteStatusI18nKey,
+  inviteStatusBadgeClass,
+  isInviteRevocable,
+  hasPurgeableInvites,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -192,6 +196,9 @@ function isAdminActor() {
   return currentActor?.role === "admin";
 }
 
+/** Cached admin invites list (ADR 0003) — emitted vs converted vs revoked/expired. */
+let invitesListState = [];
+
 /** Page origin for Worker-built magic links (strip query/hash; drop index.html). */
 function inviteFrontendUrl() {
   try {
@@ -270,6 +277,11 @@ const els = {
   inviteUrl: $("invite-url"),
   inviteCopyBtn: $("invite-copy-btn"),
   inviteExpires: $("invite-expires"),
+  adminInvitesListSection: $("admin-invites-list-section"),
+  invitesList: $("invites-list"),
+  invitesListEmpty: $("invites-list-empty"),
+  invitesListMsg: $("invites-list-msg"),
+  invitesPurgeBtn: $("invites-purge-btn"),
 };
 
 const fEls = {
@@ -1986,10 +1998,161 @@ function clearInviteResult() {
 }
 
 function syncAdminInviteSection() {
-  if (!els.adminInviteSection) return;
   const show = isAdminActor();
-  els.adminInviteSection.hidden = !show;
-  if (!show) clearInviteResult();
+  if (els.adminInviteSection) els.adminInviteSection.hidden = !show;
+  if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = !show;
+  if (!show) {
+    clearInviteResult();
+    clearInvitesList();
+    return;
+  }
+  loadInvitesList();
+}
+
+/** Reset invites list state/DOM (called when the admin section is hidden). */
+function clearInvitesList() {
+  invitesListState = [];
+  if (els.invitesList) els.invitesList.innerHTML = "";
+  if (els.invitesListEmpty) els.invitesListEmpty.hidden = true;
+  setInvitesListMsg("");
+}
+
+function setInvitesListMsg(text, kind) {
+  if (!els.invitesListMsg) return;
+  if (!text) {
+    els.invitesListMsg.hidden = true;
+    els.invitesListMsg.textContent = "";
+    els.invitesListMsg.className = "cred-msg";
+    return;
+  }
+  els.invitesListMsg.textContent = text;
+  els.invitesListMsg.className = kind ? `cred-msg ${kind}` : "cred-msg";
+  els.invitesListMsg.hidden = false;
+}
+
+/** Render `invitesListState` — emitted vs converted vs revoked/expired (ADR 0003). */
+function renderInvitesList() {
+  if (!els.invitesList) return;
+  els.invitesList.innerHTML = "";
+  const hasInvites = invitesListState.length > 0;
+  if (els.invitesListEmpty) els.invitesListEmpty.hidden = hasInvites;
+  if (els.invitesPurgeBtn) els.invitesPurgeBtn.disabled = !hasPurgeableInvites(invitesListState);
+
+  for (const invite of invitesListState) {
+    const row = document.createElement("div");
+    row.className = "invite-row";
+
+    const info = document.createElement("div");
+    info.className = "invite-row-info";
+
+    const topLine = document.createElement("div");
+    topLine.className = "invite-row-top";
+
+    const label = document.createElement("span");
+    label.className = "invite-row-label";
+    label.textContent = invite.label || t("inviteNoLabel");
+    topLine.appendChild(label);
+
+    const roleBadge = document.createElement("span");
+    roleBadge.className = "invite-role-badge";
+    roleBadge.textContent = t(invite.role === "admin" ? "roleAdmin" : "roleRead");
+    topLine.appendChild(roleBadge);
+
+    const statusBadge = document.createElement("span");
+    statusBadge.className = `invite-status-badge ${inviteStatusBadgeClass(invite.status)}`;
+    statusBadge.textContent = t(inviteStatusI18nKey(invite.status));
+    topLine.appendChild(statusBadge);
+
+    info.appendChild(topLine);
+
+    const metaLine = document.createElement("div");
+    metaLine.className = "invite-row-meta";
+    const metaParts = [t("inviteCreatedAt", { when: formatInviteListDate(invite.createdAt) })];
+    if (invite.status === "converted" && invite.convertedAt) {
+      metaParts.push(t("inviteConvertedAt", { when: formatInviteListDate(invite.convertedAt) }));
+    } else if (invite.expiresAt) {
+      metaParts.push(t("inviteExpiresAt", { when: formatInviteListDate(invite.expiresAt) }));
+    }
+    metaLine.textContent = metaParts.join(" · ");
+    info.appendChild(metaLine);
+
+    row.appendChild(info);
+
+    if (isInviteRevocable(invite.status)) {
+      const revokeBtn = document.createElement("button");
+      revokeBtn.type = "button";
+      revokeBtn.className = "invite-revoke-btn";
+      revokeBtn.textContent = t("inviteRevoke");
+      revokeBtn.addEventListener("click", () => revokeInviteRow(invite.id, revokeBtn));
+      row.appendChild(revokeBtn);
+    }
+
+    els.invitesList.appendChild(row);
+  }
+}
+
+function formatInviteListDate(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
+async function loadInvitesList() {
+  if (!els.invitesList) return;
+  setInvitesListMsg("");
+  try {
+    invitesListState = await api("GET", "/api/admin/invites");
+  } catch (err) {
+    invitesListState = [];
+    setInvitesListMsg(err.message || t("adminInvitesLoadFailed"), "cred-err");
+  }
+  renderInvitesList();
+}
+
+async function revokeInviteRow(id, btn) {
+  if (!confirm(t("inviteRevokeConfirm"))) return;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t("inviteRevoking");
+  }
+  try {
+    await api("DELETE", `/api/admin/invites/${id}`);
+    await loadInvitesList();
+  } catch (err) {
+    setInvitesListMsg(err.message || t("inviteRevokeFailed"), "cred-err");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t("inviteRevoke");
+    }
+  }
+}
+
+async function purgeStaleInvites() {
+  if (!hasPurgeableInvites(invitesListState)) {
+    setInvitesListMsg(t("adminInvitesNonePurgeable"));
+    return;
+  }
+  if (!confirm(t("adminInvitesPurgeConfirm"))) return;
+  const btn = els.invitesPurgeBtn;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t("adminInvitesPurging");
+  }
+  try {
+    const result = await api("POST", "/api/admin/invites/purge");
+    await loadInvitesList();
+    setInvitesListMsg(t("adminInvitesPurged", { count: result?.purged ?? 0 }), "cred-ok");
+  } catch (err) {
+    setInvitesListMsg(err.message || t("adminInvitesPurgeFailed"), "cred-err");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t("adminInvitesPurgeBtn");
+    }
+  }
 }
 
 function showInviteMinted(minted) {
@@ -2123,6 +2286,10 @@ $("manage-close").addEventListener("click", () => {
   manageModal.hidden = true;
   clearInviteResult();
 });
+
+if (els.invitesPurgeBtn) {
+  els.invitesPurgeBtn.addEventListener("click", () => purgeStaleInvites());
+}
 $("manage-add").addEventListener("click", openAddModal);
 detailBack.addEventListener("click", closeSystemDetail);
 
@@ -2156,6 +2323,7 @@ if (els.adminInviteForm) {
       if (els.inviteLabel) els.inviteLabel.value = "";
       if (els.inviteTtl) els.inviteTtl.value = "";
       if (els.inviteRole) els.inviteRole.value = "read";
+      await loadInvitesList();
     } catch (err) {
       if (els.inviteMintMsg) {
         els.inviteMintMsg.textContent = err.message || t("adminInviteFailed");
@@ -2212,6 +2380,9 @@ function changeLocale(locale) {
   if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
   if (els.inviteMintBtn && !els.inviteMintBtn.disabled) {
     els.inviteMintBtn.textContent = t("adminInviteCreate");
+  }
+  if (els.invitesPurgeBtn && !els.invitesPurgeBtn.disabled) {
+    els.invitesPurgeBtn.textContent = t("adminInvitesPurgeBtn");
   }
 }
 

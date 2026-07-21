@@ -435,3 +435,28 @@ export function matchesDashboardRefreshShortcut({ key, ctrlKey, metaKey, shiftKe
   if ((ctrlKey || metaKey) && !shiftKey && !altKey && key.toLowerCase() === "r") return true;
   return false;
 }
+
+/** Admin invites (ADR 0003) — emitted vs converted vs revoked/expired. */
+export const INVITE_STATUSES = ["pending", "converted", "revoked", "expired"];
+
+/** i18n key for an invite's status badge; unknown statuses fall back to pending's key. */
+export function inviteStatusI18nKey(status) {
+  const s = INVITE_STATUSES.includes(status) ? status : "pending";
+  return `inviteStatus${s[0].toUpperCase()}${s.slice(1)}`;
+}
+
+/** CSS class for an invite's status badge. */
+export function inviteStatusBadgeClass(status) {
+  const s = INVITE_STATUSES.includes(status) ? status : "pending";
+  return `invite-status-${s}`;
+}
+
+/** Only pending invites can be revoked. */
+export function isInviteRevocable(status) {
+  return status === "pending";
+}
+
+/** Purge drops non-pending (converted/revoked/expired) entries; nothing to purge when all pending. */
+export function hasPurgeableInvites(invites) {
+  return Array.isArray(invites) && invites.some((inv) => inv?.status !== "pending");
+}
