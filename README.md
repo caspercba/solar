@@ -616,6 +616,8 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 | [discovery/API.md](./discovery/API.md) | ShineMonitor API reference |
 | [discovery/growatt/README.md](./discovery/growatt/README.md) | Growatt API discovery notes |
 | [discovery/growatt/API.md](./discovery/growatt/API.md) | Growatt API reference |
+| [discovery/solis/README.md](./discovery/solis/README.md) | Solis cloud API discovery spike (Phase 5, no production adapter yet) |
+| [discovery/solis/API.md](./discovery/solis/API.md) | Solis API reference + adapter viability assessment |
 | [RELEASE_NOTES.md](./RELEASE_NOTES.md) | Version history |
 
 ## Repository Layout
