@@ -1,6 +1,6 @@
 # Solar Dashboard — Project Plan
 
-_Last updated: 2026-07-11_
+_Last updated: 2026-07-21_
 
 ## 1. Project Definition
 
@@ -12,7 +12,8 @@ The project exists because:
 
 - **CORS blocks direct browser access** to inverter APIs (especially Growatt).
 - **Credentials must not live in the browser** — the Cloudflare Worker holds them in KV and authenticates on behalf of the client.
-- **Multiple systems** (homes, cabins, remote sites) should be manageable from one dashboard with a single access token.
+- **Multiple systems** (homes, cabins, remote sites) should be manageable from one dashboard.
+- **Multiple human users** — admin invites people (magic link → set password), manages roles, and can create accounts directly; machines keep opaque API keys (ADR 0002 / 0003).
 - **No build toolchain** — the frontend is plain HTML/CSS/JS so it can be hosted anywhere (GitHub Pages, Cloudflare Pages, local file server) and updated trivially.
 
 ### 1.2 Target Users
@@ -21,6 +22,8 @@ The project exists because:
 |------|------|
 | Homeowner / off-grid resident | Glanceable battery %, solar output, load, generator status on phone |
 | Multi-property owner | Switch between systems via tabs |
+| Admin (god operator) | Invite users, copy magic links, manage users/roles, revoke invites, create accounts with username/password |
+| Invited viewer / helper | Accept magic link, set password, log in with `read` (or granted) role |
 | Maintainer / developer | Reverse-engineered API docs, Python discovery scripts, extensible adapter pattern |
 
 ### 1.3 Success Criteria
@@ -38,29 +41,35 @@ The project exists because:
 - [x] **Frontend unit tests** — pure helpers (formatting, CSV export, URL parsing) in Vitest + jsdom (`frontend/lib.js`, `frontend/test/`)
 - [x] **UI / E2E tests** — Playwright flows against mock Worker (setup, dashboard, chart, chart-nav, manage-credentials, manage-systems, manage-alerts, poll-interval, mobile PTR)
 - [x] **CI runs all test suites** — worker + frontend unit + E2E on every PR (`.github/workflows/ci.yml`)
+- [ ] **Multi-user accounts** — password login, admin magic-link invites (copy URL), invite conversion tracking, user list with roles (ADR 0003)
 
-All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0** (HEAD of `main`). ADR 0002 Phases 1–2 (mutation audit log, per-user opaque API keys) are also complete. Remaining work is Phase 5 expansion (adapters beyond Victron's discovery spike) and the optional ADR 0002 Phase 3 (Cloudflare Access for admin surfaces, not planned unless requested).
+All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0** (HEAD of `main`). ADR 0002 Phases 1–2 (mutation audit log, per-user opaque API keys) are also complete. Remaining work is Phase 5 expansion (Victron adapter, etc.), **ADR 0003 password users + magic-link invites** (§5.3, §12 Phase 5), and the optional ADR 0002 Phase 3 (Cloudflare Access for admin surfaces, not planned unless requested). See [ARCHITECTURE.md](./ARCHITECTURE.md) for the auth layering overview.
 
 ---
 
 ## 2. Architecture
+
+Full diagram, KV map, and auth layering: **[ARCHITECTURE.md](./ARCHITECTURE.md)**. Summary:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Static Frontend (index.html, app.js, style.css)              │
 │  Hosted: GitHub Pages / Cloudflare Pages / any static host      │
 │  Storage: localStorage (proxy URL, token, active system, view)  │
+│  Auth today: paste bearer / ?token=…                            │
+│  Auth planned: username/password login, magic-link accept       │
 │  Views: Cards / Flow / Chart (intraday canvas)                  │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ HTTPS  Authorization: Bearer <token>
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Cloudflare Worker  (worker/)                                   │
-│  • Token auth (API_TOKEN secret)                                │
-│  • KV namespace SYSTEMS — system configs + credential index     │
+│  • Auth: API_TOKEN + KV opaque keys (ADR 0002); users/invites   │
+│    planned (ADR 0003)                                           │
+│  • KV namespace SYSTEMS — systems, tokens; + users/invites soon │
 │  • [optional] Cron Trigger — SOC/generator alert evaluation     │
 │  • Service adapters: shinemonitor.js, growatt.js                │
-│  • In-memory session cache per isolate                          │
+│  • In-memory vendor session cache per isolate                   │
 └──────────────┬─────────────────────────────┬────────────────────┘
                │                             │
                ▼                             ▼
@@ -78,6 +87,7 @@ All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0
 3. **Fail gracefully** — skeleton UI, status dot, error messages; yesterday fallback for ShineMonitor day data.
 4. **Zero build step** — cache-busting via `?v=N` query params on static assets.
 5. **Vendor is source of truth for history** — charts and summaries fetch from inverter cloud APIs on demand; the Worker does not archive historical readings in KV.
+6. **Auth layers compose** — shared secret and opaque keys (shipped); password users + admin magic-link invites (planned, ADR 0003) without a third-party IdP or outbound email.
 
 ### 2.2 Repository Layout
 
@@ -106,7 +116,8 @@ All of Phase 1–4 (see §12) is now complete; the project is tagged at **v1.3.0
 | `frontend/i18n.js` | EN/ES string tables and `t()` lookup |
 | `frontend/test/` | Frontend unit tests (Vitest + jsdom) |
 | `e2e/` | Playwright specs + mock Worker fixture |
-| `docs/decisions/` | ADRs (e.g. Victron VRM spike, WebSocket-push evaluation) |
+| `docs/decisions/` | ADRs (Victron spike, opaque tokens/audit, password users + invites) |
+| `ARCHITECTURE.md` | System + auth architecture (current and planned) |
 | `RELEASE_NOTES.md` | Version changelog |
 
 ---
@@ -216,14 +227,21 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 | `GET` | `/api/systems/all/data` | Parallel fetch for all systems |
 | `GET` | `/api/systems/:id/history?date=` | Intraday power series (vendor fetch) |
 | `GET` | `/api/systems/:id/history/summary?days=7` | Daily energy totals for bar chart (vendor fetch) |
+| `POST` | `/api/admin/tokens` | Mint opaque API key (`read` \| `admin`) — admin only (ADR 0002) |
+| `GET` | `/api/admin/tokens` | List opaque API keys — admin only |
+| `DELETE` | `/api/admin/tokens/:id` | Revoke opaque API key — admin only |
 
-**Auth:** `Authorization: Bearer <API_TOKEN>`. If `API_TOKEN` secret is unset, worker runs open (dev only).
+**Auth (current):** `Authorization: Bearer <token>` — legacy `API_TOKEN` (admin) or KV opaque key (`read` / `admin`). If `API_TOKEN` is unset and no KV match, worker runs open (dev only; fails closed when `PRODUCTION` is set).
+
+**Auth (planned — ADR 0003):** username/password login and magic-link invite accept issue a session bearer compatible with the same header. Indicative routes: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/me`, `POST /api/auth/invite/accept`, plus admin `/api/admin/users` and `/api/admin/invites` (list/create/revoke/purge). See ADR 0003 for normative behavior.
 
 **Storage (KV):**
 
 - `_index` — JSON array `[{ id, name, service }, ...]`
 - `system:<uuid>` — full config including encrypted `credentials` object
 - `alert-state:<uuid>` — alert cooldown state (when alerts enabled)
+- `token:<hash>` / `_index_tokens` — opaque API keys (ADR 0002)
+- Planned: `user:<id>` / `_index_users`, `invite:<hash>` / `_index_invites` (ADR 0003)
 
 ---
 
@@ -270,6 +288,21 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [x] **Per-system generator detection thresholds** — configurable `gridDetect` voltage/power minima in manage UI
 
 ### 5.2 Service adapter roadmap — see §6.3 (Victron)
+
+### 5.3 Multi-user accounts & invites (planned — ADR 0003)
+
+Today humans share a bearer via the setup form or `?proxy=…&token=…`. Target: first-class **users** with passwords, onboarded by an **admin** who issues **copyable magic links** (no email sender in v1).
+
+- [ ] **Login screen** — proxy URL + username/password; store returned session token like today's bearer
+- [ ] **Accept-invite screen** — `?invite=` (or hash route) → choose username + password → converts invite → logged in
+- [ ] **Admin: users list** — username, role (`admin` \| `read`), created/last login; remove/disable; change role
+- [ ] **Admin: create user** — username + password + role (no invite required)
+- [ ] **Admin: create magic link** — role + optional label/TTL → show URL once → copy to clipboard for out-of-band send
+- [ ] **Admin: invites list** — emitted vs converted vs revoked/expired; revoke pending; purge stale
+- [ ] **Keep legacy token path** — `API_TOKEN` / opaque keys / `?token=` for HA and migration
+- [ ] **Worker + E2E tests** — invite lifecycle, last-admin protection, role gates on new routes
+
+Normative design: [docs/decisions/0003-password-users-and-magic-link-invites.md](./docs/decisions/0003-password-users-and-magic-link-invites.md). Architecture sketch: [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 
@@ -388,8 +421,9 @@ Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, esca
 | Discovery scripts | Env-var credentials | Already good; audit for committed secrets |
 | Growatt README | Credentials redacted | Done |
 | Structured logging | JSON error logs for adapter/alert failures (`worker/src/logger.js`) | Done; Sentry/APM remains optional (README "Sentry and third-party APM") |
-| Multi-user access | Single shared `API_TOKEN` (default), plus optional per-user opaque keys in KV with `read`/`admin` roles | Done (ADR 0002 Phase 2) |
-| Admin audit trail | Mutation-only audit log (`auditLog()` in `worker/src/logger.js`) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`, `POST /api/admin/tokens`, `DELETE /api/admin/tokens/:id` | Done (ADR 0002 Phase 1 + 2); persisted sink (Logpush/Analytics Engine/KV) remains optional |
+| Multi-user access (keys) | Single shared `API_TOKEN` (default), plus optional per-user opaque keys in KV with `read`/`admin` roles | Done (ADR 0002 Phase 2) |
+| Multi-user access (accounts) | Password users, admin-issued magic-link invites (copy URL), invite conversion tracking, revoke/purge, admin user CRUD | Planned (ADR 0003) |
+| Admin audit trail | Mutation-only audit log (`auditLog()` in `worker/src/logger.js`) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`, `POST /api/admin/tokens`, `DELETE /api/admin/tokens/:id` | Done (ADR 0002 Phase 1 + 2); extend with user/invite actions when ADR 0003 lands; persisted sink remains optional |
 
 ---
 
@@ -424,6 +458,7 @@ Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, esca
 2. **Credential encryption in KV** — done via `CREDENTIALS_KEY`; ensure production always sets it.
 3. **Multi-plant selection** — done at setup via `requiresPlantSelection` flow.
 4. **Export data** — CSV download of day series for analysis (done).
+4a. **Password users + magic-link invites (ADR 0003)** — planned. Replaces “share a URL token” as the human onboarding path; admin copies invite links; track conversion; revoke/purge; admin user list with roles. Opaque keys (ADR 0002) remain for HA/machines.
 
 ### 10.2 Medium Impact
 
@@ -536,6 +571,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] Release-notes/version-number sync for v1.3.0 (§11)
 - [x] Mutation audit log for admin API routes (ADR 0002 Phase 1)
 - [x] Per-user opaque API keys in KV (ADR 0002 Phase 2)
+- [ ] **Password users + magic-link invites (ADR 0003)** — Worker user/invite registry + auth routes; frontend login + accept-invite; admin users/invites UI (copy link, conversion tracking, revoke/purge, create user with password); E2E (§5.3)
 
 ---
 
@@ -545,7 +581,8 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 2. **SOC source of truth** — _Resolved._ Prefer API `BATTERY_SOC` when valid; show an "Estimated" badge when voltage-interpolated (implemented).
 3. **Generator vs grid** — _Resolved._ Per-system `gridInputLabel` field (`generator` | `grid`, default `generator`) set at add time or in manage UI; cards and flow diagram render from it.
 4. **Credential rotation** — _Resolved._ In-place credential rotation UX shipped in the manage-systems modal; no delete/re-add required.
-5. **Multi-user access** — _Resolved (ADR 0002)._ Single shared `API_TOKEN` remains the default for households and trusted small groups. **Mutation-only audit log** (Phase 1) and **per-user opaque API keys in KV** with `read` / `admin` roles (Phase 2) are both implemented — mint/list/revoke via `POST`/`GET /api/admin/tokens` and `DELETE /api/admin/tokens/:id` (admin role required); the legacy `API_TOKEN` keeps working unchanged with no migration step. Cloudflare Access is optional for admin/token-minting surfaces, not primary end-user auth. JWT and third-party IdP rejected for this static-frontend architecture.
+5. **Multi-user access (opaque keys)** — _Resolved (ADR 0002)._ Shared `API_TOKEN` + per-user opaque KV keys (`read` / `admin`), mutation audit log. JWT and third-party IdP rejected as primary auth; Cloudflare Access optional for admin surfaces only.
+6. **Multi-user access (password accounts + invites)** — _Decided, not implemented (ADR 0003)._ Admin (god) issues copyable magic links for invitees to set username/password; track emitted vs converted invites; revoke/purge links; admin lists users with permissions and can create/remove users with username/password directly. No outbound email in v1. Session remains a bearer token after login so existing `checkAuth` / rate limits keep working. Deep-link `?token=` and opaque keys retained for HA and migration.
 
 ---
 
@@ -556,6 +593,8 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 | ShineMonitor/Growatt API changes without notice | Discovery scripts for quick validation; adapter version pinning in responses |
 | Worker isolate cold start clears session cache | Re-auth is cheap; consider KV-backed session storage for high-traffic |
 | KV credential leak if Worker compromised | Encrypt credentials; minimal secret surface; rotate API_TOKEN |
+| Magic-link or password leak via shared chat / URL history | Single-use invites with TTL + admin revoke; hash-store secrets; prefer login over long-lived `?token=` bookmarks for humans |
+| Last admin locked out / deleted | Enforce “cannot disable or delete the last admin” on user admin routes |
 | Growatt session expiry mid-poll | 4-min cache TTL + retry with re-login on 401 |
 | Voltage-based SOC inaccurate | Prefer API SOC; show "estimated" badge when interpolated |
 | Vendor history gaps / account offline | Accept limitation; clear empty/error states with retry; yesterday fallback for ShineMonitor realtime |

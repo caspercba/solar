@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-07-11_
+_Last updated: 2026-07-21_
 
 ## Done
 
@@ -72,6 +72,7 @@ _Last updated: 2026-07-11_
 - **Release doc sync** — `RELEASE_NOTES.md` has `## v1.3.0`; root `package.json` reads `"version": "1.3.0"`
 - **Mutation audit log (ADR 0002 Phase 1)** — `auditLog()` in `worker/src/logger.js`; structured `audit` JSON entries (actorId, action, resource, method, path, clientIp, outcome, status, requestId) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`, `POST /api/admin/tokens`, `DELETE /api/admin/tokens/:id`; read routes unaffected; `actorId` is `"shared"` for the legacy token or the caller's own token id for per-user keys; reuses existing `logger.js` redaction rules; tests in `routes.test.js`
 - **Per-user opaque API keys in KV (ADR 0002 Phase 2)** — `worker/src/tokens.js`: SHA-256-hashed token registry (`token:<hash>`, `token-id:<id>`, `_index_tokens`), opaque 32-byte base64url tokens, `read`/`admin` roles, optional `expiresAt`, revoke-by-id. `checkAuth` (`worker/src/auth.js`) is now async: legacy `API_TOKEN` checked first as a no-KV-read fast path resolving to `actorId: "shared"`/`admin` (no migration needed — it keeps working unchanged); falls back to KV lookup for per-user tokens, rejecting revoked/expired entries. All mutating routes (`POST`/`PUT`/`DELETE`) return `403` for `read`-role callers. New admin-only routes: `POST`/`GET /api/admin/tokens`, `DELETE /api/admin/tokens/:id` — minting requires an existing `admin` token (no separate bootstrap secret). Rate-limit keying (`worker/src/rateLimit.js`) now gates off `auth.openMode` (true only in the true no-token-configured dev case) instead of `env.API_TOKEN` presence, so KV-only deployments are still rate-limited. Tests: `tokens.test.js`, `auth.test.js` (revoked/expired coverage), `routes.test.js` (role enforcement, independent revoke, admin token routes), `rateLimit.test.js`.
+- **Planning pass (2026-07-21)** — ADR 0003 (password users + admin magic-link invites); [ARCHITECTURE.md](./ARCHITECTURE.md) added; PLAN/STATE updated for multi-user accounts (docs only, no code)
 
 ## In Progress
 
@@ -79,17 +80,24 @@ _None._
 
 ## Up Next
 
-_Priority order after this planning pass. Phases 1–4 are complete at v1.3.0; ADR 0002 Phases 1–2 are also complete. Remaining work is Phase 5 expansion. See PLAN.md §5.2, §12, and §13 for full detail._
+_Priority order. Phases 1–4 and ADR 0002 Phases 1–2 are complete at v1.3.0. See PLAN.md §5.3, §12, §13 Q6, and ARCHITECTURE.md §3._
+
+**Multi-user accounts (ADR 0003) — next product slice:**
+
+1. Worker: user registry (hashed passwords), invite registry (hash-stored secrets, status pending/converted/revoked/expired), auth routes (`login`, `invite/accept`, `me`, admin users/invites CRUD + revoke/purge)
+2. Frontend: username/password login; accept-invite screen (`?invite=`); admin panel — user list/permissions, create user with password, mint copyable magic link, invite conversion list, revoke/purge
+3. Tests: Worker unit + Playwright E2E for invite lifecycle and last-admin protection
+4. Keep `API_TOKEN` / opaque keys / `?token=` working for HA and migration
 
 **Phase 5 expansion (no urgency):**
 
-1. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account before `worker/src/services/victron.js` is written; Solis/Deye/SMA remain unstarted
-2. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`); revisit only if polling proves insufficient
-3. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
+5. Victron VRM adapter implementation — discovery spike complete (`discovery/victron/`); next step is live verification against a real VRM account before `worker/src/services/victron.js` is written; Solis/Deye/SMA remain unstarted
+6. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`); revisit only if polling proves insufficient
+7. Optional Workers Analytics Engine dataset wiring for production error metrics (logger hook exists; binding commented in `wrangler.toml`)
 
 **Deferred (ADR 0002 Phase 3 — implement when requested):**
 
-4. Cloudflare Access on admin/token-minting surfaces (operator hardening only, not primary auth)
+8. Cloudflare Access on admin/token-minting surfaces (operator hardening only, not primary auth)
 
 ## Blocked
 
@@ -108,7 +116,8 @@ _None._
 - **Vendor-only history** — charts and summaries fetch from inverter cloud APIs on every request; Worker does not store historical readings in KV.
 - **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
 - **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
-- **Multi-user access (ADR 0002)** — shared `API_TOKEN` remains the default and needs no migration; mutation audit log (Phase 1) and per-user opaque KV keys with `read`/`admin` roles (Phase 2) are both implemented; Cloudflare Access (Phase 3) deferred to admin surfaces only, implement when requested.
+- **Multi-user access — opaque keys (ADR 0002)** — shared `API_TOKEN` remains the default and needs no migration; mutation audit log (Phase 1) and per-user opaque KV keys with `read`/`admin` roles (Phase 2) are both implemented; Cloudflare Access (Phase 3) deferred to admin surfaces only, implement when requested.
+- **Multi-user access — password accounts + magic links (ADR 0003)** — decided, not yet implemented. Admin (god) creates copyable magic links for invitees to set username/password; track emitted vs converted; revoke/purge invites; admin user list with roles; direct create user with username/password. No outbound email in v1. Login issues a bearer session compatible with existing `checkAuth`. Opaque keys and `?token=` retained for machines/migration. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [docs/decisions/0003-password-users-and-magic-link-invites.md](./docs/decisions/0003-password-users-and-magic-link-invites.md).
 
 ## Blocked / Open Questions
 
@@ -121,3 +130,5 @@ _None._
 - **Vendor history gaps** — chart view depends on vendor API availability; no local backfill; empty states mitigate UX impact.
 - **Vendor rate limits** — multi-day summary and week navigation require N vendor round-trips; in-memory cache and `days` cap mitigate; Worker rate limiting protects proxy abuse.
 - **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` must be set in production; dev-mode open auth remains a footgun if misconfigured (mitigated by fail-closed `PRODUCTION` guard).
+- **Invite / password sharing** — magic links sent out-of-band can leak; mitigate with TTL, single-use conversion, admin revoke, and hash-only storage (ADR 0003).
+- **Last-admin lockout** — user-admin routes must refuse deleting/disabling the final `admin` account.
