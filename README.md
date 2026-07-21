@@ -393,7 +393,7 @@ The human sign-in path is **username + password** (ADR 0003). The `API_TOKEN` se
 https://your-frontend.example/?proxy=https://solar-proxy.example.workers.dev&token=YOUR_TOKEN
 ```
 
-Use only on trusted devices — the token appears in the URL and browser history.
+Use only on trusted devices — the token appears in the URL and browser history. The setup screen also has a **Password / Access Token** toggle for pasting a bearer token by hand (same legacy path, no deep link needed) — password login is the recommended default; the token option exists for HA setup and migration.
 
 ## Worker API
 

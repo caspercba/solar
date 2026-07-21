@@ -225,6 +225,12 @@ const els = {
   setupUrl: $("setup-url"),
   setupUser: $("setup-user"),
   setupPass: $("setup-pass"),
+  setupToken: $("setup-token"),
+  setupModePassword: $("setup-mode-password"),
+  setupModeToken: $("setup-mode-token"),
+  setupPasswordFields: $("setup-password-fields"),
+  setupTokenFields: $("setup-token-fields"),
+  setupModeHint: $("setup-mode-hint"),
   setupBtn: $("setup-btn"),
   setupError: $("setup-error"),
   headerTitle: $("header-title"),
@@ -615,6 +621,7 @@ function showSetup() {
   currentActor = null;
   hideAdminInviteSection();
   if (els.setupPass) els.setupPass.value = "";
+  if (els.setupToken) els.setupToken.value = "";
   if (els.setupError) {
     els.setupError.hidden = true;
     els.setupError.textContent = "";
@@ -2421,70 +2428,138 @@ if (els.themeSelect) {
   els.themeSelect.addEventListener("change", () => applyTheme(els.themeSelect.value));
 }
 
-/* ── Setup (username/password → session bearer) ── */
+/* ── Setup: password login (preferred human path) or legacy access token ── */
+
+/** "password" (default, preferred) or "token" (legacy — HA, bookmarks, migration). */
+let setupMode = "password";
+
+function setSetupMode(mode) {
+  setupMode = mode === "token" ? "token" : "password";
+  const isToken = setupMode === "token";
+
+  if (els.setupModePassword) els.setupModePassword.classList.toggle("active", !isToken);
+  if (els.setupModePassword) els.setupModePassword.setAttribute("aria-pressed", String(!isToken));
+  if (els.setupModeToken) els.setupModeToken.classList.toggle("active", isToken);
+  if (els.setupModeToken) els.setupModeToken.setAttribute("aria-pressed", String(isToken));
+
+  if (els.setupPasswordFields) els.setupPasswordFields.hidden = isToken;
+  if (els.setupTokenFields) els.setupTokenFields.hidden = !isToken;
+  if (els.setupModeHint) els.setupModeHint.hidden = !isToken;
+
+  if (els.setupUser) els.setupUser.required = !isToken;
+  if (els.setupPass) els.setupPass.required = !isToken;
+  if (els.setupToken) els.setupToken.required = isToken;
+
+  if (els.setupBtn) els.setupBtn.textContent = t(isToken ? "connect" : "signIn");
+  if (els.setupError) {
+    els.setupError.hidden = true;
+    els.setupError.textContent = "";
+  }
+}
+
+if (els.setupModePassword) {
+  els.setupModePassword.addEventListener("click", () => setSetupMode("password"));
+}
+if (els.setupModeToken) {
+  els.setupModeToken.addEventListener("click", () => setSetupMode("token"));
+}
+
+async function finishLogin(url, token) {
+  saveConn({ url, token });
+  if (els.setupPass) els.setupPass.value = "";
+  if (els.setupToken) els.setupToken.value = "";
+  await refreshCurrentActor();
+  await loadSystems();
+  showDash();
+  setView(localStorage.getItem(VIEW_KEY) || "cards");
+
+  if (!systems.length) {
+    openAddModal();
+  } else {
+    startPolling();
+  }
+}
+
+async function loginWithPassword(url) {
+  const username = els.setupUser.value.trim();
+  const password = els.setupPass.value;
+
+  let resp;
+  try {
+    resp = await fetch(`${url}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  } catch {
+    throw new Error(t("loginFailed"));
+  }
+
+  let json = null;
+  try {
+    json = await resp.json();
+  } catch {
+    /* non-JSON body */
+  }
+
+  if (!resp.ok) {
+    if (resp.status === 401) throw new Error(t("loginInvalidCredentials"));
+    if (resp.status === 429) throw new Error(t("loginRateLimited"));
+    throw new Error((json && json.error) || t("loginFailed"));
+  }
+
+  const token = json && json.token;
+  if (!token) throw new Error(t("loginFailed"));
+
+  currentActor = {
+    role: json.role || null,
+    username: json.username || null,
+    userId: json.userId || null,
+    tokenId: json.tokenId || null,
+    actorId: json.userId || json.tokenId || null,
+  };
+  await finishLogin(url, token);
+}
+
+/** Legacy path: paste a bearer token directly (HA, bookmarks, pre-ADR-0003 migration). */
+async function loginWithToken(url) {
+  const token = els.setupToken.value.trim();
+
+  let resp;
+  try {
+    resp = await fetch(`${url}/api/systems`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error(t("invalidTokenOrUrl"));
+  }
+  if (!resp.ok) throw new Error(t("invalidTokenOrUrl"));
+  await resp.json();
+
+  currentActor = null;
+  await finishLogin(url, token);
+}
+
 els.setupForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   els.setupError.hidden = true;
   els.setupBtn.disabled = true;
-  els.setupBtn.textContent = t("signingIn");
+  els.setupBtn.textContent = t(setupMode === "token" ? "connecting" : "signingIn");
 
   const url = els.setupUrl.value.trim().replace(/\/+$/, "");
-  const username = els.setupUser.value.trim();
-  const password = els.setupPass.value;
 
   try {
-    let resp;
-    try {
-      resp = await fetch(`${url}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-    } catch {
-      throw new Error(t("loginFailed"));
-    }
-
-    let json = null;
-    try {
-      json = await resp.json();
-    } catch {
-      /* non-JSON body */
-    }
-
-    if (!resp.ok) {
-      if (resp.status === 401) throw new Error(t("loginInvalidCredentials"));
-      if (resp.status === 429) throw new Error(t("loginRateLimited"));
-      throw new Error((json && json.error) || t("loginFailed"));
-    }
-
-    const token = json && json.token;
-    if (!token) throw new Error(t("loginFailed"));
-
-    saveConn({ url, token });
-    if (els.setupPass) els.setupPass.value = "";
-    currentActor = {
-      role: json.role || null,
-      username: json.username || null,
-      userId: json.userId || null,
-      tokenId: json.tokenId || null,
-      actorId: json.userId || json.tokenId || null,
-    };
-    await refreshCurrentActor();
-    await loadSystems();
-    showDash();
-    setView(localStorage.getItem(VIEW_KEY) || "cards");
-
-    if (!systems.length) {
-      openAddModal();
+    if (setupMode === "token") {
+      await loginWithToken(url);
     } else {
-      startPolling();
+      await loginWithPassword(url);
     }
   } catch (err) {
     els.setupError.textContent = err.message;
     els.setupError.hidden = false;
   } finally {
     els.setupBtn.disabled = false;
-    els.setupBtn.textContent = t("signIn");
+    els.setupBtn.textContent = t(setupMode === "token" ? "connect" : "signIn");
   }
 });
 
@@ -2569,6 +2644,7 @@ loadStoredLocale();
 applyTranslations();
 syncLangToggle();
 initLangToggle();
+setSetupMode("password");
 // Systems aren't loaded yet, so a stored "compare" view would be wrongly
 // downgraded here; paint optimistically without persisting that downgrade.
 setView(localStorage.getItem(VIEW_KEY) || "cards", { persist: false });

@@ -136,6 +136,8 @@ body {
 
 #setup-form { display: flex; flex-direction: column; gap: .75rem; }
 
+.setup-mode-fields { display: flex; flex-direction: column; gap: .75rem; }
+
 #setup-form input {
   background: var(--bg);
   border: 1px solid var(--card-border);
@@ -223,6 +225,16 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .login-card .lang-toggle {
   justify-content: center;
   margin-bottom: .75rem;
+}
+
+.login-mode-toggle {
+  margin-bottom: 1rem;
+}
+
+.setup-mode-hint {
+  color: var(--text-dim);
+  font-size: .75rem;
+  margin-top: .6rem;
 }
 
 .dot {
