@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=20">
+  <link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
 
@@ -40,13 +40,24 @@
         <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
         <button type="button" class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
       </div>
+      <div class="lang-toggle login-mode-toggle" role="group" aria-labelledby="setup-mode-label">
+        <span id="setup-mode-label" class="lang-label" data-i18n="signInWith">Sign in with</span>
+        <button type="button" class="lang-btn mode-btn active" id="setup-mode-password" data-mode="password" aria-pressed="true" data-i18n="password">Password</button>
+        <button type="button" class="lang-btn mode-btn" id="setup-mode-token" data-mode="token" aria-pressed="false" data-i18n="accessToken">Access Token</button>
+      </div>
       <form id="setup-form" autocomplete="on">
         <input type="url" id="setup-url" data-i18n-placeholder="proxyUrl" placeholder="Proxy URL" autocomplete="url" required
                value="https://solar-proxy.gaspar-solar.workers.dev">
-        <input type="text" id="setup-user" data-i18n-placeholder="username" placeholder="Username" autocomplete="username" required spellcheck="false">
-        <input type="password" id="setup-pass" data-i18n-placeholder="password" placeholder="Password" autocomplete="current-password" required>
+        <div id="setup-password-fields" class="setup-mode-fields">
+          <input type="text" id="setup-user" data-i18n-placeholder="username" placeholder="Username" autocomplete="username" required spellcheck="false">
+          <input type="password" id="setup-pass" data-i18n-placeholder="password" placeholder="Password" autocomplete="current-password" required>
+        </div>
+        <div id="setup-token-fields" class="setup-mode-fields" hidden>
+          <input type="password" id="setup-token" data-i18n-placeholder="accessToken" placeholder="Access Token" autocomplete="current-password">
+        </div>
         <button type="submit" id="setup-btn" data-i18n="signIn">Sign in</button>
       </form>
+      <p class="setup-mode-hint" id="setup-mode-hint" data-i18n="setupModeHintToken" hidden>Legacy path for Home Assistant and bookmarked links.</p>
       <p id="setup-error" class="error" hidden></p>
     </div>
   </div>
@@ -399,6 +410,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=20"></script>
+  <script type="module" src="app.js?v=21"></script>
 </body>
 </html>
