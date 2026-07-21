@@ -52,6 +52,11 @@ import {
   gridInputCardKey,
   gridInputFlowKey,
   gridInputCompareOnKey,
+  INVITE_STATUSES,
+  inviteStatusI18nKey,
+  inviteStatusBadgeClass,
+  isInviteRevocable,
+  hasPurgeableInvites,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -652,5 +657,39 @@ describe("matchesDashboardRefreshShortcut", () => {
     expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, shiftKey: true })).toBe(false);
     expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, altKey: true })).toBe(false);
     expect(matchesDashboardRefreshShortcut({ key: "F6" })).toBe(false);
+  });
+});
+
+describe("admin invites (ADR 0003) helpers", () => {
+  it("maps every known status to its i18n key", () => {
+    expect(INVITE_STATUSES).toEqual(["pending", "converted", "revoked", "expired"]);
+    expect(inviteStatusI18nKey("pending")).toBe("inviteStatusPending");
+    expect(inviteStatusI18nKey("converted")).toBe("inviteStatusConverted");
+    expect(inviteStatusI18nKey("revoked")).toBe("inviteStatusRevoked");
+    expect(inviteStatusI18nKey("expired")).toBe("inviteStatusExpired");
+  });
+
+  it("falls back to pending's i18n key for unknown/missing status", () => {
+    expect(inviteStatusI18nKey("bogus")).toBe("inviteStatusPending");
+    expect(inviteStatusI18nKey(undefined)).toBe("inviteStatusPending");
+  });
+
+  it("maps status to a badge CSS class", () => {
+    expect(inviteStatusBadgeClass("converted")).toBe("invite-status-converted");
+    expect(inviteStatusBadgeClass("bogus")).toBe("invite-status-pending");
+  });
+
+  it("only pending invites are revocable", () => {
+    expect(isInviteRevocable("pending")).toBe(true);
+    expect(isInviteRevocable("converted")).toBe(false);
+    expect(isInviteRevocable("revoked")).toBe(false);
+    expect(isInviteRevocable("expired")).toBe(false);
+  });
+
+  it("hasPurgeableInvites is true only when a non-pending entry exists", () => {
+    expect(hasPurgeableInvites([])).toBe(false);
+    expect(hasPurgeableInvites([{ status: "pending" }])).toBe(false);
+    expect(hasPurgeableInvites([{ status: "pending" }, { status: "revoked" }])).toBe(true);
+    expect(hasPurgeableInvites(undefined)).toBe(false);
   });
 });

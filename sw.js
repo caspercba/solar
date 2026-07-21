@@ -1,12 +1,12 @@
-const CACHE = "solar-shell-v9";
+const CACHE = "solar-shell-v10";
 
 const SHELL = [
   "/",
   "/index.html",
   "/style.css",
-  "/style.css?v=19",
+  "/style.css?v=20",
   "/app.js",
-  "/app.js?v=19",
+  "/app.js?v=20",
   "/frontend/lib.js",
   "/frontend/i18n.js",
   "/manifest.json",

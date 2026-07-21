@@ -1515,6 +1515,78 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 .invite-copy-btn:hover { filter: brightness(1.08); }
 
+.invites-list { display: flex; flex-direction: column; gap: .5rem; max-height: 40vh; overflow-y: auto; }
+
+.invite-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .6rem;
+  padding: .6rem .65rem;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--surface-muted);
+}
+
+.invite-row-info { min-width: 0; flex: 1; }
+
+.invite-row-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-bottom: .25rem;
+}
+
+.invite-row-label {
+  font-size: .85rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.invite-role-badge {
+  font-size: .65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  padding: .05rem .35rem;
+}
+
+.invite-status-badge {
+  font-size: .65rem;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: .05rem .4rem;
+}
+
+.invite-status-pending { background: color-mix(in srgb, var(--accent-sol) 18%, transparent); color: var(--accent-sol); }
+.invite-status-converted { background: color-mix(in srgb, var(--accent-bat) 18%, transparent); color: var(--accent-bat); }
+.invite-status-revoked, .invite-status-expired { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
+
+.invite-row-meta {
+  font-size: .72rem;
+  color: var(--text-dim);
+}
+
+.invite-revoke-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--error);
+  color: var(--error);
+  border-radius: 6px;
+  padding: .35rem .6rem;
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.invite-revoke-btn:hover { background: color-mix(in srgb, var(--error) 12%, transparent); }
+.invite-revoke-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+#invites-purge-btn:disabled { opacity: .5; cursor: not-allowed; }
+
 .manage-alerts label {
   font-size: .75rem;
   color: var(--text-dim);

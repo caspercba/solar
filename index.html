@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=19">
+  <link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 
@@ -368,6 +368,17 @@
         </div>
       </section>
 
+      <!-- Admin: invites list — revoke pending, purge stale (ADR 0003) — shown only for admin role -->
+      <section id="admin-invites-list-section" class="settings-section" hidden>
+        <div class="settings-section-header">
+          <h3 class="settings-section-title" data-i18n="adminInvitesListTitle">Invites</h3>
+          <button type="button" id="invites-purge-btn" class="btn-link" data-i18n="adminInvitesPurgeBtn">Purge stale</button>
+        </div>
+        <div id="invites-list" class="invites-list"></div>
+        <p id="invites-list-empty" class="manage-empty" hidden data-i18n="adminInvitesEmpty">No invites yet.</p>
+        <p id="invites-list-msg" class="cred-msg" hidden></p>
+      </section>
+
       <div class="modal-actions">
         <button type="button" id="manage-close" data-i18n="close">Close</button>
       </div>
@@ -388,6 +399,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=19"></script>
+  <script type="module" src="app.js?v=20"></script>
 </body>
 </html>
