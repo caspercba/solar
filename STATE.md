@@ -61,47 +61,76 @@ _Last updated: 2026-07-21_
 - **Home Assistant REST bridge** — `GET /api/systems/:id/ha` flat snake_case payload
 - **Growatt weather strip** — optional temperature/condition/irradiance on cards view
 - **Worker route edge cases** — CORS preflight and adapter 502 paths covered (`auth.test.js`)
-- **Planning pass (2026-07-09)** — PLAN.md and STATE.md reconciled against codebase and task board; Phases 1–4 complete at **v1.3.0** tag; confirmed via repo inspection (git tags, file tree, test files) rather than assumed from the prior doc snapshot
+- **Planning pass (2026-07-09)** — PLAN.md and STATE.md reconciled against codebase and task board; Phases 1–4 complete at **v1.3.0** tag
 - **Multi-user token / audit-log spike** — ADR 0002 (`docs/decisions/0002-multi-user-token-and-audit-log.md`): phased model (shared token default → mutation audit → optional per-user KV keys); JWT and Cloudflare Access as primary auth rejected
-- **Generator runtime tracking** — session-only counter (per system, `localStorage`, resets on disconnect) shown on the generator card while `grid.active`; no vendor/KV history involved (PLAN §5.1, §10.3.15)
-- **Settings hub redesign** — preferences + system list in the settings modal; per-system detail screen for credentials, grid label, detection thresholds, alerts, and remove
-- **Per-system grid input label** — `gridInputLabel` field (`generator` | `grid`, default `generator`) set at add time or in manage UI; cards and flow diagram render from it
-- **Dashboard low-SOC warning** — card styling and badge when SOC is below the user-configured `socWarnThreshold` preference (separate from webhook alert threshold)
-- **Per-system generator detection thresholds** — configurable `gridDetect` voltage/power minima in manage UI (`PUT /api/systems/:id/grid-detect`)
+- **Generator runtime tracking** — session-only counter (per system, `localStorage`, resets on disconnect) shown on the generator card while `grid.active`
+- **Settings hub redesign** — preferences + system list in the settings modal; per-system detail screen
+- **Per-system grid input label** — `gridInputLabel` field (`generator` | `grid`, default `generator`)
+- **Dashboard low-SOC warning** — card styling and badge when SOC is below `socWarnThreshold`
+- **Per-system generator detection thresholds** — configurable `gridDetect` voltage/power minima
 - **Release doc sync** — `RELEASE_NOTES.md` has `## v1.3.0`; root `package.json` reads `"version": "1.3.0"`
-- **Mutation audit log (ADR 0002 Phase 1)** — `auditLog()` in `worker/src/logger.js`; structured `audit` JSON entries (actorId, action, resource, method, path, clientIp, outcome, status, requestId) on `POST /api/systems`, `PUT /api/systems/:id/credentials`, `PUT /api/systems/:id/alerts`, `DELETE /api/systems/:id`, `POST /api/admin/tokens`, `DELETE /api/admin/tokens/:id`; read routes unaffected; `actorId` is `"shared"` for the legacy token or the caller's own token id for per-user keys; reuses existing `logger.js` redaction rules; tests in `routes.test.js`
-- **Per-user opaque API keys in KV (ADR 0002 Phase 2)** — `worker/src/tokens.js`: SHA-256-hashed token registry (`token:<hash>`, `token-id:<id>`, `_index_tokens`), opaque 32-byte base64url tokens, `read`/`admin` roles, optional `expiresAt`, revoke-by-id. `checkAuth` (`worker/src/auth.js`) is now async: legacy `API_TOKEN` checked first as a no-KV-read fast path resolving to `actorId: "shared"`/`admin` (no migration needed — it keeps working unchanged); falls back to KV lookup for per-user tokens, rejecting revoked/expired entries. All mutating routes (`POST`/`PUT`/`DELETE`) return `403` for `read`-role callers. New admin-only routes: `POST`/`GET /api/admin/tokens`, `DELETE /api/admin/tokens/:id` — minting requires an existing `admin` token (no separate bootstrap secret). Rate-limit keying (`worker/src/rateLimit.js`) now gates off `auth.openMode` (true only in the true no-token-configured dev case) instead of `env.API_TOKEN` presence, so KV-only deployments are still rate-limited. Tests: `tokens.test.js`, `auth.test.js` (revoked/expired coverage), `routes.test.js` (role enforcement, independent revoke, admin token routes), `rateLimit.test.js`.
-- **Planning pass (2026-07-21)** — ADR 0003 (password users + admin magic-link invites); [ARCHITECTURE.md](./ARCHITECTURE.md) added; PLAN/STATE updated for multi-user accounts (docs only, no code)
-- **Planning pass (2026-07-21, board)** — read PLAN.md §5.3 / §12 Phase 5; created backlog tasks SOLAR-0119…0123 (ADR 0003 Worker → Frontend → Tests; Victron live validation → adapter). Victron later withdrawn (ADR 0001); cancel SOLAR-0120 / SOLAR-0123 on the board. No Solis/Deye/SMA or Cloudflare Access tasks yet. WebSocket remains deferred per `discovery/WEBSOCKET_REALTIME.md`.
+- **Mutation audit log (ADR 0002 Phase 1)** — `auditLog()` in `worker/src/logger.js`
+- **Per-user opaque API keys in KV (ADR 0002 Phase 2)** — `worker/src/tokens.js` + async `checkAuth`
+- **Planning pass (2026-07-21)** — ADR 0003 (password users + admin magic-link invites); [ARCHITECTURE.md](./ARCHITECTURE.md) added; PLAN/STATE updated for multi-user accounts (docs only)
 - **Victron VRM withdrawn (2026-07-21)** — removed `discovery/victron/`; ADR 0001 withdrawn; Solis/Deye/SMA remain optional Phase 5 candidates
+- **Planning pass (2026-07-21, board expansion)** — read PLAN.md §5.3 / §12 Phase 5; created **26** backlog/todo tasks (SOLAR-0125…0150). Split coarse ADR 0003 umbrellas into Worker (0136–0141), Frontend (0125–0131), and Tests (0132–0135); added Solis/Deye/SMA discovery spikes, docs/i18n/logout/security/release follow-ons, and Analytics Engine wiring. Blocked umbrellas SOLAR-0121 / SOLAR-0122 as superseded by granular subtasks.
 
 ## In Progress
 
-- (planner) SOLAR-0118 — read plan md and create tasks _(this pass)_
+- (developer) SOLAR-0125 — Frontend: username/password login screen (ADR 0003) — **blocked on Worker 0138** (deps retargeted; no `/api/auth/login` on main yet)
+- (developer) SOLAR-0130 — Frontend: admin invites list, revoke, purge (ADR 0003) — **blocked on Worker 0141**
 
 ## Up Next
 
 _Priority order. Phases 1–4 and ADR 0002 Phases 1–2 are complete at v1.3.0. Board tasks land in **backlog** until a human promotes them to `todo`. See PLAN.md §5.3, §12, §13 Q6, and ARCHITECTURE.md §3._
 
-**Multi-user accounts (ADR 0003) — next product slice:**
+**Critical gap:** SOLAR-0119 (Worker ADR 0003 umbrella) was marked **done/archived** on the board, but **no password-user / invite code exists on `main`** (no `users.js`, no `/api/auth/*`). Implement via granular Worker tasks below before Frontend/E2E can succeed.
 
-1. **SOLAR-0119** (high) — Worker: password users, invites, and auth routes (`login` / `invite/accept` / `me` / admin users+invites CRUD); keep `API_TOKEN` / opaque keys / `?token=` working
-2. **SOLAR-0121** (high, depends on 0119) — Frontend: username/password login; accept-invite (`?invite=`); admin users/invites UI (copyable magic link, conversion list, revoke/purge, create user)
-3. **SOLAR-0122** (high, depends on 0119+0121) — Tests: Worker Vitest + Playwright E2E for invite lifecycle and last-admin protection
+**Multi-user accounts (ADR 0003) — Worker first (urgent):**
 
-**Phase 5 expansion (no urgency):**
+1. **SOLAR-0136** — Worker: user KV registry + password hashing
+2. **SOLAR-0137** — Worker: invite KV registry + hash-only secrets
+3. **SOLAR-0138** — Worker: login/logout/me auth routes _(depends on 0136)_
+4. **SOLAR-0139** — Worker: invite accept route _(depends on 0136+0137)_
+5. **SOLAR-0140** — Worker: admin users CRUD + last-admin guard
+6. **SOLAR-0141** — Worker: admin invites mint/list/revoke/purge
 
-4. Solis / Deye / SMA adapters — unstarted; no board tasks yet (Victron withdrawn — cancel SOLAR-0120 / SOLAR-0123)
-5. Optional Workers Analytics Engine dataset wiring (logger hook exists; binding commented in `wrangler.toml`)
+**Frontend (PLAN §5.3 — depends on matching Worker routes):**
+
+7. **SOLAR-0125** — Login screen
+8. **SOLAR-0126** — Accept-invite screen
+9. **SOLAR-0127** / **0128** — Admin users list + create user
+10. **SOLAR-0129** / **0130** — Admin mint invite + invites list/revoke/purge
+11. **SOLAR-0131** — Keep legacy token + `?token=` path
+12. **SOLAR-0145** — ES/EN i18n for auth screens
+13. **SOLAR-0149** — Logout + session expiry UX
+
+**Tests:**
+
+14. **SOLAR-0132** — Worker Vitest for users/invites/auth
+15. **SOLAR-0133** / **0134** / **0135** — Playwright login, admin, legacy-token E2E
+16. **SOLAR-0148** — Security review pass
+
+**Docs / release:**
+
+17. **SOLAR-0146** — README / ARCHITECTURE / DEPLOY sync
+18. **SOLAR-0150** — Release notes + version bump
+
+**Phase 5 expansion (low priority):**
+
+19. **SOLAR-0142** / **0143** / **0144** — Solis / Deye / SMA discovery spikes
+20. **SOLAR-0147** — Optional Analytics Engine binding
 
 **Deferred (no board tasks):**
 
-6. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`)
-7. Cloudflare Access on admin/token-minting surfaces (ADR 0002 Phase 3 — implement when requested)
+21. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`)
+22. Cloudflare Access on admin/token-minting surfaces (ADR 0002 Phase 3 — implement when requested)
+23. Password-reset invite purpose (ADR 0003 later iteration)
 
 ## Blocked
 
-_None._
+- **SOLAR-0121** — Frontend umbrella; superseded by SOLAR-0125…0131 (prefer granular tasks)
+- **SOLAR-0122** — Tests umbrella; superseded by SOLAR-0132…0135 (prefer granular tasks)
 
 ## Decisions Made
 
@@ -117,11 +146,13 @@ _None._
 - **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
 - **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
 - **Multi-user access — opaque keys (ADR 0002)** — shared `API_TOKEN` remains the default and needs no migration; mutation audit log (Phase 1) and per-user opaque KV keys with `read`/`admin` roles (Phase 2) are both implemented; Cloudflare Access (Phase 3) deferred to admin surfaces only, implement when requested.
-- **Multi-user access — password accounts + magic links (ADR 0003)** — decided, not yet implemented. Admin (god) creates copyable magic links for invitees to set username/password; track emitted vs converted; revoke/purge invites; admin user list with roles; direct create user with username/password. No outbound email in v1. Login issues a bearer session compatible with existing `checkAuth`. Opaque keys and `?token=` retained for machines/migration. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [docs/decisions/0003-password-users-and-magic-link-invites.md](./docs/decisions/0003-password-users-and-magic-link-invites.md).
+- **Multi-user access — password accounts + magic links (ADR 0003)** — decided, not yet implemented on `main`. Admin (god) creates copyable magic links for invitees to set username/password; track emitted vs converted; revoke/purge invites; admin user list with roles; direct create user with username/password. No outbound email in v1. Login issues a bearer session compatible with existing `checkAuth`. Opaque keys and `?token=` retained for machines/migration. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [docs/decisions/0003-password-users-and-magic-link-invites.md](./docs/decisions/0003-password-users-and-magic-link-invites.md).
+- **ADR 0003 delivery shape (2026-07-21 planning)** — implement as granular board tasks (Worker → Frontend → Tests), not a single umbrella; FE/E2E depend on matching Worker route task IDs after SOLAR-0119 was closed without code on `main`.
 
 ## Blocked / Open Questions
 
 1. Should frontend and worker share a Cloudflare project or remain independently deployable? _(Currently independently deployable — Pages for frontend, Workers for backend — and that has worked fine; revisit only if it becomes a pain point.)_
+2. **SOLAR-0119 done-without-code** — board marked Worker ADR 0003 complete, but `main` has no password-user/invite modules. Granular SOLAR-0136…0141 are the recovery path; confirm with humans whether 0119 should stay archived or be reopened.
 
 ## Known Risks
 
@@ -132,3 +163,4 @@ _None._
 - **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` must be set in production; dev-mode open auth remains a footgun if misconfigured (mitigated by fail-closed `PRODUCTION` guard).
 - **Invite / password sharing** — magic links sent out-of-band can leak; mitigate with TTL, single-use conversion, admin revoke, and hash-only storage (ADR 0003).
 - **Last-admin lockout** — user-admin routes must refuse deleting/disabling the final `admin` account.
+- **FE ahead of Worker** — Frontend ADR 0003 tasks were promoted while Worker APIs are missing; deps retargeted to 0136–0141 to avoid shipping UI against non-existent routes.
