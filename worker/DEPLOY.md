@@ -392,9 +392,31 @@ curl -sS -X POST \
 
 The invitee opens the URL, sets username + password via `POST /api/auth/invite/accept` (`{ invite, username, password }`). Pending invites can be revoked (`DELETE /api/admin/invites/:id`); stale converted/revoked/expired entries can be purged (`POST /api/admin/invites/purge`).
 
+**Manage users** — list, change role, disable, or delete:
+
+```bash
+# List users (username, role, created/last login, disabled)
+curl -sS -H "Authorization: Bearer $TOKEN" "$PROXY/api/admin/users"
+
+# Change role or re-enable a disabled user
+curl -sS -X PATCH \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"admin"}' \
+  "$PROXY/api/admin/users/<id>"
+
+# Soft-disable (default) — blocks login, revokes that user's sessions
+curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" "$PROXY/api/admin/users/<id>"
+
+# Hard-delete (drops the record entirely)
+curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" "$PROXY/api/admin/users/<id>?hard=1"
+```
+
 **Last-admin protection:** you cannot disable, delete, or demote the final active `admin` user.
 
 **Passwords** are stored as PBKDF2-SHA-256 hashes only; **invite secrets** are stored as SHA-256 hashes only (same pattern as opaque API keys). Login and invite-accept are rate-limited per client IP.
+
+**Frontend status:** the setup screen's username/password login, and the admin invite panel (mint link, list invites, revoke, purge) are shipped. The accept-invite screen (`?invite=…`) and an admin UI for listing/creating/disabling users are not built yet — use the `curl` commands above for those until the frontend lands (tracked in [PLAN.md §5.3](../PLAN.md#53-multi-user-accounts--invites-planned--adr-0003)).
 
 Full decision record: **[docs/decisions/0003-password-users-and-magic-link-invites.md](../docs/decisions/0003-password-users-and-magic-link-invites.md)**.
 
@@ -719,9 +741,13 @@ Requires `wrangler login` or `CLOUDFLARE_API_TOKEN` in the environment.
 | `_index` | JSON array `[{ id, name, service }, ...]` |
 | `system:<uuid>` | Full system config including encrypted `credentials` and optional `alerts` |
 | `alert-state:<uuid>` | Alert cooldown / breach state |
-| `token:<sha256-hex>` | Per-user API key registry entry: `{ id, label, role, createdAt, expiresAt, revokedAt }` (ADR 0002 Phase 2) |
+| `token:<sha256-hex>` | Per-user API key **or session** registry entry: `{ id, label, role, createdAt, expiresAt, revokedAt, userId? }` — login/invite-accept mint a session in this same table (ADR 0002 Phase 2; sessions added in ADR 0003) |
 | `token-id:<uuid>` | Maps a token `id` to its hash, for revoke-by-id lookups |
 | `_index_tokens` | JSON array of minted key metadata (no secrets): `[{ id, label, role, prefix, createdAt, expiresAt, revokedAt }, ...]` |
+| `user:<id>` | Password user record: `{ id, username, passwordHash, role, createdAt, createdBy?, disabledAt?, lastLoginAt? }` (ADR 0003) |
+| `_index_users` | JSON array `[{ id, username, role, createdAt, disabledAt? }, ...]` |
+| `invite:<sha256-hex>` | Magic-link invite: `{ id, role, label?, status, createdAt, createdBy, expiresAt, convertedAt?, convertedUserId? }` (ADR 0003) |
+| `_index_invites` | JSON array of invite metadata (no secrets): `[{ id, label?, role, status, createdAt, expiresAt, convertedUserId? }, ...]` |
 
 ### Useful commands
 
