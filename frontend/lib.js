@@ -435,3 +435,52 @@ export function matchesDashboardRefreshShortcut({ key, ctrlKey, metaKey, shiftKe
   if ((ctrlKey || metaKey) && !shiftKey && !altKey && key.toLowerCase() === "r") return true;
   return false;
 }
+
+/** Parse setup / invite deep-link query params (`proxy`, `token`, `invite`). */
+export function parseAuthDeepLink(search) {
+  const params = typeof search === "string"
+    ? new URLSearchParams(search.startsWith("?") ? search.slice(1) : search)
+    : search instanceof URLSearchParams
+      ? search
+      : new URLSearchParams();
+  const proxy = (params.get("proxy") || "").trim().replace(/\/+$/, "") || null;
+  const token = (params.get("token") || "").trim() || null;
+  const invite = (params.get("invite") || "").trim() || null;
+  return { proxy, token, invite };
+}
+
+/** Short locale date/time for admin lists; empty string if invalid. */
+export function fmtShortDateTime(iso, locale) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString(locale || undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Map Worker invite-accept error text to an i18n key (fallback: null). */
+export function inviteErrorI18nKey(message) {
+  const msg = String(message || "").toLowerCase();
+  if (msg.includes("revoked")) return "inviteRevoked";
+  if (msg.includes("expired")) return "inviteExpired";
+  if (msg.includes("already been used") || msg.includes("already used")) return "inviteUsed";
+  if (msg.includes("not available")) return "inviteUnavailable";
+  if (msg.includes("invalid invite")) return "inviteInvalid";
+  return null;
+}
+
+/** i18n key for invite status badge. */
+export function inviteStatusI18nKey(status) {
+  const map = {
+    pending: "inviteStatusPending",
+    converted: "inviteStatusConverted",
+    revoked: "inviteStatusRevoked",
+    expired: "inviteStatusExpired",
+  };
+  return map[status] || null;
+}

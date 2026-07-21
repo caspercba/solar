@@ -41,6 +41,10 @@ import {
   gridInputCardKey,
   gridInputFlowKey,
   gridInputCompareOnKey,
+  parseAuthDeepLink,
+  fmtShortDateTime,
+  inviteErrorI18nKey,
+  inviteStatusI18nKey,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -181,12 +185,26 @@ const $ = (id) => document.getElementById(id);
 
 const els = {
   setupScreen: $("setup-screen"),
+  inviteScreen: $("invite-screen"),
   dashScreen: $("dashboard-screen"),
   setupForm: $("setup-form"),
   setupUrl: $("setup-url"),
+  setupUsername: $("setup-username"),
+  setupPassword: $("setup-password"),
+  setupPasswordFields: $("setup-password-fields"),
+  setupTokenFields: $("setup-token-fields"),
   setupToken: $("setup-token"),
   setupBtn: $("setup-btn"),
   setupError: $("setup-error"),
+  authModePassword: $("auth-mode-password"),
+  authModeToken: $("auth-mode-token"),
+  inviteForm: $("invite-form"),
+  inviteUrl: $("invite-url"),
+  inviteUsername: $("invite-username"),
+  invitePassword: $("invite-password"),
+  invitePassword2: $("invite-password2"),
+  inviteBtn: $("invite-btn"),
+  inviteError: $("invite-error"),
   headerTitle: $("header-title"),
   disconnectBtn: $("disconnect-btn"),
   manageBtn: $("manage-btn"),
@@ -225,7 +243,19 @@ const els = {
   pollRetryBtn: $("poll-retry-btn"),
   themeBtn: $("theme-btn"),
   setupThemeBtn: $("setup-theme-btn"),
+  inviteThemeBtn: $("invite-theme-btn"),
   themeSelect: $("theme-select"),
+  adminSection: $("admin-section"),
+  adminUsersList: $("admin-users-list"),
+  adminInvitesList: $("admin-invites-list"),
+  adminCreateUserForm: $("admin-create-user-form"),
+  adminCreateInviteForm: $("admin-create-invite-form"),
+  adminUserMsg: $("admin-user-msg"),
+  adminInviteMsg: $("admin-invite-msg"),
+  adminInviteOnce: $("admin-invite-once"),
+  adminInviteUrl: $("admin-invite-url"),
+  adminInviteCopy: $("admin-invite-copy"),
+  adminPurgeInvites: $("admin-purge-invites"),
 };
 
 const fEls = {
@@ -297,6 +327,12 @@ let hasData = false;
 let currentView = "cards";
 let historyLoading = false;
 let chartHistory = null;
+/** @type {{ userId?: string|null, tokenId?: string|null, username?: string|null, role?: string|null, actorId?: string|null }|null} */
+let currentActor = null;
+/** Pending invite secret from `?invite=` deep link. */
+let pendingInviteSecret = null;
+/** Setup auth mode: "password" | "token" */
+let setupAuthMode = "password";
 let lastEnergySummary = null;
 let lastRenderData = null;
 let lastCompareData = null;
@@ -554,13 +590,25 @@ function setBatRate(absAmps) {
 
 /* ── Screens ── */
 function showSetup() {
+  if (els.inviteScreen) els.inviteScreen.hidden = true;
   els.setupScreen.hidden = false;
+  els.dashScreen.hidden = true;
+}
+
+function showInvite() {
+  els.setupScreen.hidden = true;
+  if (els.inviteScreen) els.inviteScreen.hidden = false;
   els.dashScreen.hidden = true;
 }
 
 function showDash() {
   els.setupScreen.hidden = true;
+  if (els.inviteScreen) els.inviteScreen.hidden = true;
   els.dashScreen.hidden = false;
+}
+
+function isAdminActor() {
+  return currentActor?.role === "admin";
 }
 
 function setStatus(ok) {
@@ -845,7 +893,7 @@ function updateThemeUi(theme) {
   const label = THEME_LABELS[theme] || THEME_LABELS.dark;
   const icon = THEME_ICONS[theme] || THEME_ICONS.dark;
   const title = `Theme: ${label} (click to change)`;
-  for (const btn of [els.themeBtn, els.setupThemeBtn]) {
+  for (const btn of [els.themeBtn, els.setupThemeBtn, els.inviteThemeBtn]) {
     if (!btn) continue;
     btn.textContent = icon;
     btn.title = title;
@@ -1914,6 +1962,166 @@ function renderGridInputLabelForm(sys) {
   return form;
 }
 
+/* ── Admin users / invites (ADR 0003) ── */
+function setAdminMsg(el, text, ok) {
+  if (!el) return;
+  if (!text) {
+    el.hidden = true;
+    return;
+  }
+  el.textContent = text;
+  el.className = ok ? "admin-msg admin-msg-ok" : "admin-msg admin-msg-err";
+  el.hidden = false;
+}
+
+async function refreshAdminPanel() {
+  if (!els.adminSection) return;
+  if (!isAdminActor()) {
+    els.adminSection.hidden = true;
+    return;
+  }
+  els.adminSection.hidden = false;
+  await Promise.all([loadAdminUsers(), loadAdminInvites()]);
+}
+
+async function loadAdminUsers() {
+  if (!els.adminUsersList) return;
+  els.adminUsersList.innerHTML = "";
+  try {
+    const users = await api("GET", "/api/admin/users");
+    if (!users.length) {
+      els.adminUsersList.innerHTML = `<p class="manage-empty">${escapeAttr(t("adminNoUsers"))}</p>`;
+      return;
+    }
+    for (const user of users) {
+      els.adminUsersList.appendChild(renderAdminUserRow(user));
+    }
+  } catch (err) {
+    els.adminUsersList.innerHTML = `<p class="manage-empty">${escapeAttr(err.message)}</p>`;
+  }
+}
+
+function renderAdminUserRow(user) {
+  const row = document.createElement("div");
+  row.className = "admin-row";
+  const disabled = Boolean(user.disabledAt);
+  const created = fmtShortDateTime(user.createdAt, getLocale()) || "—";
+  const lastLogin = user.lastLoginAt
+    ? fmtShortDateTime(user.lastLoginAt, getLocale())
+    : t("adminNever");
+  const roleLabel = user.role === "admin" ? t("roleAdmin") : t("roleRead");
+  const otherRole = user.role === "admin" ? "read" : "admin";
+  const otherRoleLabel = otherRole === "admin" ? t("roleAdmin") : t("roleRead");
+
+  row.innerHTML = `
+    <div class="admin-row-info">
+      <strong>${escapeAttr(user.username)}</strong>
+      <span class="admin-meta">
+        <span class="admin-role-badge">${escapeAttr(roleLabel)}</span>
+        ${disabled ? `<span class="admin-disabled-badge">${escapeAttr(t("adminDisabled"))}</span>` : ""}
+      </span>
+      <span class="admin-meta">${escapeAttr(t("adminCreated"))}: ${escapeAttr(created)}</span>
+      <span class="admin-meta">${escapeAttr(t("adminLastLogin"))}: ${escapeAttr(lastLogin)}</span>
+    </div>
+    <div class="admin-row-actions">
+      <button type="button" class="btn-link admin-role-btn" data-action="role">${escapeAttr(t("adminChangeRole"))} → ${escapeAttr(otherRoleLabel)}</button>
+      <button type="button" class="btn-link admin-toggle-btn" data-action="toggle">${escapeAttr(disabled ? t("adminEnable") : t("adminDisable"))}</button>
+      <button type="button" class="btn-link admin-delete-btn" data-action="delete">${escapeAttr(t("adminDeleteUser"))}</button>
+    </div>
+  `;
+
+  row.querySelector('[data-action="role"]').addEventListener("click", async () => {
+    try {
+      await api("PATCH", `/api/admin/users/${user.id}`, { role: otherRole });
+      await loadAdminUsers();
+    } catch (err) {
+      setAdminMsg(els.adminUserMsg, err.message, false);
+    }
+  });
+
+  row.querySelector('[data-action="toggle"]').addEventListener("click", async () => {
+    if (!disabled && !confirm(t("adminDisableUserConfirm", { name: user.username }))) return;
+    try {
+      await api("PATCH", `/api/admin/users/${user.id}`, { disabled: !disabled });
+      await loadAdminUsers();
+    } catch (err) {
+      setAdminMsg(els.adminUserMsg, err.message, false);
+    }
+  });
+
+  row.querySelector('[data-action="delete"]').addEventListener("click", async () => {
+    if (!confirm(t("adminDeleteUserConfirm", { name: user.username }))) return;
+    try {
+      await api("DELETE", `/api/admin/users/${user.id}?hard=1`);
+      await loadAdminUsers();
+    } catch (err) {
+      setAdminMsg(els.adminUserMsg, err.message, false);
+    }
+  });
+
+  return row;
+}
+
+async function loadAdminInvites() {
+  if (!els.adminInvitesList) return;
+  els.adminInvitesList.innerHTML = "";
+  try {
+    const invites = await api("GET", "/api/admin/invites");
+    if (!invites.length) {
+      els.adminInvitesList.innerHTML = `<p class="manage-empty">${escapeAttr(t("adminNoInvites"))}</p>`;
+      return;
+    }
+    for (const invite of invites) {
+      els.adminInvitesList.appendChild(renderAdminInviteRow(invite));
+    }
+  } catch (err) {
+    els.adminInvitesList.innerHTML = `<p class="manage-empty">${escapeAttr(err.message)}</p>`;
+  }
+}
+
+function renderAdminInviteRow(invite) {
+  const row = document.createElement("div");
+  row.className = "admin-row";
+  const statusKey = inviteStatusI18nKey(invite.status);
+  const statusLabel = statusKey ? t(statusKey) : invite.status;
+  const roleLabel = invite.role === "admin" ? t("roleAdmin") : t("roleRead");
+  const created = fmtShortDateTime(invite.createdAt, getLocale()) || "—";
+  const expires = fmtShortDateTime(invite.expiresAt, getLocale()) || "—";
+  const label = invite.label ? escapeAttr(invite.label) : "";
+
+  row.innerHTML = `
+    <div class="admin-row-info">
+      <strong>${label || escapeAttr(invite.id.slice(0, 8))}</strong>
+      <span class="admin-meta">
+        <span class="admin-role-badge">${escapeAttr(roleLabel)}</span>
+        <span class="admin-status-badge status-${escapeAttr(invite.status)}">${escapeAttr(statusLabel)}</span>
+      </span>
+      <span class="admin-meta">${escapeAttr(t("adminCreated"))}: ${escapeAttr(created)}</span>
+      <span class="admin-meta">${escapeAttr(t("adminExpires"))}: ${escapeAttr(expires)}</span>
+    </div>
+    <div class="admin-row-actions">
+      ${invite.status === "pending"
+        ? `<button type="button" class="btn-link" data-action="revoke">${escapeAttr(t("adminRevokeInvite"))}</button>`
+        : ""}
+    </div>
+  `;
+
+  const revokeBtn = row.querySelector('[data-action="revoke"]');
+  if (revokeBtn) {
+    revokeBtn.addEventListener("click", async () => {
+      if (!confirm(t("adminRevokeConfirm"))) return;
+      try {
+        await api("DELETE", `/api/admin/invites/${invite.id}`);
+        await loadAdminInvites();
+      } catch (err) {
+        setAdminMsg(els.adminInviteMsg, err.message, false);
+      }
+    });
+  }
+
+  return row;
+}
+
 function openManageModal() {
   manageModal.hidden = false;
   syncPollIntervalSelect();
@@ -1923,30 +2131,37 @@ function openManageModal() {
 
   if (!systems.length) {
     manageList.innerHTML = `<p class="manage-empty">${t("noSystems")}</p>`;
-    return;
+  } else {
+    for (const sys of systems) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "manage-row";
+
+      const info = document.createElement("div");
+      info.className = "manage-info";
+      const alertBadge = sys.alerts?.enabled
+        ? `<span class="alert-badge">${escapeAttr(t("alertsOnBadge"))}</span>`
+        : "";
+      info.innerHTML = `<strong>${sys.name}</strong><span class="manage-service">${sys.service}${alertBadge}</span>`;
+
+      const chevron = document.createElement("span");
+      chevron.className = "manage-chevron";
+      chevron.textContent = "›";
+      chevron.setAttribute("aria-hidden", "true");
+
+      row.appendChild(info);
+      row.appendChild(chevron);
+      row.addEventListener("click", () => openSystemDetail(sys.id));
+      manageList.appendChild(row);
+    }
   }
 
-  for (const sys of systems) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "manage-row";
+  refreshAdminPanel();
 
-    const info = document.createElement("div");
-    info.className = "manage-info";
-    const alertBadge = sys.alerts?.enabled
-      ? `<span class="alert-badge">${escapeAttr(t("alertsOnBadge"))}</span>`
-      : "";
-    info.innerHTML = `<strong>${sys.name}</strong><span class="manage-service">${sys.service}${alertBadge}</span>`;
-
-    const chevron = document.createElement("span");
-    chevron.className = "manage-chevron";
-    chevron.textContent = "›";
-    chevron.setAttribute("aria-hidden", "true");
-
-    row.appendChild(info);
-    row.appendChild(chevron);
-    row.addEventListener("click", () => openSystemDetail(sys.id));
-    manageList.appendChild(row);
+  const addBtn = $("manage-add");
+  if (addBtn) {
+    // Read-role sessions cannot mutate systems; hide the affordance.
+    addBtn.hidden = currentActor != null && currentActor.role === "read";
   }
 }
 
@@ -2060,37 +2275,104 @@ if (socWarnInput) {
 
 if (els.themeBtn) els.themeBtn.addEventListener("click", cycleTheme);
 if (els.setupThemeBtn) els.setupThemeBtn.addEventListener("click", cycleTheme);
+if (els.inviteThemeBtn) els.inviteThemeBtn.addEventListener("click", cycleTheme);
 if (els.themeSelect) {
   els.themeSelect.addEventListener("change", () => applyTheme(els.themeSelect.value));
 }
 
-/* ── Setup (proxy connection) ── */
+/* ── Auth mode toggle (password vs legacy token) ── */
+function setSetupAuthMode(mode) {
+  setupAuthMode = mode === "token" ? "token" : "password";
+  const isPassword = setupAuthMode === "password";
+  if (els.setupPasswordFields) els.setupPasswordFields.hidden = !isPassword;
+  if (els.setupTokenFields) els.setupTokenFields.hidden = isPassword;
+  if (els.setupUsername) els.setupUsername.required = isPassword;
+  if (els.setupPassword) els.setupPassword.required = isPassword;
+  if (els.setupToken) els.setupToken.required = !isPassword;
+  if (els.authModePassword) {
+    els.authModePassword.classList.toggle("active", isPassword);
+    els.authModePassword.setAttribute("aria-selected", isPassword ? "true" : "false");
+  }
+  if (els.authModeToken) {
+    els.authModeToken.classList.toggle("active", !isPassword);
+    els.authModeToken.setAttribute("aria-selected", isPassword ? "false" : "true");
+  }
+}
+
+if (els.authModePassword) {
+  els.authModePassword.addEventListener("click", () => setSetupAuthMode("password"));
+}
+if (els.authModeToken) {
+  els.authModeToken.addEventListener("click", () => setSetupAuthMode("token"));
+}
+setSetupAuthMode("password");
+
+async function loadCurrentActor() {
+  try {
+    currentActor = await api("GET", "/api/me");
+  } catch {
+    currentActor = null;
+  }
+  return currentActor;
+}
+
+async function enterDashboard() {
+  await loadCurrentActor();
+  await loadSystems();
+  showDash();
+  setView(localStorage.getItem(VIEW_KEY) || "cards");
+  if (!systems.length) {
+    openAddModal();
+  } else {
+    startPolling();
+  }
+}
+
+function mapInviteError(message) {
+  const key = inviteErrorI18nKey(message);
+  return key ? t(key) : (message || t("inviteInvalid"));
+}
+
+/* ── Setup (password login or legacy token) ── */
 els.setupForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   els.setupError.hidden = true;
   els.setupBtn.disabled = true;
-  els.setupBtn.textContent = t("connecting");
+  const busyLabel = setupAuthMode === "password" ? t("loggingIn") : t("connecting");
+  els.setupBtn.textContent = busyLabel;
 
   const url = els.setupUrl.value.trim().replace(/\/+$/, "");
-  const token = els.setupToken.value.trim();
 
   try {
-    const resp = await fetch(`${url}/api/systems`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    if (!resp.ok) throw new Error(t("invalidTokenOrUrl"));
-    await resp.json();
-
-    saveConn({ url, token });
-    await loadSystems();
-    showDash();
-    setView(localStorage.getItem(VIEW_KEY) || "cards");
-
-    if (!systems.length) {
-      openAddModal();
+    if (setupAuthMode === "password") {
+      const username = els.setupUsername.value.trim();
+      const password = els.setupPassword.value;
+      if (!username || !password) {
+        throw new Error(t("credRequired"));
+      }
+      const resp = await fetch(`${url}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(json.error || t("invalidCredentials"));
+      }
+      saveConn({ url, token: json.token, username: json.username, authMode: "password" });
+      if (els.setupPassword) els.setupPassword.value = "";
     } else {
-      startPolling();
+      const token = els.setupToken.value.trim();
+      if (!token) throw new Error(t("invalidTokenOrUrl"));
+      const resp = await fetch(`${url}/api/systems`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) throw new Error(t("invalidTokenOrUrl"));
+      await resp.json();
+      saveConn({ url, token, authMode: "token" });
     }
+
+    await enterDashboard();
   } catch (err) {
     els.setupError.textContent = err.message;
     els.setupError.hidden = false;
@@ -2100,12 +2382,150 @@ els.setupForm.addEventListener("submit", async (e) => {
   }
 });
 
-els.disconnectBtn.addEventListener("click", () => {
+/* ── Accept invite ── */
+if (els.inviteForm) {
+  els.inviteForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!els.inviteError) return;
+    els.inviteError.hidden = true;
+    els.inviteBtn.disabled = true;
+    els.inviteBtn.textContent = t("inviteAccepting");
+
+    const url = els.inviteUrl.value.trim().replace(/\/+$/, "");
+    const username = els.inviteUsername.value.trim();
+    const password = els.invitePassword.value;
+    const password2 = els.invitePassword2.value;
+
+    try {
+      if (!pendingInviteSecret) throw new Error(t("inviteMissing"));
+      if (password.length < 8) throw new Error(t("passwordTooShort"));
+      if (password !== password2) throw new Error(t("passwordMismatch"));
+
+      const resp = await fetch(`${url}/api/auth/invite/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invite: pendingInviteSecret, username, password }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(mapInviteError(json.error));
+      }
+
+      saveConn({ url, token: json.token, username: json.username, authMode: "password" });
+      pendingInviteSecret = null;
+      // Drop invite secret from the address bar without a full reload.
+      try {
+        const clean = new URL(location.href);
+        clean.searchParams.delete("invite");
+        history.replaceState({}, "", clean.pathname + clean.search + clean.hash);
+      } catch { /* ignore */ }
+
+      await enterDashboard();
+    } catch (err) {
+      els.inviteError.textContent = err.message;
+      els.inviteError.hidden = false;
+    } finally {
+      els.inviteBtn.disabled = false;
+      els.inviteBtn.textContent = t("inviteAccept");
+    }
+  });
+}
+
+els.disconnectBtn.addEventListener("click", async () => {
+  try {
+    await api("POST", "/api/auth/logout");
+  } catch { /* best-effort revoke */ }
   clearConn();
+  currentActor = null;
   clearAllGeneratorRuntimeStates();
   stopPolling();
   showSetup();
 });
+
+if (els.adminCreateUserForm) {
+  els.adminCreateUserForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setAdminMsg(els.adminUserMsg, null);
+    const btn = $("admin-create-user-btn");
+    if (btn) btn.disabled = true;
+    try {
+      await api("POST", "/api/admin/users", {
+        username: $("admin-user-username").value.trim(),
+        password: $("admin-user-password").value,
+        role: $("admin-user-role").value || "read",
+      });
+      els.adminCreateUserForm.reset();
+      $("admin-user-role").value = "read";
+      setAdminMsg(els.adminUserMsg, t("adminUserCreated"), true);
+      await loadAdminUsers();
+    } catch (err) {
+      setAdminMsg(els.adminUserMsg, err.message, false);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+}
+
+if (els.adminCreateInviteForm) {
+  els.adminCreateInviteForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setAdminMsg(els.adminInviteMsg, null);
+    if (els.adminInviteOnce) els.adminInviteOnce.hidden = true;
+    const btn = $("admin-create-invite-btn");
+    if (btn) btn.disabled = true;
+    try {
+      const ttlDays = Number($("admin-invite-ttl").value) || 7;
+      const minted = await api("POST", "/api/admin/invites", {
+        role: $("admin-invite-role").value || "read",
+        label: $("admin-invite-label").value.trim() || undefined,
+        ttlMs: ttlDays * 24 * 60 * 60 * 1000,
+        frontendUrl: `${location.origin}${location.pathname.replace(/index\.html$/i, "")}`,
+      });
+      els.adminCreateInviteForm.reset();
+      $("admin-invite-role").value = "read";
+      $("admin-invite-ttl").value = "7";
+      if (els.adminInviteUrl) els.adminInviteUrl.value = minted.url || "";
+      if (els.adminInviteOnce) els.adminInviteOnce.hidden = false;
+      setAdminMsg(els.adminInviteMsg, t("adminInviteCreated"), true);
+      await loadAdminInvites();
+    } catch (err) {
+      setAdminMsg(els.adminInviteMsg, err.message, false);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+}
+
+if (els.adminInviteCopy) {
+  els.adminInviteCopy.addEventListener("click", async () => {
+    const value = els.adminInviteUrl?.value || "";
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      els.adminInviteCopy.textContent = t("adminCopied");
+      setTimeout(() => { els.adminInviteCopy.textContent = t("adminCopyLink"); }, 1500);
+    } catch {
+      els.adminInviteUrl.select();
+      document.execCommand("copy");
+      els.adminInviteCopy.textContent = t("adminCopied");
+      setTimeout(() => { els.adminInviteCopy.textContent = t("adminCopyLink"); }, 1500);
+    }
+  });
+}
+
+if (els.adminPurgeInvites) {
+  els.adminPurgeInvites.addEventListener("click", async () => {
+    if (!confirm(t("adminPurgeConfirm"))) return;
+    try {
+      const result = await api("POST", "/api/admin/invites/purge");
+      setAdminMsg(els.adminInviteMsg, t("adminPurgeDone", { count: result.purged ?? 0 }), true);
+      if (els.adminInviteOnce) els.adminInviteOnce.hidden = true;
+      await loadAdminInvites();
+    } catch (err) {
+      setAdminMsg(els.adminInviteMsg, err.message, false);
+    }
+  });
+}
 
 if (els.pollRetryBtn) {
   els.pollRetryBtn.addEventListener("click", () => retryPollNow());
@@ -2186,13 +2606,20 @@ initLangToggle();
 setView(localStorage.getItem(VIEW_KEY) || "cards", { persist: false });
 
 (async function boot() {
-  const params = new URLSearchParams(location.search);
-  const urlProxy = params.get("proxy");
-  const urlToken = params.get("token");
+  const { proxy: urlProxy, token: urlToken, invite: urlInvite } = parseAuthDeepLink(location.search);
+
+  // Invite deep link takes precedence over auto-login so the invitee can set a password.
+  if (urlInvite) {
+    pendingInviteSecret = urlInvite;
+    if (urlProxy && els.inviteUrl) els.inviteUrl.value = urlProxy;
+    if (urlProxy && els.setupUrl) els.setupUrl.value = urlProxy;
+    setView("cards");
+    showInvite();
+    return;
+  }
 
   if (urlProxy && urlToken) {
-    const url = urlProxy.replace(/\/+$/, "");
-    saveConn({ url, token: urlToken });
+    saveConn({ url: urlProxy, token: urlToken, authMode: "token" });
   }
 
   const conn = loadConn();
@@ -2202,15 +2629,10 @@ setView(localStorage.getItem(VIEW_KEY) || "cards", { persist: false });
     return;
   }
 
+  if (conn.url && els.setupUrl) els.setupUrl.value = conn.url;
+
   try {
-    await loadSystems();
-    showDash();
-    setView(localStorage.getItem(VIEW_KEY) || "cards");
-    if (systems.length) {
-      startPolling();
-    } else {
-      openAddModal();
-    }
+    await enterDashboard();
   } catch {
     setView("cards");
     showSetup();

@@ -22,11 +22,11 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=17">
+  <link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
 
-  <!-- Setup screen (first-time: enter proxy token) -->
+  <!-- Setup screen: username/password login (primary) or legacy access token -->
   <div id="setup-screen" class="screen" hidden>
     <div class="setup-theme-wrap">
       <button type="button" id="setup-theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
@@ -34,19 +34,56 @@
     <div class="login-card">
       <div class="login-icon">&#9728;</div>
       <h1 data-i18n="appTitle">Solar Dashboard</h1>
-      <p class="login-subtitle" data-i18n="setupSubtitle">Connect to your proxy</p>
+      <p class="login-subtitle" data-i18n="setupSubtitle">Sign in to your proxy</p>
       <div class="lang-toggle" role="group" aria-labelledby="setup-lang-label">
         <span id="setup-lang-label" class="lang-label" data-i18n="language">Language</span>
         <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
         <button type="button" class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
       </div>
+      <div class="auth-mode-toggle" role="tablist" aria-label="Sign-in method">
+        <button type="button" class="auth-mode-btn active" id="auth-mode-password" data-auth-mode="password" role="tab" aria-selected="true" data-i18n="authModePassword">Password</button>
+        <button type="button" class="auth-mode-btn" id="auth-mode-token" data-auth-mode="token" role="tab" aria-selected="false" data-i18n="authModeToken">Access token</button>
+      </div>
       <form id="setup-form" autocomplete="on">
         <input type="url" id="setup-url" data-i18n-placeholder="proxyUrl" placeholder="Proxy URL" autocomplete="url" required
                value="https://solar-proxy.gaspar-solar.workers.dev">
-        <input type="password" id="setup-token" data-i18n-placeholder="accessToken" placeholder="Access Token" autocomplete="current-password" required>
+        <div id="setup-password-fields">
+          <input type="text" id="setup-username" data-i18n-placeholder="username" placeholder="Username" autocomplete="username">
+          <input type="password" id="setup-password" data-i18n-placeholder="password" placeholder="Password" autocomplete="current-password">
+        </div>
+        <div id="setup-token-fields" hidden>
+          <input type="password" id="setup-token" data-i18n-placeholder="accessToken" placeholder="Access Token" autocomplete="off">
+          <p class="setup-hint" data-i18n="authTokenHint">For Home Assistant and migration. Prefer password login when you have an account.</p>
+        </div>
         <button type="submit" id="setup-btn" data-i18n="connect">Connect</button>
       </form>
       <p id="setup-error" class="error" hidden></p>
+    </div>
+  </div>
+
+  <!-- Accept invite screen (?proxy=…&invite=…) -->
+  <div id="invite-screen" class="screen" hidden>
+    <div class="setup-theme-wrap">
+      <button type="button" id="invite-theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
+    </div>
+    <div class="login-card">
+      <div class="login-icon">&#9728;</div>
+      <h1 data-i18n="appTitle">Solar Dashboard</h1>
+      <p class="login-subtitle" data-i18n="inviteSubtitle">Accept your invite</p>
+      <div class="lang-toggle" role="group" aria-labelledby="invite-lang-label">
+        <span id="invite-lang-label" class="lang-label" data-i18n="language">Language</span>
+        <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
+      </div>
+      <form id="invite-form" autocomplete="on">
+        <input type="url" id="invite-url" data-i18n-placeholder="proxyUrl" placeholder="Proxy URL" autocomplete="url" required
+               value="https://solar-proxy.gaspar-solar.workers.dev">
+        <input type="text" id="invite-username" data-i18n-placeholder="username" placeholder="Username" autocomplete="username" required>
+        <input type="password" id="invite-password" data-i18n-placeholder="password" placeholder="Password" autocomplete="new-password" required minlength="8">
+        <input type="password" id="invite-password2" data-i18n-placeholder="confirmPassword" placeholder="Confirm password" autocomplete="new-password" required minlength="8">
+        <button type="submit" id="invite-btn" data-i18n="inviteAccept">Create account</button>
+      </form>
+      <p id="invite-error" class="error" hidden></p>
     </div>
   </div>
 
@@ -333,6 +370,56 @@
         <div id="manage-list" class="manage-list"></div>
       </section>
 
+      <!-- Admin: users + invites (ADR 0003) — shown only for admin role -->
+      <section id="admin-section" class="settings-section" hidden>
+        <h3 class="settings-section-title" data-i18n="adminUsersTitle">Users</h3>
+        <div id="admin-users-list" class="admin-list"></div>
+        <form id="admin-create-user-form" class="admin-form">
+          <p class="manage-section-title" data-i18n="adminCreateUser">Create user</p>
+          <label for="admin-user-username" data-i18n="username">Username</label>
+          <input type="text" id="admin-user-username" required autocomplete="off" maxlength="64">
+          <label for="admin-user-password" data-i18n="password">Password</label>
+          <input type="password" id="admin-user-password" required minlength="8" autocomplete="new-password">
+          <label for="admin-user-role" data-i18n="adminRole">Role</label>
+          <select id="admin-user-role">
+            <option value="read" data-i18n="roleRead">read</option>
+            <option value="admin" data-i18n="roleAdmin">admin</option>
+          </select>
+          <button type="submit" id="admin-create-user-btn" data-i18n="adminCreateUserBtn">Create user</button>
+          <p id="admin-user-msg" class="admin-msg" hidden></p>
+        </form>
+
+        <h3 class="settings-section-title admin-invites-heading" data-i18n="adminInvitesTitle">Invites</h3>
+        <div class="settings-section-header">
+          <span class="admin-invites-hint" data-i18n="adminInvitesHint">Magic links — copy and share out-of-band</span>
+          <button type="button" id="admin-purge-invites" class="btn-link" data-i18n="adminPurgeInvites">Purge stale</button>
+        </div>
+        <div id="admin-invites-list" class="admin-list"></div>
+        <form id="admin-create-invite-form" class="admin-form">
+          <p class="manage-section-title" data-i18n="adminCreateInvite">Create invite</p>
+          <label for="admin-invite-role" data-i18n="adminRole">Role</label>
+          <select id="admin-invite-role">
+            <option value="read" data-i18n="roleRead">read</option>
+            <option value="admin" data-i18n="roleAdmin">admin</option>
+          </select>
+          <label for="admin-invite-label" data-i18n="adminInviteLabel">Label (optional)</label>
+          <input type="text" id="admin-invite-label" data-i18n-placeholder="adminInviteLabelPlaceholder" placeholder="e.g. neighbor Ana" maxlength="64" autocomplete="off">
+          <label for="admin-invite-ttl" data-i18n="adminInviteTtl">Expires in</label>
+          <select id="admin-invite-ttl">
+            <option value="1" data-i18n="adminInviteTtl1d">1 day</option>
+            <option value="7" selected data-i18n="adminInviteTtl7d">7 days</option>
+            <option value="30" data-i18n="adminInviteTtl30d">30 days</option>
+          </select>
+          <button type="submit" id="admin-create-invite-btn" data-i18n="adminCreateInviteBtn">Create invite</button>
+          <p id="admin-invite-msg" class="admin-msg" hidden></p>
+        </form>
+        <div id="admin-invite-once" class="admin-invite-once" hidden>
+          <p class="manage-section-title" data-i18n="adminInviteCopyOnce">Copy this link now — it won’t be shown again</p>
+          <input type="text" id="admin-invite-url" readonly>
+          <button type="button" id="admin-invite-copy" class="btn-secondary" data-i18n="adminCopyLink">Copy link</button>
+        </div>
+      </section>
+
       <div class="modal-actions">
         <button type="button" id="manage-close" data-i18n="close">Close</button>
       </div>
@@ -353,6 +440,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=17"></script>
+  <script type="module" src="app.js?v=18"></script>
 </body>
 </html>

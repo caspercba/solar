@@ -22,7 +22,7 @@ flowchart LR
 
 | Layer | Role |
 |-------|------|
-| **Frontend** | Dashboard UI — cards, energy-flow, and chart views; 60 s polling; multi-system tabs. Stores proxy URL + access token in `localStorage`. Planned: username/password login and magic-link accept (ADR 0003). |
+| **Frontend** | Dashboard UI — cards, energy-flow, and chart views; multi-system tabs. Stores proxy URL + bearer (password session or legacy token) in `localStorage`. Login, accept-invite, and admin users/invites UI (ADR 0003). |
 | **Worker** | Token-gated REST API. Discovers plants/devices on setup, caches vendor sessions in memory, returns normalized JSON. History routes proxy vendor APIs on demand. |
 | **KV** | System configs (`system:<id>`), credentials index (`_index`), opaque API keys, and optional alert state (`alert-state:<uuid>`). Planned: password users + invites. No historical readings are stored. |
 | **Vendor APIs** | ShineMonitor (signed GET) and Growatt (cookie session POST). Neither is callable directly from the browser due to CORS and auth complexity. |
@@ -366,14 +366,17 @@ Open `http://localhost:8080`. Add `http://localhost:8080` to `ALLOWED_ORIGINS` i
 
 1. **Deploy the Worker** and set `API_TOKEN` (above).
 2. **Open the frontend** at https://solar-dashboard.pages.dev (or GitHub Pages / local).
-3. On the setup screen, enter:
-   - **Proxy URL** — your Worker URL, no trailing slash (e.g. `https://solar-proxy.example.workers.dev`)
-   - **Access Token** — the same value you set with `wrangler secret put API_TOKEN`
-4. Click **Connect**. The app validates the token against `GET /api/systems`.
-5. **Add a system** — choose service (ShineMonitor or Growatt), display name (optional), and inverter portal username/password. The Worker runs discovery (plant, device, nominal power) and stores credentials in KV.
-6. The dashboard polls `GET /api/systems/:id/data` every 60 seconds.
+3. On the setup screen, enter the **Proxy URL** (Worker URL, no trailing slash).
+4. **Sign in** (preferred for humans):
+   - Switch to **Password** (default) and enter username + password after [bootstrapping an admin](./worker/DEPLOY.md#362-password-users-and-magic-link-invites-adr-0003), **or**
+   - Switch to **Access token** and paste the shared `API_TOKEN` / an opaque API key (Home Assistant and migration).
+5. Click **Connect**. Password login calls `POST /api/auth/login` and stores the session bearer; token mode validates against `GET /api/systems`.
+6. **Add a system** — choose service (ShineMonitor or Growatt), display name (optional), and inverter portal username/password. The Worker runs discovery (plant, device, nominal power) and stores credentials in KV.
+7. The dashboard polls `GET /api/systems/:id/data` every 60 seconds.
 
-**Bookmark auto-connect:** append query parameters to skip the setup form:
+**Invite links:** admins mint a magic link in Settings → Users/Invites. Share the URL out-of-band (no email from the app). The invitee opens `?proxy=…&invite=…`, chooses username + password, and lands logged in.
+
+**Bookmark auto-connect (machines / migration):** append query parameters to skip the setup form:
 
 ```
 https://your-frontend.example/?proxy=https://solar-proxy.example.workers.dev&token=YOUR_TOKEN
@@ -396,11 +399,20 @@ Use only on trusted devices — the token appears in the URL and browser history
 | `GET` | `/api/systems/all/data` | Data for all systems |
 | `GET` | `/api/systems/:id/history?date=` | Intraday power series (vendor fetch on demand) |
 | `GET` | `/api/systems/:id/history/summary?days=7` | Daily energy totals for bar chart (vendor fetch on demand) |
+| `POST` | `/api/auth/login` | Username + password → session bearer (`{ token, role, username }`) — no prior auth |
+| `POST` | `/api/auth/invite/accept` | Convert magic-link invite → user + session (`{ invite, username, password }`) |
+| `POST` | `/api/auth/logout` | Revoke current session token |
+| `GET` | `/api/me` | Current actor (`userId` / `tokenId`, `username?`, `role`) |
+| `GET`/`POST` | `/api/admin/users` | List / create password users — admin only |
+| `PATCH`/`DELETE` | `/api/admin/users/:id` | Update role/disable or remove user — admin only |
+| `GET`/`POST` | `/api/admin/invites` | List / mint magic-link invites (plaintext URL once) — admin only |
+| `DELETE` | `/api/admin/invites/:id` | Revoke a pending invite — admin only |
+| `POST` | `/api/admin/invites/purge` | Drop non-pending invites from the index — admin only |
 | `POST` | `/api/admin/tokens` | Mint a per-user opaque API key (`label`, `role: "read"\|"admin"`, optional `expiresAt`) — admin role required |
 | `GET` | `/api/admin/tokens` | List minted API keys (never returns the plaintext token) — admin role required |
 | `DELETE` | `/api/admin/tokens/:id` | Revoke one API key without affecting any other token — admin role required |
 
-All routes require `Authorization: Bearer <token>` when auth is configured. The token is either the legacy shared `API_TOKEN` secret (resolves to the `admin` role) or a per-user key minted via `POST /api/admin/tokens` (ADR 0002 Phase 2 — see [worker/DEPLOY.md §3.6](./worker/DEPLOY.md#36-shared-token-vs-per-user-keys)). Per-user keys carry a `read` or `admin` role; mutating routes (`POST`/`PUT`/`DELETE`) return `403` for `read`-role callers.
+All routes except `/api/health`, `/api/auth/login`, and `/api/auth/invite/accept` require `Authorization: Bearer <token>` when auth is configured. The token is the legacy shared `API_TOKEN` secret (resolves to the `admin` role), a per-user opaque key (ADR 0002), or a session minted by password login / invite accept (ADR 0003 — see [worker/DEPLOY.md §3.6](./worker/DEPLOY.md#36-shared-token-vs-per-user-keys)). Per-user keys and sessions carry a `read` or `admin` role; mutating routes (`POST`/`PUT`/`DELETE`) return `403` for `read`-role callers.
 
 **Rate limits:** Real-time data routes (`GET /api/systems/:id/data`, `GET /api/systems/:id/ha`, and `GET /api/systems/all/data`) are limited to **60 requests per minute per bearer token** (in-memory per Worker isolate) — legacy and per-user tokens are limited independently. Exceeding the limit returns **429 Too Many Requests** with a `Retry-After` header (seconds until the window resets). Normal dashboard polling at 60 s intervals is well below this limit. Rate limiting is disabled only in dev open mode (no `API_TOKEN` and no matching per-user token configured).
 

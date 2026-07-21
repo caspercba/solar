@@ -24,6 +24,10 @@ import {
   POLL_INTERVAL_OPTIONS_SEC,
   isEditableElement,
   matchesDashboardRefreshShortcut,
+  parseAuthDeepLink,
+  fmtShortDateTime,
+  inviteErrorI18nKey,
+  inviteStatusI18nKey,
   DEFAULT_POLL_INTERVAL_SEC,
   impliedBatteryCapacityWh,
   formatTimeToEmpty,
@@ -652,5 +656,50 @@ describe("matchesDashboardRefreshShortcut", () => {
     expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, shiftKey: true })).toBe(false);
     expect(matchesDashboardRefreshShortcut({ key: "r", ctrlKey: true, altKey: true })).toBe(false);
     expect(matchesDashboardRefreshShortcut({ key: "F6" })).toBe(false);
+  });
+});
+
+describe("parseAuthDeepLink", () => {
+  it("parses proxy, token, and invite", () => {
+    expect(parseAuthDeepLink("?proxy=https://w.example/&token=abc&invite=sec")).toEqual({
+      proxy: "https://w.example",
+      token: "abc",
+      invite: "sec",
+    });
+  });
+
+  it("returns nulls when params are absent", () => {
+    expect(parseAuthDeepLink("")).toEqual({ proxy: null, token: null, invite: null });
+  });
+});
+
+describe("inviteErrorI18nKey", () => {
+  it("maps Worker invite error messages", () => {
+    expect(inviteErrorI18nKey("Invite has been revoked")).toBe("inviteRevoked");
+    expect(inviteErrorI18nKey("Invite has expired")).toBe("inviteExpired");
+    expect(inviteErrorI18nKey("Invite has already been used")).toBe("inviteUsed");
+    expect(inviteErrorI18nKey("Invalid invite")).toBe("inviteInvalid");
+    expect(inviteErrorI18nKey("something else")).toBeNull();
+  });
+});
+
+describe("inviteStatusI18nKey", () => {
+  it("maps known statuses", () => {
+    expect(inviteStatusI18nKey("pending")).toBe("inviteStatusPending");
+    expect(inviteStatusI18nKey("converted")).toBe("inviteStatusConverted");
+    expect(inviteStatusI18nKey("nope")).toBeNull();
+  });
+});
+
+describe("fmtShortDateTime", () => {
+  it("formats a valid ISO timestamp", () => {
+    const out = fmtShortDateTime("2026-07-03T14:32:00.000Z", "en-US");
+    expect(out).toMatch(/2026/);
+    expect(out).toMatch(/Jul/i);
+  });
+
+  it("returns empty for missing input", () => {
+    expect(fmtShortDateTime(null)).toBe("");
+    expect(fmtShortDateTime("")).toBe("");
   });
 });

@@ -102,7 +102,8 @@ body {
 
 /* ---------- SETUP / LOGIN ---------- */
 
-#setup-screen {
+#setup-screen,
+#invite-screen {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -136,7 +137,8 @@ body {
 
 #setup-form { display: flex; flex-direction: column; gap: .75rem; }
 
-#setup-form input {
+#setup-form input,
+#invite-form input {
   background: var(--bg);
   border: 1px solid var(--card-border);
   border-radius: 8px;
@@ -147,9 +149,58 @@ body {
   transition: border-color .2s;
 }
 
-#setup-form input:focus { border-color: var(--accent-sol); }
+#setup-form input:focus,
+#invite-form input:focus { border-color: var(--accent-sol); }
 
-#setup-btn, #add-submit, #manage-close {
+#invite-form { display: flex; flex-direction: column; gap: .75rem; }
+
+.auth-mode-toggle {
+  display: flex;
+  gap: .35rem;
+  margin-bottom: 1rem;
+  padding: .25rem;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+}
+
+.auth-mode-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: .45rem .5rem;
+  color: var(--text-dim);
+  font-size: .8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-mode-btn.active {
+  background: var(--card-bg);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--card-border);
+}
+
+.setup-hint {
+  margin: 0;
+  font-size: .75rem;
+  color: var(--text-dim);
+  text-align: left;
+  line-height: 1.35;
+}
+
+#setup-password-fields,
+#setup-token-fields {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+#setup-password-fields[hidden],
+#setup-token-fields[hidden] { display: none !important; }
+
+#setup-btn, #invite-btn, #add-submit, #manage-close {
   background: var(--accent-sol);
   color: var(--accent-on);
   border: none;
@@ -161,7 +212,7 @@ body {
   transition: opacity .2s;
 }
 
-#setup-btn:disabled, #add-submit:disabled { opacity: .5; cursor: wait; }
+#setup-btn:disabled, #invite-btn:disabled, #add-submit:disabled { opacity: .5; cursor: wait; }
 
 .error {
   color: var(--error);
@@ -1307,6 +1358,156 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   font-size: .85rem;
   text-align: center;
   padding: 1.5rem 0;
+}
+
+/* ---------- ADMIN USERS / INVITES ---------- */
+
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  max-height: 28vh;
+  overflow-y: auto;
+  margin-bottom: .75rem;
+}
+
+.admin-row {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+  padding: .65rem .25rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.admin-row:last-child { border-bottom: none; }
+
+.admin-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  min-width: 0;
+}
+
+.admin-row-info strong {
+  font-size: .9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-meta {
+  font-size: .72rem;
+  color: var(--text-dim);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+}
+
+.admin-role-badge,
+.admin-disabled-badge,
+.admin-status-badge {
+  display: inline-block;
+  padding: .1rem .4rem;
+  border-radius: 4px;
+  font-size: .65rem;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.admin-role-badge {
+  color: var(--accent-sol);
+  background: color-mix(in srgb, var(--accent-sol) 15%, transparent);
+}
+
+.admin-disabled-badge {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
+.admin-status-badge.status-pending {
+  color: var(--accent-bat);
+  background: color-mix(in srgb, var(--accent-bat) 15%, transparent);
+}
+
+.admin-status-badge.status-converted {
+  color: var(--accent-sol);
+  background: color-mix(in srgb, var(--accent-sol) 15%, transparent);
+}
+
+.admin-status-badge.status-revoked,
+.admin-status-badge.status-expired {
+  color: var(--text-dim);
+  background: var(--surface-muted);
+}
+
+.admin-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem .75rem;
+}
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  margin-top: .25rem;
+}
+
+.admin-form .manage-section-title {
+  margin-top: .25rem;
+}
+
+.admin-form button[type="submit"] {
+  margin-top: .5rem;
+  background: var(--accent-sol);
+  color: var(--accent-on);
+  border: none;
+  border-radius: 8px;
+  padding: .55rem;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-form button[type="submit"]:disabled { opacity: .5; cursor: wait; }
+
+.admin-msg {
+  font-size: .8rem;
+  margin: .35rem 0 0;
+}
+
+.admin-msg-ok { color: var(--accent-bat); }
+.admin-msg-err { color: var(--error); }
+
+.admin-invites-heading {
+  margin-top: 1.25rem !important;
+}
+
+.admin-invites-hint {
+  font-size: .72rem;
+  color: var(--text-dim);
+}
+
+.admin-invite-once {
+  margin-top: .75rem;
+  padding: .75rem;
+  border: 1px dashed var(--accent-sol);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-sol) 8%, transparent);
+}
+
+.admin-invite-once input {
+  margin: .35rem 0 .5rem;
+  font-size: .75rem;
+}
+
+.admin-invite-once .btn-secondary {
+  width: 100%;
+  padding: .55rem;
+  border-radius: 8px;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* ---------- SYSTEM DETAIL SCREEN ---------- */

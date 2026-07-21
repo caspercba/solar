@@ -46,6 +46,9 @@ export async function loginViaSetupForm(page, { url = MOCK_WORKER_URL, token = M
   await page.goto("/");
   await expect(page.locator("#setup-screen")).toBeVisible();
   await page.locator("#setup-url").fill(url);
+  // Legacy access-token path (HA / migration); password is the default human tab.
+  await page.locator("#auth-mode-token").click();
+  await expect(page.locator("#setup-token-fields")).toBeVisible();
   await page.locator("#setup-token").fill(token);
   await page.locator("#setup-btn").click();
 }

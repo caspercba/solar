@@ -91,4 +91,21 @@ describe("i18n", () => {
     expect(t("compareUnavailable")).toBe("No disponible");
     expect(t("compareLoadError")).toBe("No se pudieron cargar los datos de comparación.");
   });
+
+  it("translates auth and admin keys in English", () => {
+    expect(t("authModePassword")).toBe("Password");
+    expect(t("authModeToken")).toBe("Access token");
+    expect(t("inviteAccept")).toBe("Create account");
+    expect(t("adminUsersTitle")).toBe("Users");
+    expect(t("adminInvitesTitle")).toBe("Invites");
+    expect(t("adminCopyLink")).toBe("Copy link");
+  });
+
+  it("translates auth and admin keys in Spanish", () => {
+    setLocale("es");
+    expect(t("authModePassword")).toBe("Contraseña");
+    expect(t("inviteAccept")).toBe("Crear cuenta");
+    expect(t("adminUsersTitle")).toBe("Usuarios");
+    expect(t("adminCopyLink")).toBe("Copiar enlace");
+  });
 });

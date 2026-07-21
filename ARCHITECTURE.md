@@ -2,7 +2,7 @@
 
 _Last updated: 2026-07-21_
 
-Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation details and deploy steps live in [README.md](./README.md) and [worker/DEPLOY.md](./worker/DEPLOY.md). Auth evolution: [ADR 0002](./docs/decisions/0002-multi-user-token-and-audit-log.md) (opaque keys + audit), [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md) (password users + magic-link invites — planned).
+Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation details and deploy steps live in [README.md](./README.md) and [worker/DEPLOY.md](./worker/DEPLOY.md). Auth evolution: [ADR 0002](./docs/decisions/0002-multi-user-token-and-audit-log.md) (opaque keys + audit), [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md) (password users + magic-link invites).
 
 ## 1. System overview
 
@@ -12,8 +12,8 @@ Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation det
 │  Host: Cloudflare Pages / GitHub Pages / any static host                 │
 │  No build step — cache-bust ?v=N on assets                               │
 │  Client state: localStorage (proxy URL, bearer token, prefs, view)       │
-│  Auth UX (today): paste token / ?token=…                                 │
-│  Auth UX (planned, ADR 0003): login, accept-invite, admin user panel     │
+│  Auth UX: password login, accept-invite, admin users/invites;            │
+│           legacy token paste + ?token=… for HA / migration               │
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 │ HTTPS
                                 │ Authorization: Bearer <token>
@@ -21,7 +21,7 @@ Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation det
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  Cloudflare Worker (worker/)                                             │
 │  • checkAuth — legacy API_TOKEN, then KV opaque keys (ADR 0002)          │
-│  • Planned: login / invite-accept → session token bound to user (0003) │
+│  • Password login / invite-accept → session token bound to user (0003) │
 │  • Adapters: shinemonitor, growatt                                       │
 │  • Optional cron: SOC / generator alert webhooks                         │
 │  • Rate limit + structured / audit logging                               │
@@ -32,7 +32,7 @@ Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation det
 │  Workers KV (SYSTEMS)     │   │  Vendor cloud APIs                      │
 │  systems, credentials,    │   │  ShineMonitor · Growatt                 │
 │  alert state, opaque keys │   │  History fetched on demand — not stored │
-│  Planned: users, invites  │   └─────────────────────────────────────────┘
+│  users, invites (0003)    │   └─────────────────────────────────────────┘
 └───────────────────────────┘
 ```
 
@@ -43,7 +43,7 @@ Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation det
 3. **Vendor is source of truth for history** — no archival time-series in KV.
 4. **Zero frontend build step** — plain HTML/CSS/JS.
 5. **Secrets stay on the Worker** — inverter portal credentials encrypted in KV; browser holds only a bearer token (and proxy URL).
-6. **Auth layers compose** — shared secret → opaque keys (done) → password users + invites (planned); machines keep keys, humans get accounts.
+6. **Auth layers compose** — shared secret → opaque keys → password users + invites; machines keep keys, humans get accounts.
 
 ## 3. Auth model
 
@@ -53,11 +53,13 @@ Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation det
 |-----------|-----|-----|
 | Shared `API_TOKEN` | Household / break-glass / HA | Worker secret; `Authorization: Bearer …`; actor `shared`, role `admin` |
 | Opaque KV API keys | Per-person or per-integration | Minted via `POST /api/admin/tokens`; roles `read` \| `admin`; revoke by id |
-| URL deep link | Bookmarks / home screen | `?proxy=…&token=…` → stored in `localStorage` |
+| Password login | Humans | `POST /api/auth/login` → session bearer bound to `userId` |
+| Magic-link invite | Invitees | `?proxy=…&invite=…` → set username/password → `POST /api/auth/invite/accept` |
+| URL deep link | Bookmarks / HA | `?proxy=…&token=…` → stored in `localStorage` |
 
 Mutating routes require `admin`. Reads allow `read` or `admin`. Mutation audit log attributes `actorId` (ADR 0002).
 
-### 3.2 Planned — password users & magic links (ADR 0003)
+### 3.2 Password users & magic links (ADR 0003)
 
 ```
 Admin (god)                    Invitee                         Browser session
@@ -70,10 +72,10 @@ list: pending/converted      user:<id> created               token ↔ userId+ro
 revoke / purge stale
 ```
 
-**Admin capabilities (planned):**
+**Admin capabilities (Settings panel, admin role only):**
 
 - List users with roles; create user with username + password; disable/remove users; change roles.
-- Issue magic links (copyable); see which invites converted; revoke pending links; purge dead invites.
+- Issue magic links (copyable once); see which invites converted; revoke pending links; purge dead invites.
 - Retain existing opaque API key admin routes for HA / automation.
 
 **Invitee path:** magic link only grants **account creation + password set** (v1). No product email sender — admin distributes the link personally.
@@ -82,7 +84,7 @@ revoke / purge stale
 
 ### 3.3 Trust and threat notes
 
-- Bearer tokens in `localStorage` / URL history remain a trusted-device assumption; prefer password login + shorter-lived session tokens when implemented.
+- Bearer tokens in `localStorage` / URL history remain a trusted-device assumption; prefer password login for humans.
 - Invite secrets are single-use, TTL-bound, hash-stored; revoke cleans up shared-by-mistake links.
 - Password hashes only in KV; never log passwords, raw invites, or bearer secrets.
 - Rate-limit `login` and `invite/accept` separately from data polling.
@@ -94,9 +96,9 @@ revoke / purge stale
 | `_index` | System list `{ id, name, service }` | Shipped |
 | `system:<uuid>` | Config + encrypted inverter credentials | Shipped |
 | `alert-state:<uuid>` | Alert cooldown | Shipped |
-| `token:<sha256>` / `token-id:<id>` / `_index_tokens` | Opaque API keys | Shipped (ADR 0002) |
-| `user:<id>` / `_index_users` | Password users | Planned (ADR 0003) |
-| `invite:<sha256>` / `_index_invites` | Magic-link invites + conversion tracking | Planned (ADR 0003) |
+| `token:<sha256>` / `token-id:<id>` / `_index_tokens` | Opaque API keys + sessions | Shipped (ADR 0002 / 0003) |
+| `user:<id>` / `_index_users` | Password users | Shipped (ADR 0003) |
+| `invite:<sha256>` / `_index_invites` | Magic-link invites + conversion tracking | Shipped (ADR 0003) |
 
 No historical power readings are stored.
 

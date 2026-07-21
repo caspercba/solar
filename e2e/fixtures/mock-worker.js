@@ -119,6 +119,14 @@ export async function handleMockWorkerRequest(request) {
     return json(health, 200, origin);
   }
 
+  // Unauthenticated auth routes (ADR 0003) — stubs for frontend E2E.
+  if (path === "/api/auth/login" && request.method === "POST") {
+    return error("Invalid username or password", 401, origin);
+  }
+  if (path === "/api/auth/invite/accept" && request.method === "POST") {
+    return error("Invalid invite", 404, origin);
+  }
+
   // Test-only: restore the default mock systems list. Not part of the real
   // Worker API — used by E2E specs that add/remove systems to avoid leaking
   // state into other spec files sharing this mock Worker process.
@@ -129,6 +137,28 @@ export async function handleMockWorkerRequest(request) {
 
   if (!checkAuth(request)) {
     return error("Unauthorized", 401, origin);
+  }
+
+  if (path === "/api/me" && request.method === "GET") {
+    return json({
+      userId: null,
+      tokenId: null,
+      username: null,
+      role: "admin",
+      actorId: "shared",
+    }, 200, origin);
+  }
+
+  if (path === "/api/auth/logout" && request.method === "POST") {
+    return json({ ok: true }, 200, origin);
+  }
+
+  if (path === "/api/admin/users" && request.method === "GET") {
+    return json([], 200, origin);
+  }
+
+  if (path === "/api/admin/invites" && request.method === "GET") {
+    return json([], 200, origin);
   }
 
   if (path === "/api/systems" && request.method === "GET") {
