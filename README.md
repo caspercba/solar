@@ -4,6 +4,8 @@ A lightweight, real-time solar monitoring dashboard for off-grid and hybrid inve
 
 ## Architecture
 
+Deeper system + auth notes (including planned password users and magic-link invites): **[ARCHITECTURE.md](./ARCHITECTURE.md)**. Product roadmap: [PLAN.md](./PLAN.md). Status: [STATE.md](./STATE.md).
+
 ```mermaid
 flowchart LR
   Browser["Static frontend\n(index.html, app.js)"]
@@ -20,9 +22,9 @@ flowchart LR
 
 | Layer | Role |
 |-------|------|
-| **Frontend** | Dashboard UI — cards, energy-flow, and chart views; 60 s polling; multi-system tabs. Stores proxy URL + access token in `localStorage`. |
+| **Frontend** | Dashboard UI — cards, energy-flow, and chart views; 60 s polling; multi-system tabs. Stores proxy URL + access token in `localStorage`. Planned: username/password login and magic-link accept (ADR 0003). |
 | **Worker** | Token-gated REST API. Discovers plants/devices on setup, caches vendor sessions in memory, returns normalized JSON. History routes proxy vendor APIs on demand. |
-| **KV** | System configs (`system:<id>`), credentials index (`_index`), and optional alert state (`alert-state:<uuid>`). No historical readings are stored. |
+| **KV** | System configs (`system:<id>`), credentials index (`_index`), opaque API keys, and optional alert state (`alert-state:<uuid>`). Planned: password users + invites. No historical readings are stored. |
 | **Vendor APIs** | ShineMonitor (signed GET) and Growatt (cookie session POST). Neither is callable directly from the browser due to CORS and auth complexity. |
 
 ## Quick start (local dev)

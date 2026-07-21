@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Instructions for coding agents working in this repo. See `README.md` for full docs, `PLAN.md`/`STATE.md` for project context.
+Instructions for coding agents working in this repo. See `README.md` for full docs, `PLAN.md`/`STATE.md`/`ARCHITECTURE.md` for project context.
 
 ## Layout
 
