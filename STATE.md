@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-07-21 (SOLAR-0121 coordination close)_
+_Last updated: 2026-07-21 (SOLAR-0122 coordination close)_
 
 ## Done
 
@@ -77,6 +77,7 @@ _Last updated: 2026-07-21 (SOLAR-0121 coordination close)_
 - **Worker ADR 0003 on `main`** — `users.js`, `invites.js`, `/api/auth/*`, `/api/me`, `/api/admin/users`, `/api/admin/invites` (+ Vitest coverage) landed; prior “no Worker code” gap is closed.
 - **Frontend login (SOLAR-0125)** — setup form uses username/password → `POST /api/auth/login`; session bearer stored in `localStorage`; mock Worker + Playwright setup updated.
 - **SOLAR-0121 coordination close** — Frontend ADR 0003 umbrella closed **without** implementing remaining UI here; accept-invite, admin users/invites, legacy token paste, logout/i18n stay on SOLAR-0126…0131 / 0145 / 0149.
+- **SOLAR-0122 coordination close (2026-07-21)** — Tests ADR 0003 umbrella closed **without** implementing new E2E specs here. Verified current state instead: Worker Vitest (`worker/test/routes.test.js`, "password users and invites (ADR 0003)") already exercises login, invite accept + reuse rejection, revoke, last-admin refusal, and role gates — full worker suite is 222/222 passing, frontend suite 101/101 passing. Playwright has no login/invite/admin specs yet and the mock Worker (`e2e/fixtures/mock-worker.js`) has no `/api/auth/invite/*` or `/api/admin/*` routes, so those must land on **SOLAR-0133** (login + accept-invite), **SOLAR-0134** (admin users/invites + last-admin), and **SOLAR-0135** (legacy `?token=`/token-paste) rather than this parent. Playwright browser install failed in this sandbox (no network egress to `cdn.playwright.dev`) — E2E was not runnable here; confirm green in CI.
 
 ## In Progress
 
@@ -125,7 +126,7 @@ _Priority order. Phases 1–4 and ADR 0002 Phases 1–2 are complete at v1.3.0. 
 ## Blocked
 
 - **SOLAR-0121** — Frontend umbrella; **closed as coordination-only** (superseded by SOLAR-0125…0131; no full UI on this parent)
-- **SOLAR-0122** — Tests umbrella; superseded by SOLAR-0132…0135 (prefer granular tasks); stays blocked until accept-invite/admin FE exists for Playwright
+- **SOLAR-0122** — Tests umbrella; **closed as coordination-only** (superseded by SOLAR-0132…0135; no new E2E specs on this parent). SOLAR-0132 (Worker Vitest) is effectively covered by existing `routes.test.js` ADR 0003 coverage — confirm/archive on the board. SOLAR-0133/0134/0135 (E2E) stay blocked until accept-invite/admin FE (SOLAR-0126…0130) exists for Playwright to drive.
 
 ## Decisions Made
 
