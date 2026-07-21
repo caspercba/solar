@@ -110,4 +110,26 @@ describe("i18n", () => {
     expect(t("loginRateLimited")).toMatch(/Demasiados intentos/);
     expect(t("loginFailed")).toMatch(/No se pudo iniciar sesión/);
   });
+
+  it("translates admin invite-mint keys in English", () => {
+    expect(t("adminInviteTitle")).toBe("Invite user");
+    expect(t("adminInviteHint")).toMatch(/does not send email/);
+    expect(t("adminInviteCreate")).toBe("Create magic link");
+    expect(t("adminInviteOnceNote")).toMatch(/only once/);
+    expect(t("adminInviteCopy")).toBe("Copy");
+    expect(t("adminInviteExpires", { when: "tomorrow" })).toBe("Expires tomorrow");
+    expect(t("roleRead")).toBe("Read");
+    expect(t("roleAdmin")).toBe("Admin");
+  });
+
+  it("translates admin invite-mint keys in Spanish", () => {
+    setLocale("es");
+    expect(t("adminInviteTitle")).toBe("Invitar usuario");
+    expect(t("adminInviteHint")).toMatch(/no envía correo/);
+    expect(t("adminInviteCreate")).toBe("Crear enlace mágico");
+    expect(t("adminInviteOnceNote")).toMatch(/solo una vez/);
+    expect(t("adminInviteCopy")).toBe("Copiar");
+    expect(t("adminInviteExpires", { when: "mañana" })).toBe("Caduca mañana");
+    expect(t("roleRead")).toBe("Lectura");
+  });
 });
