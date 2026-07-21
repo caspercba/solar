@@ -299,9 +299,11 @@ Today humans share a bearer via the setup form or `?proxy=…&token=…`. Target
 - [ ] **Admin: create magic link** — role + optional label/TTL → show URL once → copy to clipboard for out-of-band send _(SOLAR-0129)_
 - [ ] **Admin: invites list** — emitted vs converted vs revoked/expired; revoke pending; purge stale _(SOLAR-0130)_
 - [ ] **Keep legacy token path** — `API_TOKEN` / opaque keys / `?token=` for HA and migration _(SOLAR-0131; `?token=` boot still works)_
-- [ ] **Worker + E2E tests** — invite lifecycle, last-admin protection, role gates on new routes _(SOLAR-0132…0135)_
+- [~] **Worker + E2E tests** — invite lifecycle, last-admin protection, role gates on new routes _(SOLAR-0132…0135)_ — Worker Vitest (`routes.test.js` "password users and invites (ADR 0003)") already covers login, invite accept/reject-reuse, revoke, last-admin refusal, and role gates (222/222 passing); E2E still needs accept-invite, admin users/invites, and legacy-token specs (mock Worker has no invite/admin routes yet) — land those via SOLAR-0133/0134/0135, not this umbrella
 
 _Frontend umbrella SOLAR-0121 is coordination-only; implement remaining §5.3 UI via the granular tasks above, not the parent._
+
+_Tests umbrella SOLAR-0122 is coordination-only; implement remaining Worker/E2E coverage via SOLAR-0132…0135, not the parent._
 
 Normative design: [docs/decisions/0003-password-users-and-magic-link-invites.md](./docs/decisions/0003-password-users-and-magic-link-invites.md). Architecture sketch: [ARCHITECTURE.md](./ARCHITECTURE.md).
 
