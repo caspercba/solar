@@ -4,7 +4,7 @@ A lightweight, real-time solar monitoring dashboard for off-grid and hybrid inve
 
 ## Architecture
 
-Deeper system + auth notes (including planned password users and magic-link invites): **[ARCHITECTURE.md](./ARCHITECTURE.md)**. Product roadmap: [PLAN.md](./PLAN.md). Status: [STATE.md](./STATE.md).
+Deeper system + auth notes (including password users and magic-link invites, ADR 0003): **[ARCHITECTURE.md](./ARCHITECTURE.md)**. Product roadmap: [PLAN.md](./PLAN.md). Status: [STATE.md](./STATE.md).
 
 ```mermaid
 flowchart LR
@@ -22,9 +22,9 @@ flowchart LR
 
 | Layer | Role |
 |-------|------|
-| **Frontend** | Dashboard UI — cards, energy-flow, and chart views; 60 s polling; multi-system tabs. Stores proxy URL + access token in `localStorage`. Planned: username/password login and magic-link accept (ADR 0003). |
+| **Frontend** | Dashboard UI — cards, energy-flow, and chart views; 60 s polling; multi-system tabs. Username/password login is the primary sign-in path (ADR 0003); `?token=`/pasted bearer remain for HA and migration. Admin can mint/list/revoke/purge magic-link invites; the accept-invite screen and admin user-management UI are still in progress. |
 | **Worker** | Token-gated REST API. Discovers plants/devices on setup, caches vendor sessions in memory, returns normalized JSON. History routes proxy vendor APIs on demand. |
-| **KV** | System configs (`system:<id>`), credentials index (`_index`), opaque API keys, and optional alert state (`alert-state:<uuid>`). Planned: password users + invites. No historical readings are stored. |
+| **KV** | System configs (`system:<id>`), credentials index (`_index`), opaque API keys, password users (`user:<id>`) and magic-link invites (`invite:<hash>`, ADR 0003), and optional alert state (`alert-state:<uuid>`). No historical readings are stored. |
 | **Vendor APIs** | ShineMonitor (signed GET) and Growatt (cookie session POST). Neither is callable directly from the browser due to CORS and auth complexity. |
 
 ## Quick start (local dev)
@@ -364,16 +364,30 @@ Open `http://localhost:8080`. Add `http://localhost:8080` to `ALLOWED_ORIGINS` i
 
 ## First-Time Setup
 
-1. **Deploy the Worker** and set `API_TOKEN` (above).
-2. **Open the frontend** at https://solar-dashboard.pages.dev (or GitHub Pages / local).
-3. On the setup screen, enter:
-   - **Proxy URL** — your Worker URL, no trailing slash (e.g. `https://solar-proxy.example.workers.dev`)
-   - **Access Token** — the same value you set with `wrangler secret put API_TOKEN`
-4. Click **Connect**. The app validates the token against `GET /api/systems`.
-5. **Add a system** — choose service (ShineMonitor or Growatt), display name (optional), and inverter portal username/password. The Worker runs discovery (plant, device, nominal power) and stores credentials in KV.
-6. The dashboard polls `GET /api/systems/:id/data` every 60 seconds.
+The human sign-in path is **username + password** (ADR 0003). The `API_TOKEN` secret you set above is only the bootstrap credential used to create that first account — it is not what people type into the setup screen day to day.
 
-**Bookmark auto-connect:** append query parameters to skip the setup form:
+1. **Deploy the Worker** and set `API_TOKEN` (above).
+2. **Create the first admin user** with the bootstrap token (full runbook: [worker/DEPLOY.md §3.6.2](./worker/DEPLOY.md#362-password-users-and-magic-link-invites-adr-0003)):
+
+   ```bash
+   curl -sS -X POST \
+     -H "Authorization: Bearer YOUR_API_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"username":"owner","password":"choose-a-strong-password","role":"admin"}' \
+     "https://solar-proxy.example.workers.dev/api/admin/users"
+   ```
+
+3. **Open the frontend** at https://solar-dashboard.pages.dev (or GitHub Pages / local).
+4. On the setup screen, enter:
+   - **Proxy URL** — your Worker URL, no trailing slash (e.g. `https://solar-proxy.example.workers.dev`)
+   - **Username** / **Password** — the admin account created in step 2
+5. Click **Sign in**. The app logs in via `POST /api/auth/login` and stores the returned session bearer like any other token.
+6. **Add a system** — choose service (ShineMonitor or Growatt), display name (optional), and inverter portal username/password. The Worker runs discovery (plant, device, nominal power) and stores credentials in KV.
+7. The dashboard polls `GET /api/systems/:id/data` every 60 seconds.
+
+**Invite additional people:** as an admin, open the invites panel in settings and mint a magic-link invite (role + optional label/TTL). Copy the returned URL and send it out-of-band (chat, email client) — the Worker never sends email itself. See [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md) for the full invite lifecycle. *The frontend accept-invite screen and the rest of the admin user-management UI (list/create/disable users) are still in progress — until they land, converting an invite or managing users beyond invites requires calling the Worker API directly (examples in [worker/DEPLOY.md §3.6.2](./worker/DEPLOY.md#362-password-users-and-magic-link-invites-adr-0003)).*
+
+**Legacy / machine access:** the shared `API_TOKEN` and per-user opaque API keys ([worker/DEPLOY.md §3.6](./worker/DEPLOY.md#36-shared-token-vs-per-user-keys)) keep working for Home Assistant, scripts, and bookmark deep links — no migration is required:
 
 ```
 https://your-frontend.example/?proxy=https://solar-proxy.example.workers.dev&token=YOUR_TOKEN
@@ -399,8 +413,20 @@ Use only on trusted devices — the token appears in the URL and browser history
 | `POST` | `/api/admin/tokens` | Mint a per-user opaque API key (`label`, `role: "read"\|"admin"`, optional `expiresAt`) — admin role required |
 | `GET` | `/api/admin/tokens` | List minted API keys (never returns the plaintext token) — admin role required |
 | `DELETE` | `/api/admin/tokens/:id` | Revoke one API key without affecting any other token — admin role required |
+| `POST` | `/api/auth/login` | `{ username, password }` → session bearer `{ token, role, username, userId, tokenId }` (ADR 0003) |
+| `POST` | `/api/auth/logout` | Revoke the current session token |
+| `GET` | `/api/me` | Current actor (`userId`/`tokenId`, `username?`, `role`) |
+| `POST` | `/api/auth/invite/accept` | `{ invite, username, password }` → creates the user and a session (no prior auth required) |
+| `GET` | `/api/admin/users` | List password users — admin role required |
+| `POST` | `/api/admin/users` | Create a user with username + password + role — admin role required |
+| `PATCH` | `/api/admin/users/:id` | Change role or disable/re-enable a user — admin role required |
+| `DELETE` | `/api/admin/users/:id` | Soft-disable (default) or hard-delete (`?hard=1`) a user — admin role required |
+| `GET` | `/api/admin/invites` | List invites with status (pending / converted / revoked / expired) — admin role required |
+| `POST` | `/api/admin/invites` | Mint a magic-link invite (`role`, optional `label`/`expiresAt`) — admin role required |
+| `DELETE` | `/api/admin/invites/:id` | Revoke a pending invite — admin role required |
+| `POST` | `/api/admin/invites/purge` | Drop non-pending invites from the index — admin role required |
 
-All routes require `Authorization: Bearer <token>` when auth is configured. The token is either the legacy shared `API_TOKEN` secret (resolves to the `admin` role) or a per-user key minted via `POST /api/admin/tokens` (ADR 0002 Phase 2 — see [worker/DEPLOY.md §3.6](./worker/DEPLOY.md#36-shared-token-vs-per-user-keys)). Per-user keys carry a `read` or `admin` role; mutating routes (`POST`/`PUT`/`DELETE`) return `403` for `read`-role callers.
+All routes require `Authorization: Bearer <token>` when auth is configured. The token is one of: the legacy shared `API_TOKEN` secret (resolves to the `admin` role), a per-user key minted via `POST /api/admin/tokens` (ADR 0002 Phase 2 — see [worker/DEPLOY.md §3.6](./worker/DEPLOY.md#36-shared-token-vs-per-user-keys)), or a session bearer issued by `POST /api/auth/login` / `POST /api/auth/invite/accept` (ADR 0003 — see [worker/DEPLOY.md §3.6.2](./worker/DEPLOY.md#362-password-users-and-magic-link-invites-adr-0003)). All resolve to a `read` or `admin` role (the legacy token always resolves to `admin`); mutating routes (`POST`/`PUT`/`PATCH`/`DELETE`) return `403` for `read`-role callers. Login and invite-accept are rate-limited per client IP, separately from the data-route limits below. The final remaining `admin` user cannot be disabled, deleted, or demoted.
 
 **Rate limits:** Real-time data routes (`GET /api/systems/:id/data`, `GET /api/systems/:id/ha`, and `GET /api/systems/all/data`) are limited to **60 requests per minute per bearer token** (in-memory per Worker isolate) — legacy and per-user tokens are limited independently. Exceeding the limit returns **429 Too Many Requests** with a `Retry-After` header (seconds until the window resets). Normal dashboard polling at 60 s intervals is well below this limit. Rate limiting is disabled only in dev open mode (no `API_TOKEN` and no matching per-user token configured).
 
@@ -571,10 +597,11 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 - **`API_TOKEN`** — Set only via `wrangler secret put`. Do not commit tokens, inverter passwords, or `.env` files. The repo `.gitignore` excludes `.env`.
 - **`PRODUCTION`** — Set to `true` via `wrangler secret put PRODUCTION` on every deployed Worker (production and staging). Fails closed with `503` if `API_TOKEN` is ever missing on a real deployment, instead of silently running open. See [worker/DEPLOY.md §3.1a](./worker/DEPLOY.md#31a-production-required-on-every-real-deployment).
 - **Inverter credentials** — Stored encrypted in Workers KV when `CREDENTIALS_KEY` is set (`wrangler secret put CREDENTIALS_KEY`). Restrict Cloudflare account access; treat KV as sensitive.
-- **Frontend token storage** — The access token is kept in `localStorage` (and optionally URL params for bookmarks). Anyone with the token can call your Worker API. Rotate the token if it is exposed.
+- **Frontend token storage** — The access/session token is kept in `localStorage` (and optionally URL params for bookmarks). Anyone with the token can call your Worker API. Rotate the shared token or log the user out (revokes their session) if it is exposed.
 - **HTTPS only** — Use HTTPS for both the Worker and frontend in production.
 - **Dev mode** — If `API_TOKEN` is unset **and** `PRODUCTION` is unset, the Worker accepts unauthenticated requests. This is the default for local `wrangler dev` only — never deploy to production or staging without both `API_TOKEN` and `PRODUCTION` set.
 - **Rate limiting** — Data routes (`/data`, `/ha`, `/all/data`) are capped at 60 requests/minute per bearer token (per isolate). Returns 429 with `Retry-After` when exceeded. Protects upstream inverter APIs from burst polling or scripted clients.
+- **Password users & invites (ADR 0003)** — Passwords are stored as PBKDF2-SHA-256 hashes only, never plaintext; magic-link invite secrets are stored as SHA-256 hashes (same pattern as opaque API keys) and are single-use and TTL-bound. `POST /api/auth/login` and `POST /api/auth/invite/accept` are rate-limited per client IP, separately from the data-route limit above. The final remaining `admin` user cannot be disabled, deleted, or demoted. See [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md) and [worker/DEPLOY.md §3.6.2](./worker/DEPLOY.md#362-password-users-and-magic-link-invites-adr-0003).
 
 ## Documentation
 
@@ -582,6 +609,8 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 |----------|-------------|
 | [worker/DEPLOY.md](./worker/DEPLOY.md) | Worker deployment runbook (KV, secrets, cron, CI) |
 | [PLAN.md](./PLAN.md) | Project plan and roadmap |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | System + auth architecture, KV map |
+| [docs/decisions/](./docs/decisions/) | Architecture decision records — [ADR 0002](./docs/decisions/0002-multi-user-token-and-audit-log.md) (opaque keys + audit log), [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md) (password users + magic-link invites) |
 | [discovery/ADAPTER_GUIDE.md](./discovery/ADAPTER_GUIDE.md) | **Adding a new inverter brand** — adapter interface, tests, registration |
 | [discovery/README.md](./discovery/README.md) | Discovery folder index (ShineMonitor quick start) |
 | [discovery/API.md](./discovery/API.md) | ShineMonitor API reference |
