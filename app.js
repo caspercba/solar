@@ -45,6 +45,8 @@ import {
   inviteStatusBadgeClass,
   isInviteRevocable,
   hasPurgeableInvites,
+  canDisableUser,
+  canChangeUserRole,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -199,6 +201,9 @@ function isAdminActor() {
 /** Cached admin invites list (ADR 0003) — emitted vs converted vs revoked/expired. */
 let invitesListState = [];
 
+/** Cached admin users list (ADR 0003). */
+let usersListState = [];
+
 /** Page origin for Worker-built magic links (strip query/hash; drop index.html). */
 function inviteFrontendUrl() {
   try {
@@ -272,6 +277,10 @@ const els = {
   themeBtn: $("theme-btn"),
   setupThemeBtn: $("setup-theme-btn"),
   themeSelect: $("theme-select"),
+  adminUsersListSection: $("admin-users-list-section"),
+  usersList: $("users-list"),
+  usersListEmpty: $("users-list-empty"),
+  usersListMsg: $("users-list-msg"),
   adminInviteSection: $("admin-invite-section"),
   adminInviteForm: $("admin-invite-form"),
   inviteRole: $("invite-role"),
@@ -1985,8 +1994,12 @@ function renderGridInputLabelForm(sys) {
 }
 
 function hideAdminInviteSection() {
+  if (els.adminUsersListSection) els.adminUsersListSection.hidden = true;
   if (els.adminInviteSection) els.adminInviteSection.hidden = true;
+  if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = true;
   clearInviteResult();
+  clearUsersList();
+  clearInvitesList();
 }
 
 function clearInviteResult() {
@@ -2006,14 +2019,215 @@ function clearInviteResult() {
 
 function syncAdminInviteSection() {
   const show = isAdminActor();
+  if (els.adminUsersListSection) els.adminUsersListSection.hidden = !show;
   if (els.adminInviteSection) els.adminInviteSection.hidden = !show;
   if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = !show;
   if (!show) {
     clearInviteResult();
     clearInvitesList();
+    clearUsersList();
     return;
   }
+  loadUsersList();
   loadInvitesList();
+}
+
+/** Reset users list state/DOM (called when the admin section is hidden). */
+function clearUsersList() {
+  usersListState = [];
+  if (els.usersList) els.usersList.innerHTML = "";
+  if (els.usersListEmpty) els.usersListEmpty.hidden = true;
+  setUsersListMsg("");
+}
+
+function setUsersListMsg(text, kind) {
+  if (!els.usersListMsg) return;
+  if (!text) {
+    els.usersListMsg.hidden = true;
+    els.usersListMsg.textContent = "";
+    els.usersListMsg.className = "cred-msg";
+    return;
+  }
+  els.usersListMsg.textContent = text;
+  els.usersListMsg.className = kind ? `cred-msg ${kind}` : "cred-msg";
+  els.usersListMsg.hidden = false;
+}
+
+function formatUserListDate(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
+/** Render `usersListState` — username, role, created, last login; disable + role change. */
+function renderUsersList() {
+  if (!els.usersList) return;
+  els.usersList.innerHTML = "";
+  const hasUsers = usersListState.length > 0;
+  if (els.usersListEmpty) els.usersListEmpty.hidden = hasUsers;
+
+  for (const user of usersListState) {
+    const row = document.createElement("div");
+    row.className = user.disabledAt ? "user-row is-disabled" : "user-row";
+    row.dataset.userId = user.id;
+
+    const info = document.createElement("div");
+    info.className = "user-row-info";
+
+    const topLine = document.createElement("div");
+    topLine.className = "user-row-top";
+
+    const name = document.createElement("span");
+    name.className = "user-row-name";
+    name.textContent = user.username || user.id;
+    topLine.appendChild(name);
+
+    const statusBadge = document.createElement("span");
+    const disabled = Boolean(user.disabledAt);
+    statusBadge.className = `user-status-badge ${disabled ? "user-status-disabled" : "user-status-active"}`;
+    statusBadge.textContent = t(disabled ? "userStatusDisabled" : "userStatusActive");
+    topLine.appendChild(statusBadge);
+
+    info.appendChild(topLine);
+
+    const metaLine = document.createElement("div");
+    metaLine.className = "user-row-meta";
+    const metaParts = [];
+    if (user.createdAt) metaParts.push(t("userCreatedAt", { when: formatUserListDate(user.createdAt) }));
+    if (user.lastLoginAt) {
+      metaParts.push(t("userLastLoginAt", { when: formatUserListDate(user.lastLoginAt) }));
+    } else {
+      metaParts.push(t("userNeverLoggedIn"));
+    }
+    metaLine.textContent = metaParts.join(" · ");
+    info.appendChild(metaLine);
+
+    row.appendChild(info);
+
+    const actions = document.createElement("div");
+    actions.className = "user-row-actions";
+
+    const roleSelect = document.createElement("select");
+    roleSelect.className = "user-role-select";
+    roleSelect.setAttribute("aria-label", t("userRoleAria", { username: user.username || user.id }));
+    for (const role of ["read", "admin"]) {
+      const opt = document.createElement("option");
+      opt.value = role;
+      opt.textContent = t(role === "admin" ? "roleAdmin" : "roleRead");
+      if (user.role === role) opt.selected = true;
+      roleSelect.appendChild(opt);
+    }
+    const lastAdmin = !canChangeUserRole(usersListState, user.id, "read");
+    if (lastAdmin && user.role === "admin" && !disabled) {
+      // Keep select usable for display, but block demotion to read.
+      const readOpt = roleSelect.querySelector('option[value="read"]');
+      if (readOpt) {
+        readOpt.disabled = true;
+        readOpt.title = t("userLastAdminDemote");
+      }
+    }
+    roleSelect.addEventListener("change", () => changeUserRoleRow(user.id, roleSelect));
+    actions.appendChild(roleSelect);
+
+    if (disabled) {
+      const enableBtn = document.createElement("button");
+      enableBtn.type = "button";
+      enableBtn.className = "user-action-btn user-enable-btn";
+      enableBtn.textContent = t("userEnable");
+      enableBtn.addEventListener("click", () => enableUserRow(user.id, enableBtn));
+      actions.appendChild(enableBtn);
+    } else {
+      const disableBtn = document.createElement("button");
+      disableBtn.type = "button";
+      disableBtn.className = "user-action-btn user-disable-btn";
+      disableBtn.textContent = t("userDisable");
+      const canDisable = canDisableUser(usersListState, user.id);
+      if (!canDisable) {
+        disableBtn.disabled = true;
+        disableBtn.title = t("userLastAdminDisable");
+      } else {
+        disableBtn.addEventListener("click", () => disableUserRow(user.id, user.username, disableBtn));
+      }
+      actions.appendChild(disableBtn);
+    }
+
+    row.appendChild(actions);
+    els.usersList.appendChild(row);
+  }
+}
+
+async function loadUsersList() {
+  if (!els.usersList) return;
+  setUsersListMsg("");
+  try {
+    usersListState = await api("GET", "/api/admin/users");
+    if (!Array.isArray(usersListState)) usersListState = [];
+  } catch (err) {
+    usersListState = [];
+    setUsersListMsg(err.message || t("adminUsersLoadFailed"), "cred-err");
+  }
+  renderUsersList();
+}
+
+async function changeUserRoleRow(id, selectEl) {
+  const nextRole = selectEl?.value;
+  if (!nextRole) return;
+  if (!canChangeUserRole(usersListState, id, nextRole)) {
+    setUsersListMsg(t("userLastAdminDemote"), "cred-err");
+    renderUsersList();
+    return;
+  }
+  if (selectEl) selectEl.disabled = true;
+  try {
+    await api("PATCH", `/api/admin/users/${id}`, { role: nextRole });
+    await loadUsersList();
+  } catch (err) {
+    setUsersListMsg(err.message || t("userRoleChangeFailed"), "cred-err");
+    renderUsersList();
+  }
+}
+
+async function disableUserRow(id, username, btn) {
+  if (!canDisableUser(usersListState, id)) {
+    setUsersListMsg(t("userLastAdminDisable"), "cred-err");
+    renderUsersList();
+    return;
+  }
+  if (!confirm(t("userDisableConfirm", { username: username || id }))) return;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t("userDisabling");
+  }
+  try {
+    await api("DELETE", `/api/admin/users/${id}`);
+    await loadUsersList();
+  } catch (err) {
+    setUsersListMsg(err.message || t("userDisableFailed"), "cred-err");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t("userDisable");
+    }
+  }
+}
+
+async function enableUserRow(id, btn) {
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t("userEnabling");
+  }
+  try {
+    await api("PATCH", `/api/admin/users/${id}`, { disabled: false });
+    await loadUsersList();
+  } catch (err) {
+    setUsersListMsg(err.message || t("userEnableFailed"), "cred-err");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t("userEnable");
+    }
+  }
 }
 
 /** Reset invites list state/DOM (called when the admin section is hidden). */

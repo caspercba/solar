@@ -57,6 +57,10 @@ import {
   inviteStatusBadgeClass,
   isInviteRevocable,
   hasPurgeableInvites,
+  countActiveAdmins,
+  isLastActiveAdmin,
+  canDisableUser,
+  canChangeUserRole,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -691,5 +695,41 @@ describe("admin invites (ADR 0003) helpers", () => {
     expect(hasPurgeableInvites([{ status: "pending" }])).toBe(false);
     expect(hasPurgeableInvites([{ status: "pending" }, { status: "revoked" }])).toBe(true);
     expect(hasPurgeableInvites(undefined)).toBe(false);
+  });
+});
+
+describe("admin users (ADR 0003) last-admin helpers", () => {
+  const soloAdmin = { id: "a1", role: "admin", disabledAt: null };
+  const secondAdmin = { id: "a2", role: "admin", disabledAt: null };
+  const reader = { id: "r1", role: "read", disabledAt: null };
+  const disabledAdmin = { id: "a3", role: "admin", disabledAt: "2026-01-01T00:00:00Z" };
+
+  it("countActiveAdmins ignores disabled and non-admin users", () => {
+    expect(countActiveAdmins([])).toBe(0);
+    expect(countActiveAdmins(undefined)).toBe(0);
+    expect(countActiveAdmins([soloAdmin, reader, disabledAdmin])).toBe(1);
+    expect(countActiveAdmins([soloAdmin, secondAdmin])).toBe(2);
+  });
+
+  it("isLastActiveAdmin is true only for the sole active admin", () => {
+    expect(isLastActiveAdmin([soloAdmin, reader], "a1")).toBe(true);
+    expect(isLastActiveAdmin([soloAdmin, secondAdmin], "a1")).toBe(false);
+    expect(isLastActiveAdmin([soloAdmin, reader], "r1")).toBe(false);
+    expect(isLastActiveAdmin([disabledAdmin], "a3")).toBe(false);
+    expect(isLastActiveAdmin([soloAdmin], "missing")).toBe(false);
+  });
+
+  it("canDisableUser blocks only the last active admin", () => {
+    expect(canDisableUser([soloAdmin, reader], "a1")).toBe(false);
+    expect(canDisableUser([soloAdmin, secondAdmin], "a1")).toBe(true);
+    expect(canDisableUser([soloAdmin, reader], "r1")).toBe(true);
+    expect(canDisableUser([], "")).toBe(false);
+  });
+
+  it("canChangeUserRole allows promote; blocks demoting the last admin", () => {
+    expect(canChangeUserRole([soloAdmin, reader], "r1", "admin")).toBe(true);
+    expect(canChangeUserRole([soloAdmin, reader], "a1", "read")).toBe(false);
+    expect(canChangeUserRole([soloAdmin, secondAdmin], "a1", "read")).toBe(true);
+    expect(canChangeUserRole([soloAdmin], "a1", "bogus")).toBe(false);
   });
 });

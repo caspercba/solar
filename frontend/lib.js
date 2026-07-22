@@ -460,3 +460,37 @@ export function isInviteRevocable(status) {
 export function hasPurgeableInvites(invites) {
   return Array.isArray(invites) && invites.some((inv) => inv?.status !== "pending");
 }
+
+/** Admin users (ADR 0003) — last-admin guards for disable / demote UX. */
+
+/** Count active (non-disabled) admin users. */
+export function countActiveAdmins(users) {
+  if (!Array.isArray(users)) return 0;
+  return users.filter((u) => u?.role === "admin" && !u.disabledAt).length;
+}
+
+/**
+ * True when `userId` is the sole active admin — UI must block disable/demote
+ * (Worker also returns 400; helpers keep the control disabled up front).
+ */
+export function isLastActiveAdmin(users, userId) {
+  if (!userId || !Array.isArray(users)) return false;
+  const user = users.find((u) => u?.id === userId);
+  if (!user || user.role !== "admin" || user.disabledAt) return false;
+  return countActiveAdmins(users) <= 1;
+}
+
+/** Soft-disable / remove is allowed unless this would leave zero active admins. */
+export function canDisableUser(users, userId) {
+  return Boolean(userId) && !isLastActiveAdmin(users, userId);
+}
+
+/**
+ * Role change is allowed unless demoting the last active admin to `read`.
+ * Promoting to admin is always allowed.
+ */
+export function canChangeUserRole(users, userId, nextRole) {
+  if (!userId || (nextRole !== "read" && nextRole !== "admin")) return false;
+  if (nextRole === "admin") return true;
+  return !isLastActiveAdmin(users, userId);
+}

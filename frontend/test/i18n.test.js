@@ -122,6 +122,16 @@ describe("i18n", () => {
     expect(t("roleAdmin")).toBe("Admin");
   });
 
+  it("translates admin users-list keys in English", () => {
+    expect(t("adminUsersListTitle")).toBe("Users");
+    expect(t("adminUsersHint")).toMatch(/last active admin/);
+    expect(t("userDisable")).toBe("Disable");
+    expect(t("userEnable")).toBe("Enable");
+    expect(t("userLastAdminDisable")).toMatch(/last admin/);
+    expect(t("userLastAdminDemote")).toMatch(/last admin/);
+    expect(t("userDisableConfirm", { username: "alice" })).toMatch(/alice/);
+  });
+
   it("translates admin invite-mint keys in Spanish", () => {
     setLocale("es");
     expect(t("adminInviteTitle")).toBe("Invitar usuario");
@@ -131,5 +141,15 @@ describe("i18n", () => {
     expect(t("adminInviteCopy")).toBe("Copiar");
     expect(t("adminInviteExpires", { when: "mañana" })).toBe("Caduca mañana");
     expect(t("roleRead")).toBe("Lectura");
+  });
+
+  it("translates admin users-list keys in Spanish", () => {
+    setLocale("es");
+    expect(t("adminUsersListTitle")).toBe("Usuarios");
+    expect(t("adminUsersHint")).toMatch(/último admin/);
+    expect(t("userDisable")).toBe("Desactivar");
+    expect(t("userEnable")).toBe("Activar");
+    expect(t("userLastAdminDisable")).toMatch(/último admin/);
+    expect(t("userDisableConfirm", { username: "alice" })).toMatch(/alice/);
   });
 });
