@@ -705,28 +705,31 @@ function forceReLogin(message = t("sessionExpired")) {
 }
 
 /**
- * Log out: revoke the session on the Worker when possible, then clear local state.
+ * Log out: clear local bearer and return to setup, then best-effort revoke on the Worker.
  * Always returns to setup even if the logout request fails (already revoked, offline).
  */
 async function logout() {
   const conn = loadConn();
-  if (conn?.url && conn?.token) {
-    try {
-      await fetch(`${conn.url}/api/auth/logout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${conn.token}` },
-      });
-    } catch {
-      /* still clear local session */
-    }
-  }
   const url = conn?.url;
+  const token = conn?.token;
+
   clearConn();
   clearAllGeneratorRuntimeStates();
   stopPolling();
   closeDashboardOverlays();
   showSetup();
   if (url && els.setupUrl) els.setupUrl.value = url;
+
+  if (url && token) {
+    try {
+      await fetch(`${url}/api/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      /* local session already cleared */
+    }
+  }
 }
 
 /** Accept-invite onboarding (ADR 0003) — set username + password from magic link. */
