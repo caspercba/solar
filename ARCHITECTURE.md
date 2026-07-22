@@ -1,8 +1,8 @@
 # Architecture
 
-_Last updated: 2026-07-21_
+_Last updated: 2026-07-22_
 
-Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation details and deploy steps live in [README.md](./README.md) and [worker/DEPLOY.md](./worker/DEPLOY.md). Auth evolution: [ADR 0002](./docs/decisions/0002-multi-user-token-and-audit-log.md) (opaque keys + audit), [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md) (password users + magic-link invites — Worker routes and login/invite-mint/invite-list UI shipped; accept-invite screen and admin user-management UI still in progress).
+Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation details and deploy steps live in [README.md](./README.md) and [worker/DEPLOY.md](./worker/DEPLOY.md). Auth evolution: [ADR 0002](./docs/decisions/0002-multi-user-token-and-audit-log.md) (opaque keys + audit), [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md) (password users + magic-link invites — Worker routes and full frontend auth UX shipped: password login, accept-invite, admin users/invites panels, logout/session-expiry; legacy `?token=` / pasted bearer retained for HA and migration).
 
 ## 1. System overview
 
@@ -12,9 +12,9 @@ Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation det
 │  Host: Cloudflare Pages / GitHub Pages / any static host                 │
 │  No build step — cache-bust ?v=N on assets                               │
 │  Client state: localStorage (proxy URL, bearer token, prefs, view)       │
-│  Auth UX: username/password login (primary); admin mints/lists/          │
-│  revokes/purges magic-link invites. ?token=/pasted bearer kept for       │
-│  HA & migration. Accept-invite screen + admin user UI: in progress.      │
+│  Auth UX: username/password login (primary); ?invite= accept-invite      │
+│  screen; admin users CRUD + mint/list/revoke/purge magic-link invites;   │
+│  logout + session-expiry. ?token=/pasted bearer kept for HA & migration. │
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 │ HTTPS
                                 │ Authorization: Bearer <token>
@@ -44,7 +44,7 @@ Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation det
 3. **Vendor is source of truth for history** — no archival time-series in KV.
 4. **Zero frontend build step** — plain HTML/CSS/JS.
 5. **Secrets stay on the Worker** — inverter portal credentials encrypted in KV; browser holds only a bearer token (and proxy URL).
-6. **Auth layers compose** — shared secret → opaque keys → password users + invites (done; frontend accept-invite/admin-users UI still landing); machines keep keys, humans get accounts.
+6. **Auth layers compose** — shared secret → opaque keys → password users + invites (shipped end-to-end); machines keep keys, humans get accounts.
 
 ## 3. Auth model
 
@@ -74,17 +74,17 @@ revoke / purge stale
 
 **Worker routes — shipped:** `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/me`, `POST /api/auth/invite/accept`, `GET`/`POST /api/admin/users`, `PATCH`/`DELETE /api/admin/users/:id`, `GET`/`POST /api/admin/invites`, `DELETE /api/admin/invites/:id`, `POST /api/admin/invites/purge`. Passwords hashed with PBKDF2-SHA-256; invite secrets hash-stored like opaque keys; last-admin protection on role/disable/delete; login and invite-accept are rate-limited per client IP.
 
-**Admin capabilities:**
+**Admin capabilities (shipped end-to-end — Worker + settings UI):**
 
-- List users with roles; create user with username + password; disable/remove (soft by default, `?hard=1` for hard-delete); change roles — **shipped on the Worker**; no admin UI yet (curl / `worker/DEPLOY.md §3.6.2` in the meantime).
-- Issue magic links (copyable); see which invites converted; revoke pending links; purge dead invites — **shipped end-to-end**, including the admin UI (mint form + invites list with revoke/purge).
+- List users with roles; create user with username + password; disable/remove (soft by default, `?hard=1` for hard-delete); change roles.
+- Issue magic links (copyable); see which invites converted; revoke pending links; purge dead invites (mint form + invites list with revoke/purge).
 - Retain existing opaque API key admin routes for HA / automation — unchanged.
 
-**Invitee path:** `POST /api/auth/invite/accept` grants **account creation + password set** (v1) on the Worker; the frontend accept-invite screen (`?invite=`) is not built yet, so converting an invite today requires calling the API directly. No product email sender — admin distributes the link personally.
+**Invitee path:** `?proxy=…&invite=<secret>` opens the accept-invite screen → username + password → `POST /api/auth/invite/accept` creates the account and returns a session bearer (v1: new-user onboarding only). No product email sender — admin distributes the link personally.
 
-**Login path:** username + password → session bearer (same header as today) → dashboard. **Shipped** as the primary frontend setup-screen flow. Legacy `?token=` and pasted opaque keys remain for migration and machine bookmarks.
+**Login path:** username + password → session bearer (same header as today) → dashboard. **Shipped** as the primary frontend setup-screen flow, with logout and session-expiry UX. Legacy `?token=` and pasted opaque keys remain for migration and machine bookmarks.
 
-**Frontend gaps (tracked in [PLAN.md §5.3](./PLAN.md#53-multi-user-accounts--invites-planned--adr-0003)):** accept-invite screen, admin users list / create-user / role-disable UI, logout + session-expiry UX.
+**Frontend status:** ADR 0003 UI complete (see [PLAN.md §5.3](./PLAN.md#53-multi-user-accounts--invites-planned--adr-0003) and [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md)) — password login, accept-invite, admin users/invites panels, logout/session-expiry, and retained legacy token path.
 
 ### 3.3 Trust and threat notes
 
