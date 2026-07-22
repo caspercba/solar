@@ -48,6 +48,8 @@ import {
   inviteAcceptErrorI18nKey,
   canDisableUser,
   canChangeUserRole,
+  httpError,
+  isUnauthorizedError,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -178,8 +180,16 @@ async function api(method, path, body) {
   };
   if (body) opts.body = JSON.stringify(body);
   const resp = await fetch(`${conn.url}${path}`, opts);
-  const json = await resp.json();
-  if (!resp.ok) throw new Error(json.error || `HTTP ${resp.status}`);
+  let json = null;
+  try {
+    json = await resp.json();
+  } catch {
+    /* non-JSON body */
+  }
+  if (!resp.ok) {
+    if (resp.status === 401) forceReLogin();
+    throw httpError((json && json.error) || `HTTP ${resp.status}`, resp.status);
+  }
   return json;
 }
 
@@ -189,8 +199,11 @@ let currentActor = null;
 async function refreshCurrentActor() {
   try {
     currentActor = await api("GET", "/api/me");
-  } catch {
+  } catch (err) {
     currentActor = null;
+    // Propagate revoked/disabled sessions so boot/poll can stop; other /api/me
+    // failures (e.g. older mocks without the route) stay non-fatal for the dash.
+    if (isUnauthorizedError(err)) throw err;
   }
   return currentActor;
 }
@@ -638,7 +651,7 @@ function setBatRate(absAmps) {
 let pendingInviteSecret = null;
 
 /* ── Screens ── */
-function showSetup() {
+function showSetup({ message } = {}) {
   els.setupScreen.hidden = false;
   if (els.inviteScreen) els.inviteScreen.hidden = true;
   els.dashScreen.hidden = true;
@@ -647,9 +660,73 @@ function showSetup() {
   if (els.setupPass) els.setupPass.value = "";
   if (els.setupToken) els.setupToken.value = "";
   if (els.setupError) {
-    els.setupError.hidden = true;
-    els.setupError.textContent = "";
+    if (message) {
+      els.setupError.textContent = message;
+      els.setupError.hidden = false;
+    } else {
+      els.setupError.hidden = true;
+      els.setupError.textContent = "";
+    }
   }
+}
+
+/** Close dashboard overlays when returning to the login screen. */
+function closeDashboardOverlays() {
+  const manage = $("manage-modal");
+  const detail = $("system-detail-modal");
+  const add = $("add-system-modal");
+  if (manage) manage.hidden = true;
+  if (detail) detail.hidden = true;
+  if (add) add.hidden = true;
+}
+
+/**
+ * Clear local bearer and return to setup with a re-login prompt.
+ * Used when the Worker rejects a revoked/disabled session (HTTP 401).
+ */
+let forcingReLogin = false;
+function forceReLogin(message = t("sessionExpired")) {
+  if (forcingReLogin) return;
+  forcingReLogin = true;
+  try {
+    const conn = loadConn();
+    const url = conn?.url;
+    clearConn();
+    clearAllGeneratorRuntimeStates();
+    stopPolling();
+    closeDashboardOverlays();
+    showSetup({ message });
+    if (url && els.setupUrl) els.setupUrl.value = url;
+  } finally {
+    queueMicrotask(() => {
+      forcingReLogin = false;
+    });
+  }
+}
+
+/**
+ * Log out: revoke the session on the Worker when possible, then clear local state.
+ * Always returns to setup even if the logout request fails (already revoked, offline).
+ */
+async function logout() {
+  const conn = loadConn();
+  if (conn?.url && conn?.token) {
+    try {
+      await fetch(`${conn.url}/api/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${conn.token}` },
+      });
+    } catch {
+      /* still clear local session */
+    }
+  }
+  const url = conn?.url;
+  clearConn();
+  clearAllGeneratorRuntimeStates();
+  stopPolling();
+  closeDashboardOverlays();
+  showSetup();
+  if (url && els.setupUrl) els.setupUrl.value = url;
 }
 
 /** Accept-invite onboarding (ADR 0003) — set username + password from magic link. */
@@ -1609,6 +1686,7 @@ async function pollNow() {
       console.error("compare poll error:", err);
       setCompareLoading(false);
       setStatus(false);
+      if (isUnauthorizedError(err)) return;
       showPollError(chartErrorMessage(err, t("compareLoadError")));
     } finally {
       setPollRetrying(false);
@@ -1626,6 +1704,7 @@ async function pollNow() {
     console.error("poll error:", err);
     setLoading(false);
     setStatus(false);
+    if (isUnauthorizedError(err)) return;
     showPollError(chartErrorMessage(err, t("pollLoadError")));
   } finally {
     setPollRetrying(false);
@@ -1648,6 +1727,8 @@ function startPolling() {
   if (pollTimer) clearTimeout(pollTimer);
   async function tick() {
     await pollNow();
+    // Stop the loop after logout or session expiry cleared the bearer.
+    if (!loadConn() || els.dashScreen.hidden) return;
     pollTimer = setTimeout(tick, getPollMs());
   }
   tick();
@@ -1668,6 +1749,7 @@ async function refreshDashboardNow() {
       ? loadChartView()
       : pollNow();
     await refresh;
+    if (!loadConn() || els.dashScreen.hidden) return;
     if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), getPollMs());
   } finally {
     dashboardRefreshing = false;
@@ -2494,7 +2576,11 @@ async function openManageModal() {
   syncSocWarnThresholdInput();
   updateThemeUi(getCurrentTheme());
   manageList.innerHTML = "";
-  await refreshCurrentActor();
+  try {
+    await refreshCurrentActor();
+  } catch (err) {
+    if (isUnauthorizedError(err)) return;
+  }
   syncAdminInviteSection();
 
   if (!systems.length) {
@@ -2942,10 +3028,7 @@ if (els.inviteBackBtn) {
 }
 
 els.disconnectBtn.addEventListener("click", () => {
-  clearConn();
-  clearAllGeneratorRuntimeStates();
-  stopPolling();
-  showSetup();
+  logout();
 });
 
 if (els.pollRetryBtn) {
@@ -3064,8 +3147,10 @@ setView(localStorage.getItem(VIEW_KEY) || "cards", { persist: false });
     } else {
       openAddModal();
     }
-  } catch {
+  } catch (err) {
     setView("cards");
+    // 401 already triggered forceReLogin() inside api() with a re-login prompt.
+    if (isUnauthorizedError(err)) return;
     showSetup();
   }
 })();

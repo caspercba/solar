@@ -99,6 +99,8 @@ describe("i18n", () => {
     expect(t("loginInvalidCredentials")).toBe("Invalid username or password");
     expect(t("loginRateLimited")).toMatch(/Too many login attempts/);
     expect(t("loginFailed")).toMatch(/Could not sign in/);
+    expect(t("logout")).toBe("Log out");
+    expect(t("sessionExpired")).toMatch(/sign in again/i);
   });
 
   it("translates accept-invite keys in English", () => {
@@ -120,6 +122,8 @@ describe("i18n", () => {
     expect(t("loginInvalidCredentials")).toBe("Usuario o contraseña no válidos");
     expect(t("loginRateLimited")).toMatch(/Demasiados intentos/);
     expect(t("loginFailed")).toMatch(/No se pudo iniciar sesión/);
+    expect(t("logout")).toBe("Cerrar sesión");
+    expect(t("sessionExpired")).toMatch(/vuelve a iniciar sesión/i);
   });
 
   it("translates accept-invite keys in Spanish", () => {

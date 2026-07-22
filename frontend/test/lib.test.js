@@ -62,6 +62,8 @@ import {
   isLastActiveAdmin,
   canDisableUser,
   canChangeUserRole,
+  httpError,
+  isUnauthorizedError,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -749,5 +751,26 @@ describe("admin users (ADR 0003) last-admin helpers", () => {
     expect(canChangeUserRole([soloAdmin, reader], "a1", "read")).toBe(false);
     expect(canChangeUserRole([soloAdmin, secondAdmin], "a1", "read")).toBe(true);
     expect(canChangeUserRole([soloAdmin], "a1", "bogus")).toBe(false);
+  });
+});
+
+describe("httpError / isUnauthorizedError (ADR 0003 session expiry)", () => {
+  it("attaches numeric status to the Error", () => {
+    const err = httpError("Unauthorized", 401);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe("Unauthorized");
+    expect(err.status).toBe(401);
+  });
+
+  it("defaults message from status when omitted", () => {
+    expect(httpError("", 502).message).toBe("HTTP 502");
+    expect(httpError(null, 0).message).toBe("Request failed");
+  });
+
+  it("isUnauthorizedError is true only for status 401", () => {
+    expect(isUnauthorizedError(httpError("Unauthorized", 401))).toBe(true);
+    expect(isUnauthorizedError(httpError("Forbidden", 403))).toBe(false);
+    expect(isUnauthorizedError(new Error("Unauthorized"))).toBe(false);
+    expect(isUnauthorizedError(null)).toBe(false);
   });
 });
