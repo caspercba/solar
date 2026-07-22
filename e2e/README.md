@@ -70,6 +70,7 @@ Set `CI=1` to skip `fetch-deps.js`'s user-space library bootstrap and rely on sy
 | Spec | Flows |
 |------|-------|
 | `tests/setup.spec.js` | Invalid password / disabled user errors, password login, deep-link auto-login |
+| `tests/legacy-token.spec.js` | Legacy `?token=` deep link, token-paste setup, invalid token error, mode toggle alongside password login |
 | `tests/invite.spec.js` | Accept-invite happy path; invalid / expired / revoked / used invite errors |
 | `tests/dashboard.spec.js` | Cards SOC/watts, flow charge/discharge classes, system tabs, view toggle `localStorage` |
 | `tests/chart.spec.js` | History chart with mock data, empty state for date `2026-01-01` |

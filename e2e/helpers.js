@@ -80,6 +80,27 @@ export async function loginViaSetupForm(
   await page.locator("#setup-btn").click();
 }
 
+/**
+ * Legacy access-token paste on the setup screen (HA / migration path).
+ * Switches the Password | Access Token toggle, fills proxy URL + bearer, submits.
+ */
+export async function loginViaTokenPaste(
+  page,
+  {
+    url = MOCK_WORKER_URL,
+    token = MOCK_TOKEN,
+  } = {},
+) {
+  await page.goto("/");
+  await expect(page.locator("#setup-screen")).toBeVisible();
+  await page.locator("#setup-mode-token").click();
+  await expect(page.locator("#setup-token-fields")).toBeVisible();
+  await expect(page.locator("#setup-password-fields")).toBeHidden();
+  await page.locator("#setup-url").fill(url);
+  await page.locator("#setup-token").fill(token);
+  await page.locator("#setup-btn").click();
+}
+
 /** Open accept-invite screen via ?proxy=&invite= deep link (ADR 0003). */
 export async function openInviteDeepLink(page, invite, { proxy = MOCK_WORKER_URL } = {}) {
   const proxyEnc = encodeURIComponent(proxy);
