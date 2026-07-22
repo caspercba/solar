@@ -57,6 +57,8 @@ import {
   inviteStatusBadgeClass,
   isInviteRevocable,
   hasPurgeableInvites,
+  sortAdminUsers,
+  isUserDisabled,
 } from "../lib.js";
 
 describe("fmtW", () => {
@@ -691,5 +693,27 @@ describe("admin invites (ADR 0003) helpers", () => {
     expect(hasPurgeableInvites([{ status: "pending" }])).toBe(false);
     expect(hasPurgeableInvites([{ status: "pending" }, { status: "revoked" }])).toBe(true);
     expect(hasPurgeableInvites(undefined)).toBe(false);
+  });
+});
+
+describe("admin users (ADR 0003) helpers", () => {
+  it("isUserDisabled follows disabledAt", () => {
+    expect(isUserDisabled({})).toBe(false);
+    expect(isUserDisabled({ disabledAt: null })).toBe(false);
+    expect(isUserDisabled({ disabledAt: "2026-07-01T00:00:00.000Z" })).toBe(true);
+  });
+
+  it("sortAdminUsers puts active users first, then username", () => {
+    const sorted = sortAdminUsers([
+      { username: "zoe", disabledAt: null },
+      { username: "amy", disabledAt: "2026-07-01T00:00:00.000Z" },
+      { username: "bob", disabledAt: null },
+    ]);
+    expect(sorted.map((u) => u.username)).toEqual(["bob", "zoe", "amy"]);
+  });
+
+  it("sortAdminUsers tolerates non-arrays", () => {
+    expect(sortAdminUsers(null)).toEqual([]);
+    expect(sortAdminUsers(undefined)).toEqual([]);
   });
 });

@@ -132,4 +132,29 @@ describe("i18n", () => {
     expect(t("adminInviteExpires", { when: "mañana" })).toBe("Caduca mañana");
     expect(t("roleRead")).toBe("Lectura");
   });
+
+  it("translates admin create-user keys in English", () => {
+    expect(t("adminCreateUserTitle")).toBe("Create user");
+    expect(t("adminCreateUserHint")).toMatch(/No invite required/);
+    expect(t("adminCreateUserSubmit")).toBe("Create user");
+    expect(t("adminCreateUserCreated")).toBe("User created");
+    expect(t("adminCreateUserFailed")).toBe("Could not create user");
+    expect(t("adminUsersListTitle")).toBe("Users");
+    expect(t("adminUsersEmpty")).toBe("No users yet.");
+    expect(t("adminUserCreatedAt", { when: "today" })).toBe("Created today");
+    expect(t("adminUserDisabled")).toBe("Disabled");
+  });
+
+  it("translates admin create-user keys in Spanish", () => {
+    setLocale("es");
+    expect(t("adminCreateUserTitle")).toBe("Crear usuario");
+    expect(t("adminCreateUserHint")).toMatch(/No se requiere invitación/);
+    expect(t("adminCreateUserSubmit")).toBe("Crear usuario");
+    expect(t("adminCreateUserCreated")).toBe("Usuario creado");
+    expect(t("adminCreateUserFailed")).toBe("No se pudo crear el usuario");
+    expect(t("adminUsersListTitle")).toBe("Usuarios");
+    expect(t("adminUsersEmpty")).toBe("Aún no hay usuarios.");
+    expect(t("adminUserCreatedAt", { when: "hoy" })).toBe("Creado hoy");
+    expect(t("adminUserDisabled")).toBe("Deshabilitado");
+  });
 });

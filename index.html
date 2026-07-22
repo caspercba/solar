@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=21">
+  <link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
 
@@ -345,6 +345,33 @@
         <div id="manage-list" class="manage-list"></div>
       </section>
 
+      <!-- Admin: create user with password (ADR 0003) — shown only for admin role -->
+      <section id="admin-create-user-section" class="settings-section" hidden>
+        <h3 class="settings-section-title" data-i18n="adminCreateUserTitle">Create user</h3>
+        <p class="manage-hint" data-i18n="adminCreateUserHint">Create an account immediately with username and password. No invite required.</p>
+        <form id="admin-create-user-form" class="manage-credentials admin-create-user-form" autocomplete="off">
+          <label for="create-user-username" data-i18n="adminCreateUserUsername">Username</label>
+          <input type="text" id="create-user-username" name="username" required maxlength="64" spellcheck="false" autocomplete="off" autocapitalize="none" data-i18n-placeholder="adminCreateUserUsernamePlaceholder" placeholder="e.g. ana">
+          <label for="create-user-password" data-i18n="adminCreateUserPassword">Password</label>
+          <input type="password" id="create-user-password" name="password" required minlength="8" autocomplete="new-password" data-i18n-placeholder="adminCreateUserPasswordPlaceholder" placeholder="At least 8 characters">
+          <label for="create-user-role" data-i18n="adminCreateUserRole">Role</label>
+          <select id="create-user-role" required>
+            <option value="read" data-i18n="roleRead" selected>Read</option>
+            <option value="admin" data-i18n="roleAdmin">Admin</option>
+          </select>
+          <button type="submit" id="create-user-btn" class="cred-save" data-i18n="adminCreateUserSubmit">Create user</button>
+          <p id="create-user-msg" class="cred-msg" hidden></p>
+        </form>
+      </section>
+
+      <!-- Admin: users list (ADR 0003) — refreshed after create; role/disable controls are a separate task -->
+      <section id="admin-users-list-section" class="settings-section" hidden>
+        <h3 class="settings-section-title" data-i18n="adminUsersListTitle">Users</h3>
+        <div id="users-list" class="users-list"></div>
+        <p id="users-list-empty" class="manage-empty" hidden data-i18n="adminUsersEmpty">No users yet.</p>
+        <p id="users-list-msg" class="cred-msg" hidden></p>
+      </section>
+
       <!-- Admin: mint magic-link invite (ADR 0003) — shown only for admin role -->
       <section id="admin-invite-section" class="settings-section" hidden>
         <h3 class="settings-section-title" data-i18n="adminInviteTitle">Invite user</h3>
@@ -410,6 +437,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=21"></script>
+  <script type="module" src="app.js?v=22"></script>
 </body>
 </html>
