@@ -123,4 +123,4 @@ _None on the live board._
 - **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` must be set in production; dev-mode open auth remains a footgun if misconfigured (mitigated by fail-closed `PRODUCTION` guard).
 - **Invite / password sharing** — magic links sent out-of-band can leak; mitigate with TTL, single-use conversion, admin revoke, and hash-only storage (ADR 0003).
 - **Last-admin lockout** — user-admin routes must refuse deleting/disabling the final `admin` account.
-- **Release gate still in backlog** — SOLAR-0150 was dead-lettered once on VMD infra; human must promote from backlog and confirm a clean re-run before tagging v1.4.0.
+- **Release gate** — SOLAR-0150 was once dead-lettered on VMD infra (`ENOENT /run/gordofast/vmd.sock`); it is back `in_progress` for a clean re-run before tagging v1.4.0.
