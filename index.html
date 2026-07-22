@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=21">
+  <link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
 
@@ -345,6 +345,15 @@
         <div id="manage-list" class="manage-list"></div>
       </section>
 
+      <!-- Admin: users list — role change / disable (ADR 0003) — shown only for admin role -->
+      <section id="admin-users-list-section" class="settings-section" hidden>
+        <h3 class="settings-section-title" data-i18n="adminUsersListTitle">Users</h3>
+        <p class="manage-hint" data-i18n="adminUsersHint">Manage password accounts. The last active admin cannot be disabled or demoted.</p>
+        <div id="users-list" class="users-list"></div>
+        <p id="users-list-empty" class="manage-empty" hidden data-i18n="adminUsersEmpty">No users yet.</p>
+        <p id="users-list-msg" class="cred-msg" hidden></p>
+      </section>
+
       <!-- Admin: mint magic-link invite (ADR 0003) — shown only for admin role -->
       <section id="admin-invite-section" class="settings-section" hidden>
         <h3 class="settings-section-title" data-i18n="adminInviteTitle">Invite user</h3>
@@ -410,6 +419,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=21"></script>
+  <script type="module" src="app.js?v=22"></script>
 </body>
 </html>

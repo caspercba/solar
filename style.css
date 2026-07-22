@@ -1527,6 +1527,96 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 .invite-copy-btn:hover { filter: brightness(1.08); }
 
+.users-list { display: flex; flex-direction: column; gap: .5rem; max-height: 40vh; overflow-y: auto; }
+
+.user-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .6rem;
+  padding: .6rem .65rem;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--surface-muted);
+}
+
+.user-row.is-disabled { opacity: .78; }
+
+.user-row-info { min-width: 0; flex: 1; }
+
+.user-row-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-bottom: .25rem;
+}
+
+.user-row-name {
+  font-size: .85rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.user-status-badge {
+  font-size: .65rem;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: .05rem .4rem;
+}
+
+.user-status-active { background: color-mix(in srgb, var(--accent-bat) 18%, transparent); color: var(--accent-bat); }
+.user-status-disabled { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
+
+.user-row-meta {
+  font-size: .72rem;
+  color: var(--text-dim);
+  margin-bottom: .35rem;
+}
+
+.user-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+  flex-shrink: 0;
+}
+
+.user-role-select {
+  padding: .3rem .4rem;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: .75rem;
+}
+
+.user-role-select:disabled { opacity: .6; cursor: not-allowed; }
+
+.user-action-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: .35rem .6rem;
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.user-action-btn:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.user-action-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+.user-action-btn.user-disable-btn {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.user-action-btn.user-disable-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
 .invites-list { display: flex; flex-direction: column; gap: .5rem; max-height: 40vh; overflow-y: auto; }
 
 .invite-row {
