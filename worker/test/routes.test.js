@@ -2033,5 +2033,290 @@ describe("worker routes", () => {
       expect(invites).toHaveLength(1);
       expect(invites[0].id).toBe(a.id);
     });
+
+    it("expired invite cannot be accepted via POST /api/auth/invite/accept", async () => {
+      const systems = env();
+      const mint = await call(
+        request("/api/admin/invites", {
+          method: "POST",
+          headers: AUTH,
+          body: { role: "read", expiresAt: "2020-01-01T00:00:00.000Z" },
+        }),
+        systems,
+      );
+      expect(mint.status).toBe(201);
+      const invite = await mint.json();
+
+      const accept = await call(
+        request("/api/auth/invite/accept", {
+          method: "POST",
+          body: { invite: invite.invite, username: "late", password: "password123" },
+        }),
+        systems,
+      );
+      expect(accept.status).toBe(410);
+      expect(await accept.json()).toEqual({ error: "Invite has expired" });
+    });
+
+    it("PATCH /api/admin/users/:id refuses demoting the last admin", async () => {
+      const systems = env();
+      const create = await call(
+        request("/api/admin/users", {
+          method: "POST",
+          headers: AUTH,
+          body: { username: "solo", password: "password123", role: "admin" },
+        }),
+        systems,
+      );
+      const user = await create.json();
+
+      const patch = await call(
+        request(`/api/admin/users/${user.id}`, {
+          method: "PATCH",
+          headers: AUTH,
+          body: { role: "read" },
+        }),
+        systems,
+      );
+      expect(patch.status).toBe(400);
+      expect(await patch.json()).toEqual({ error: "Cannot demote the last admin" });
+    });
+
+    describe("audit log for user/invite mutations (ADR 0003)", () => {
+      function auditEntries(consoleLogSpy) {
+        return consoleLogSpy.mock.calls
+          .map((c) => {
+            try {
+              return JSON.parse(c[0]);
+            } catch {
+              return null;
+            }
+          })
+          .filter((entry) => entry?.event === "audit");
+      }
+
+      it("POST /api/admin/users emits user.create audit without the password", async () => {
+        const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+        const systems = env();
+
+        const res = await call(
+          request("/api/admin/users", {
+            method: "POST",
+            headers: { ...AUTH, "CF-Connecting-IP": "198.51.100.9" },
+            body: { username: "audit-admin", password: "super-secret-password", role: "admin" },
+          }),
+          systems,
+        );
+        expect(res.status).toBe(201);
+        const user = await res.json();
+
+        const entries = auditEntries(consoleLog);
+        expect(entries).toHaveLength(1);
+        expect(entries[0]).toMatchObject({
+          actorId: "shared",
+          action: "user.create",
+          resource: user.id,
+          method: "POST",
+          path: "/api/admin/users",
+          clientIp: "198.51.100.9",
+          outcome: "success",
+          status: 201,
+        });
+        expect(JSON.stringify(entries[0])).not.toContain("super-secret-password");
+      });
+
+      it("DELETE /api/admin/users/:id emits user.disable and user.delete audit entries", async () => {
+        const systems = env();
+        const u1 = await (
+          await call(
+            request("/api/admin/users", {
+              method: "POST",
+              headers: AUTH,
+              body: { username: "u1", password: "password123", role: "admin" },
+            }),
+            systems,
+          )
+        ).json();
+        const u2 = await (
+          await call(
+            request("/api/admin/users", {
+              method: "POST",
+              headers: AUTH,
+              body: { username: "u2", password: "password123", role: "admin" },
+            }),
+            systems,
+          )
+        ).json();
+        await call(
+          request("/api/admin/users", {
+            method: "POST",
+            headers: AUTH,
+            body: { username: "u3", password: "password123", role: "admin" },
+          }),
+          systems,
+        );
+
+        const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+        const soft = await call(
+          request(`/api/admin/users/${u1.id}`, { method: "DELETE", headers: AUTH }),
+          systems,
+        );
+        expect(soft.status).toBe(200);
+
+        const hard = await call(
+          request(`/api/admin/users/${u2.id}?hard=1`, { method: "DELETE", headers: AUTH }),
+          systems,
+        );
+        expect(hard.status).toBe(200);
+
+        const entries = auditEntries(consoleLog);
+        expect(entries.find((e) => e.action === "user.disable")).toMatchObject({
+          resource: u1.id,
+          outcome: "success",
+          status: 200,
+          actorId: "shared",
+          method: "DELETE",
+        });
+        expect(entries.find((e) => e.action === "user.delete")).toMatchObject({
+          resource: u2.id,
+          outcome: "success",
+          status: 200,
+          actorId: "shared",
+          method: "DELETE",
+        });
+      });
+
+      it("PATCH /api/admin/users/:id emits user.update audit", async () => {
+        const systems = env();
+        await call(
+          request("/api/admin/users", {
+            method: "POST",
+            headers: AUTH,
+            body: { username: "admin1", password: "password123", role: "admin" },
+          }),
+          systems,
+        );
+        const viewer = await (
+          await call(
+            request("/api/admin/users", {
+              method: "POST",
+              headers: AUTH,
+              body: { username: "viewer1", password: "password123", role: "read" },
+            }),
+            systems,
+          )
+        ).json();
+
+        const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+        const res = await call(
+          request(`/api/admin/users/${viewer.id}`, {
+            method: "PATCH",
+            headers: AUTH,
+            body: { role: "admin" },
+          }),
+          systems,
+        );
+        expect(res.status).toBe(200);
+
+        const entries = auditEntries(consoleLog);
+        expect(entries).toHaveLength(1);
+        expect(entries[0]).toMatchObject({
+          action: "user.update",
+          resource: viewer.id,
+          outcome: "success",
+          status: 200,
+          actorId: "shared",
+        });
+      });
+
+      it("invite create/revoke/purge and accept emit audit entries; secrets stay out of the log", async () => {
+        const systems = env();
+        const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+        const mint = await call(
+          request("/api/admin/invites", {
+            method: "POST",
+            headers: AUTH,
+            body: { role: "read", label: "neighbor" },
+          }),
+          systems,
+        );
+        expect(mint.status).toBe(201);
+        const invite = await mint.json();
+
+        const accept = await call(
+          request("/api/auth/invite/accept", {
+            method: "POST",
+            body: { invite: invite.invite, username: "neighbor1", password: "password123" },
+          }),
+          systems,
+        );
+        expect(accept.status).toBe(201);
+        const session = await accept.json();
+
+        const mint2 = await call(
+          request("/api/admin/invites", {
+            method: "POST",
+            headers: AUTH,
+            body: { role: "read", label: "revoke-me" },
+          }),
+          systems,
+        );
+        const invite2 = await mint2.json();
+
+        const revoke = await call(
+          request(`/api/admin/invites/${invite2.id}`, { method: "DELETE", headers: AUTH }),
+          systems,
+        );
+        expect(revoke.status).toBe(200);
+
+        const purge = await call(
+          request("/api/admin/invites/purge", { method: "POST", headers: AUTH }),
+          systems,
+        );
+        expect(purge.status).toBe(200);
+
+        const entries = auditEntries(consoleLog);
+        const byAction = Object.fromEntries(
+          ["invite.create", "invite.accept", "invite.revoke", "invite.purge"].map((action) => [
+            action,
+            entries.filter((e) => e.action === action),
+          ]),
+        );
+
+        expect(byAction["invite.create"].length).toBeGreaterThanOrEqual(2);
+        expect(byAction["invite.create"][0]).toMatchObject({
+          resource: invite.id,
+          outcome: "success",
+          status: 201,
+          actorId: "shared",
+        });
+        expect(byAction["invite.accept"]).toHaveLength(1);
+        expect(byAction["invite.accept"][0]).toMatchObject({
+          action: "invite.accept",
+          resource: invite.id,
+          actorId: session.userId,
+          outcome: "success",
+          status: 201,
+        });
+        expect(byAction["invite.revoke"]).toHaveLength(1);
+        expect(byAction["invite.revoke"][0]).toMatchObject({
+          resource: invite2.id,
+          outcome: "success",
+          status: 200,
+        });
+        expect(byAction["invite.purge"]).toHaveLength(1);
+        expect(byAction["invite.purge"][0]).toMatchObject({
+          outcome: "success",
+          status: 200,
+        });
+
+        const blob = JSON.stringify(entries);
+        expect(blob).not.toContain(invite.invite);
+        expect(blob).not.toContain(invite2.invite);
+        expect(blob).not.toContain("password123");
+      });
+    });
   });
 });
