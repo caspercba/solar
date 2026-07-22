@@ -94,7 +94,7 @@ _Priority order. Phases 1–4 and ADR 0002 Phases 1–2 are complete at v1.3.0. 
 **Frontend (PLAN §5.3 — remaining after SOLAR-0121 close):**
 
 1. **SOLAR-0126** — Accept-invite screen (`?invite=` → set username/password → session)
-2. **SOLAR-0127** _(done on branch)_ / **0128** — Admin users list + create user with password
+2. **SOLAR-0127** / **0128** _(done)_ — Admin users list + create user with password
 3. **SOLAR-0129** / **0130** — Admin mint magic-link invite (copy URL once) + invites list/revoke/purge
 4. **SOLAR-0131** — Keep legacy token paste + `?token=` deep links (HA/migration); `?token=` boot path still present after login change
 5. **SOLAR-0145** — ES/EN i18n for remaining auth screens

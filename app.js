@@ -46,6 +46,7 @@ import {
   isInviteRevocable,
   hasPurgeableInvites,
   inviteAcceptErrorI18nKey,
+  adminCreateUserErrorI18nKey,
   canDisableUser,
   canChangeUserRole,
   httpError,
@@ -301,6 +302,14 @@ const els = {
   themeBtn: $("theme-btn"),
   setupThemeBtn: $("setup-theme-btn"),
   themeSelect: $("theme-select"),
+  adminCreateUserSection: $("admin-create-user-section"),
+  adminCreateUserForm: $("admin-create-user-form"),
+  createUserUsername: $("create-user-username"),
+  createUserPass: $("create-user-pass"),
+  createUserPassConfirm: $("create-user-pass-confirm"),
+  createUserRole: $("create-user-role"),
+  createUserBtn: $("create-user-btn"),
+  createUserMsg: $("create-user-msg"),
   adminUsersListSection: $("admin-users-list-section"),
   usersList: $("users-list"),
   usersListEmpty: $("users-list-empty"),
@@ -2141,10 +2150,12 @@ function renderGridInputLabelForm(sys) {
 }
 
 function hideAdminInviteSection() {
+  if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = true;
   if (els.adminUsersListSection) els.adminUsersListSection.hidden = true;
   if (els.adminInviteSection) els.adminInviteSection.hidden = true;
   if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = true;
   clearInviteResult();
+  clearCreateUserForm();
   clearUsersList();
   clearInvitesList();
 }
@@ -2170,17 +2181,86 @@ function clearInviteResult() {
 
 function syncAdminInviteSection() {
   const show = isAdminActor();
+  if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = !show;
   if (els.adminUsersListSection) els.adminUsersListSection.hidden = !show;
   if (els.adminInviteSection) els.adminInviteSection.hidden = !show;
   if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = !show;
   if (!show) {
     clearInviteResult();
+    clearCreateUserForm();
     clearInvitesList();
     clearUsersList();
     return;
   }
   loadUsersList();
   loadInvitesList();
+}
+
+function setCreateUserMsg(text, kind) {
+  if (!els.createUserMsg) return;
+  if (!text) {
+    els.createUserMsg.hidden = true;
+    els.createUserMsg.textContent = "";
+    els.createUserMsg.className = "cred-msg";
+    return;
+  }
+  els.createUserMsg.textContent = text;
+  els.createUserMsg.className = kind ? `cred-msg ${kind}` : "cred-msg";
+  els.createUserMsg.hidden = false;
+}
+
+/** Reset create-user form fields and message (admin section hide / after success). */
+function clearCreateUserForm({ keepMsg = false } = {}) {
+  if (els.adminCreateUserForm) els.adminCreateUserForm.reset();
+  if (els.createUserRole) els.createUserRole.value = "read";
+  if (!keepMsg) setCreateUserMsg("");
+}
+
+async function createUserFromForm() {
+  if (!isAdminActor()) return;
+
+  const username = els.createUserUsername?.value?.trim() || "";
+  const password = els.createUserPass?.value || "";
+  const confirm = els.createUserPassConfirm?.value || "";
+  const role = els.createUserRole?.value || "read";
+
+  setCreateUserMsg("");
+
+  if (password.length < 8) {
+    setCreateUserMsg(t("adminCreateUserPasswordTooShort"), "cred-err");
+    return;
+  }
+  if (password !== confirm) {
+    setCreateUserMsg(t("adminCreateUserPasswordMismatch"), "cred-err");
+    return;
+  }
+
+  const btn = els.createUserBtn;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t("adminCreateUserCreating");
+  }
+
+  try {
+    await api("POST", "/api/admin/users", { username, password, role });
+    clearCreateUserForm({ keepMsg: true });
+    setCreateUserMsg(t("adminCreateUserCreated"), "cred-ok");
+    await loadUsersList();
+  } catch (err) {
+    const key = adminCreateUserErrorI18nKey(err.message);
+    // Prefer mapped i18n when we recognize the Worker message; otherwise show raw.
+    const mapped = t(key);
+    const text =
+      key !== "adminCreateUserFailed" || !err.message
+        ? mapped
+        : err.message;
+    setCreateUserMsg(text, "cred-err");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t("adminCreateUserSubmit");
+    }
+  }
 }
 
 /** Reset users list state/DOM (called when the admin section is hidden). */
@@ -2670,6 +2750,13 @@ if (els.invitesPurgeBtn) {
 $("manage-add").addEventListener("click", openAddModal);
 detailBack.addEventListener("click", closeSystemDetail);
 
+if (els.adminCreateUserForm) {
+  els.adminCreateUserForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await createUserFromForm();
+  });
+}
+
 if (els.adminInviteForm) {
   els.adminInviteForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -2766,6 +2853,9 @@ function changeLocale(locale) {
   }
   if (els.inviteMintBtn && !els.inviteMintBtn.disabled) {
     els.inviteMintBtn.textContent = t("adminInviteCreate");
+  }
+  if (els.createUserBtn && !els.createUserBtn.disabled) {
+    els.createUserBtn.textContent = t("adminCreateUserSubmit");
   }
   if (els.invitesPurgeBtn && !els.invitesPurgeBtn.disabled) {
     els.invitesPurgeBtn.textContent = t("adminInvitesPurgeBtn");

@@ -295,7 +295,7 @@ Today humans share a bearer via the setup form or `?proxy=…&token=…`. Target
 - [x] **Login screen** — proxy URL + username/password; store returned session token like today's bearer _(SOLAR-0125)_
 - [ ] **Accept-invite screen** — `?invite=` (or hash route) → choose username + password → converts invite → logged in _(SOLAR-0126)_
 - [x] **Admin: users list** — username, role (`admin` \| `read`), created/last login; remove/disable; change role _(SOLAR-0127)_
-- [ ] **Admin: create user** — username + password + role (no invite required) _(SOLAR-0128)_
+- [x] **Admin: create user** — username + password + role (no invite required) _(SOLAR-0128)_
 - [x] **Admin: create magic link** — role + optional label/TTL → show URL once → copy to clipboard for out-of-band send _(SOLAR-0129)_
 - [x] **Admin: invites list** — emitted vs converted vs revoked/expired; revoke pending; purge stale _(SOLAR-0130)_
 - [ ] **Keep legacy token path** — `API_TOKEN` / opaque keys / `?token=` for HA and migration _(SOLAR-0131; `?token=` boot still works)_

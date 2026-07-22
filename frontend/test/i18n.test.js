@@ -151,6 +151,11 @@ describe("i18n", () => {
   it("translates admin users-list keys in English", () => {
     expect(t("adminUsersListTitle")).toBe("Users");
     expect(t("adminUsersHint")).toMatch(/last active admin/);
+    expect(t("adminCreateUserTitle")).toBe("Create user");
+    expect(t("adminCreateUserSubmit")).toBe("Create user");
+    expect(t("adminCreateUserHint")).toMatch(/no invite/);
+    expect(t("adminCreateUserUsernameTaken")).toMatch(/already taken/);
+    expect(t("adminCreateUserPasswordMismatch")).toMatch(/do not match/);
     expect(t("userDisable")).toBe("Disable");
     expect(t("userEnable")).toBe("Enable");
     expect(t("userLastAdminDisable")).toMatch(/last admin/);
@@ -188,6 +193,11 @@ describe("i18n", () => {
     setLocale("es");
     expect(t("adminUsersListTitle")).toBe("Usuarios");
     expect(t("adminUsersHint")).toMatch(/último admin/);
+    expect(t("adminCreateUserTitle")).toBe("Crear usuario");
+    expect(t("adminCreateUserSubmit")).toBe("Crear usuario");
+    expect(t("adminCreateUserHint")).toMatch(/sin invitación/);
+    expect(t("adminCreateUserUsernameTaken")).toMatch(/ya está en uso/);
+    expect(t("adminCreateUserPasswordMismatch")).toMatch(/no coinciden/);
     expect(t("userDisable")).toBe("Desactivar");
     expect(t("userEnable")).toBe("Activar");
     expect(t("userLastAdminDisable")).toMatch(/último admin/);
@@ -222,6 +232,10 @@ describe("i18n", () => {
       "inviteAcceptPasswordTooShort", "inviteAcceptPasswordMismatch",
       "inviteAcceptRateLimited", "inviteAcceptFailed",
       "adminUsersListTitle", "adminUsersHint", "adminUsersEmpty", "adminUsersLoadFailed",
+      "adminCreateUserTitle", "adminCreateUserHint", "adminCreateUserPasswordConfirm",
+      "adminCreateUserSubmit", "adminCreateUserCreating", "adminCreateUserCreated",
+      "adminCreateUserFailed", "adminCreateUserUsernameTaken", "adminCreateUserUsernameInvalid",
+      "adminCreateUserPasswordTooShort", "adminCreateUserPasswordMismatch", "adminCreateUserInvalidRole",
       "userCreatedAt", "userLastLoginAt", "userNeverLoggedIn",
       "userStatusActive", "userStatusDisabled",
       "userDisable", "userDisabling", "userDisableConfirm", "userDisableFailed",

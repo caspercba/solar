@@ -490,6 +490,25 @@ export function hasPurgeableInvites(invites) {
 
 /** Admin users (ADR 0003) — last-admin guards for disable / demote UX. */
 
+/**
+ * Map POST /api/admin/users failures to an i18n key.
+ * Matches Worker error strings from createUser.
+ */
+export function adminCreateUserErrorI18nKey(errorMessage) {
+  const msg = String(errorMessage || "").toLowerCase();
+  if (msg.includes("already taken")) return "adminCreateUserUsernameTaken";
+  if (msg.includes("at least 8")) return "adminCreateUserPasswordTooShort";
+  if (
+    msg.includes("username may only") ||
+    msg.includes("at most 64") ||
+    msg.includes("username is required")
+  ) {
+    return "adminCreateUserUsernameInvalid";
+  }
+  if (msg.includes("invalid role")) return "adminCreateUserInvalidRole";
+  return "adminCreateUserFailed";
+}
+
 /** Count active (non-disabled) admin users. */
 export function countActiveAdmins(users) {
   if (!Array.isArray(users)) return 0;
