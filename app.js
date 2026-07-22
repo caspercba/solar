@@ -45,6 +45,7 @@ import {
   inviteStatusBadgeClass,
   isInviteRevocable,
   hasPurgeableInvites,
+  inviteAcceptErrorI18nKey,
   canDisableUser,
   canChangeUserRole,
 } from "./frontend/lib.js";
@@ -225,6 +226,7 @@ const $ = (id) => document.getElementById(id);
 
 const els = {
   setupScreen: $("setup-screen"),
+  inviteScreen: $("invite-screen"),
   dashScreen: $("dashboard-screen"),
   setupForm: $("setup-form"),
   setupUrl: $("setup-url"),
@@ -238,6 +240,15 @@ const els = {
   setupModeHint: $("setup-mode-hint"),
   setupBtn: $("setup-btn"),
   setupError: $("setup-error"),
+  inviteForm: $("invite-form"),
+  inviteProxyUrl: $("invite-proxy-url"),
+  inviteUser: $("invite-user"),
+  invitePass: $("invite-pass"),
+  invitePassConfirm: $("invite-pass-confirm"),
+  inviteAcceptBtn: $("invite-accept-btn"),
+  inviteAcceptError: $("invite-accept-error"),
+  inviteBackBtn: $("invite-back-btn"),
+  inviteThemeBtn: $("invite-theme-btn"),
   headerTitle: $("header-title"),
   disconnectBtn: $("disconnect-btn"),
   manageBtn: $("manage-btn"),
@@ -623,9 +634,13 @@ function setBatRate(absAmps) {
   }
 }
 
+/** Plaintext invite secret from ?invite= (held only in memory until accepted). */
+let pendingInviteSecret = null;
+
 /* ── Screens ── */
 function showSetup() {
   els.setupScreen.hidden = false;
+  if (els.inviteScreen) els.inviteScreen.hidden = true;
   els.dashScreen.hidden = true;
   currentActor = null;
   hideAdminInviteSection();
@@ -637,9 +652,56 @@ function showSetup() {
   }
 }
 
+/** Accept-invite onboarding (ADR 0003) — set username + password from magic link. */
+function showInvite({ proxy, invite } = {}) {
+  pendingInviteSecret = invite || pendingInviteSecret;
+  if (els.setupScreen) els.setupScreen.hidden = true;
+  if (els.inviteScreen) els.inviteScreen.hidden = false;
+  els.dashScreen.hidden = true;
+  currentActor = null;
+  hideAdminInviteSection();
+
+  if (els.inviteProxyUrl) {
+    const fromSetup = els.setupUrl?.value?.trim();
+    const stored = loadConn()?.url;
+    els.inviteProxyUrl.value =
+      (proxy && String(proxy).replace(/\/+$/, "")) ||
+      stored ||
+      fromSetup ||
+      els.inviteProxyUrl.value;
+  }
+  if (els.invitePass) els.invitePass.value = "";
+  if (els.invitePassConfirm) els.invitePassConfirm.value = "";
+  if (els.inviteAcceptError) {
+    els.inviteAcceptError.hidden = true;
+    els.inviteAcceptError.textContent = "";
+  }
+  if (els.inviteAcceptBtn) {
+    els.inviteAcceptBtn.disabled = false;
+    els.inviteAcceptBtn.textContent = t("inviteAccept");
+  }
+}
+
 function showDash() {
   els.setupScreen.hidden = true;
+  if (els.inviteScreen) els.inviteScreen.hidden = true;
   els.dashScreen.hidden = false;
+}
+
+/** Drop invite secret from the address bar after accept or when returning to sign-in. */
+function clearInviteFromUrl() {
+  try {
+    const u = new URL(location.href);
+    if (!u.searchParams.has("invite") && !u.searchParams.has("proxy")) return;
+    u.searchParams.delete("invite");
+    // Keep proxy in the URL only when still useful for bookmarks; after login
+    // the conn is in localStorage, so strip both to avoid leaving secrets.
+    u.searchParams.delete("proxy");
+    const qs = u.searchParams.toString();
+    history.replaceState(null, "", u.pathname + (qs ? `?${qs}` : "") + u.hash);
+  } catch {
+    /* ignore */
+  }
 }
 
 function setStatus(ok) {
@@ -924,7 +986,7 @@ function updateThemeUi(theme) {
   const label = THEME_LABELS[theme] || THEME_LABELS.dark;
   const icon = THEME_ICONS[theme] || THEME_ICONS.dark;
   const title = `Theme: ${label} (click to change)`;
-  for (const btn of [els.themeBtn, els.setupThemeBtn]) {
+  for (const btn of [els.themeBtn, els.setupThemeBtn, els.inviteThemeBtn]) {
     if (!btn) continue;
     btn.textContent = icon;
     btn.title = title;
@@ -2605,6 +2667,12 @@ function changeLocale(locale) {
   if (els.invitesPurgeBtn && !els.invitesPurgeBtn.disabled) {
     els.invitesPurgeBtn.textContent = t("adminInvitesPurgeBtn");
   }
+  if (els.inviteAcceptBtn && !els.inviteAcceptBtn.disabled) {
+    els.inviteAcceptBtn.textContent = t("inviteAccept");
+  }
+  if (els.setupBtn && !els.setupBtn.disabled) {
+    els.setupBtn.textContent = t(setupMode === "token" ? "connect" : "signIn");
+  }
 }
 
 function initLangToggle() {
@@ -2638,6 +2706,7 @@ if (socWarnInput) {
 
 if (els.themeBtn) els.themeBtn.addEventListener("click", cycleTheme);
 if (els.setupThemeBtn) els.setupThemeBtn.addEventListener("click", cycleTheme);
+if (els.inviteThemeBtn) els.inviteThemeBtn.addEventListener("click", cycleTheme);
 if (els.themeSelect) {
   els.themeSelect.addEventListener("change", () => applyTheme(els.themeSelect.value));
 }
@@ -2777,6 +2846,101 @@ els.setupForm.addEventListener("submit", async (e) => {
   }
 });
 
+/* ── Accept invite (ADR 0003): ?proxy=…&invite=<secret> → create user + session ── */
+
+async function acceptInvite(url) {
+  const username = els.inviteUser?.value?.trim() || "";
+  const password = els.invitePass?.value || "";
+  const confirm = els.invitePassConfirm?.value || "";
+  const invite = pendingInviteSecret;
+
+  if (!invite) throw new Error(t("inviteAcceptInvalid"));
+  if (password.length < 8) throw new Error(t("inviteAcceptPasswordTooShort"));
+  if (password !== confirm) throw new Error(t("inviteAcceptPasswordMismatch"));
+
+  let resp;
+  try {
+    resp = await fetch(`${url}/api/auth/invite/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invite, username, password }),
+    });
+  } catch {
+    throw new Error(t("inviteAcceptFailed"));
+  }
+
+  let json = null;
+  try {
+    json = await resp.json();
+  } catch {
+    /* non-JSON body */
+  }
+
+  if (!resp.ok) {
+    const key = inviteAcceptErrorI18nKey(resp.status, json && json.error);
+    throw new Error(t(key));
+  }
+
+  const token = json && json.token;
+  if (!token) throw new Error(t("inviteAcceptFailed"));
+
+  pendingInviteSecret = null;
+  if (els.invitePass) els.invitePass.value = "";
+  if (els.invitePassConfirm) els.invitePassConfirm.value = "";
+  clearInviteFromUrl();
+
+  currentActor = {
+    role: json.role || null,
+    username: json.username || null,
+    userId: json.userId || null,
+    tokenId: json.tokenId || null,
+    actorId: json.userId || json.tokenId || null,
+  };
+  await finishLogin(url, token);
+}
+
+if (els.inviteForm) {
+  els.inviteForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (els.inviteAcceptError) {
+      els.inviteAcceptError.hidden = true;
+      els.inviteAcceptError.textContent = "";
+    }
+    if (els.inviteAcceptBtn) {
+      els.inviteAcceptBtn.disabled = true;
+      els.inviteAcceptBtn.textContent = t("inviteAccepting");
+    }
+
+    const url = (els.inviteProxyUrl?.value || "").trim().replace(/\/+$/, "");
+
+    try {
+      await acceptInvite(url);
+    } catch (err) {
+      if (els.inviteAcceptError) {
+        els.inviteAcceptError.textContent = err.message;
+        els.inviteAcceptError.hidden = false;
+      }
+    } finally {
+      if (els.inviteAcceptBtn) {
+        els.inviteAcceptBtn.disabled = false;
+        els.inviteAcceptBtn.textContent = t("inviteAccept");
+      }
+    }
+  });
+}
+
+if (els.inviteBackBtn) {
+  els.inviteBackBtn.addEventListener("click", () => {
+    pendingInviteSecret = null;
+    clearInviteFromUrl();
+    if (els.inviteProxyUrl?.value && els.setupUrl) {
+      els.setupUrl.value = els.inviteProxyUrl.value.trim().replace(/\/+$/, "");
+    }
+    setSetupMode("password");
+    showSetup();
+  });
+}
+
 els.disconnectBtn.addEventListener("click", () => {
   clearConn();
   clearAllGeneratorRuntimeStates();
@@ -2867,6 +3031,16 @@ setView(localStorage.getItem(VIEW_KEY) || "cards", { persist: false });
   const params = new URLSearchParams(location.search);
   const urlProxy = params.get("proxy");
   const urlToken = params.get("token");
+  const urlInvite = params.get("invite")?.trim();
+
+  // Magic-link invite takes precedence over stored sessions / ?token= (onboarding).
+  if (urlInvite) {
+    showInvite({
+      proxy: urlProxy || null,
+      invite: urlInvite,
+    });
+    return;
+  }
 
   if (urlProxy && urlToken) {
     const url = urlProxy.replace(/\/+$/, "");

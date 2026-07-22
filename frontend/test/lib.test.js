@@ -57,6 +57,7 @@ import {
   inviteStatusBadgeClass,
   isInviteRevocable,
   hasPurgeableInvites,
+  inviteAcceptErrorI18nKey,
   countActiveAdmins,
   isLastActiveAdmin,
   canDisableUser,
@@ -695,6 +696,23 @@ describe("admin invites (ADR 0003) helpers", () => {
     expect(hasPurgeableInvites([{ status: "pending" }])).toBe(false);
     expect(hasPurgeableInvites([{ status: "pending" }, { status: "revoked" }])).toBe(true);
     expect(hasPurgeableInvites(undefined)).toBe(false);
+  });
+
+  it("maps invite-accept API errors to clear i18n keys", () => {
+    expect(inviteAcceptErrorI18nKey(404, "Invalid invite")).toBe("inviteAcceptInvalid");
+    expect(inviteAcceptErrorI18nKey(410, "Invite has been revoked")).toBe("inviteAcceptRevoked");
+    expect(inviteAcceptErrorI18nKey(410, "Invite has expired")).toBe("inviteAcceptExpired");
+    expect(inviteAcceptErrorI18nKey(410, "Invite has already been used")).toBe("inviteAcceptConsumed");
+    expect(inviteAcceptErrorI18nKey(429, "Too many requests")).toBe("inviteAcceptRateLimited");
+    expect(inviteAcceptErrorI18nKey(400, "Username already taken")).toBe("inviteAcceptUsernameTaken");
+    expect(inviteAcceptErrorI18nKey(400, "Password must be at least 8 characters")).toBe(
+      "inviteAcceptPasswordTooShort",
+    );
+    expect(
+      inviteAcceptErrorI18nKey(400, "Username may only contain letters, numbers, dots, underscores, and hyphens"),
+    ).toBe("inviteAcceptUsernameInvalid");
+    expect(inviteAcceptErrorI18nKey(502, "upstream")).toBe("inviteAcceptFailed");
+    expect(inviteAcceptErrorI18nKey(0, "")).toBe("inviteAcceptFailed");
   });
 });
 

@@ -100,9 +100,10 @@ body {
 .screen[hidden] { display: none !important; }
 [hidden] { display: none !important; }
 
-/* ---------- SETUP / LOGIN ---------- */
+/* ---------- SETUP / LOGIN / ACCEPT-INVITE ---------- */
 
-#setup-screen {
+#setup-screen,
+#invite-screen {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -134,11 +135,13 @@ body {
   margin-bottom: 1.5rem;
 }
 
-#setup-form { display: flex; flex-direction: column; gap: .75rem; }
+#setup-form,
+#invite-form { display: flex; flex-direction: column; gap: .75rem; }
 
 .setup-mode-fields { display: flex; flex-direction: column; gap: .75rem; }
 
-#setup-form input {
+#setup-form input,
+#invite-form input {
   background: var(--bg);
   border: 1px solid var(--card-border);
   border-radius: 8px;
@@ -149,9 +152,13 @@ body {
   transition: border-color .2s;
 }
 
-#setup-form input:focus { border-color: var(--accent-sol); }
+#setup-form input:focus,
+#invite-form input:focus { border-color: var(--accent-sol); }
 
-#setup-btn, #add-submit, #manage-close {
+#setup-btn,
+#invite-accept-btn,
+#add-submit,
+#manage-close {
   background: var(--accent-sol);
   color: var(--accent-on);
   border: none;
@@ -163,7 +170,20 @@ body {
   transition: opacity .2s;
 }
 
-#setup-btn:disabled, #add-submit:disabled { opacity: .5; cursor: wait; }
+#setup-btn:disabled,
+#invite-accept-btn:disabled,
+#add-submit:disabled { opacity: .5; cursor: wait; }
+
+.invite-hint {
+  text-align: left;
+  margin: 0 0 1rem;
+}
+
+.invite-back-btn {
+  display: inline-block;
+  margin-top: 1rem;
+  font-size: .85rem;
+}
 
 .error {
   color: var(--error);
