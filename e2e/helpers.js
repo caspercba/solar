@@ -132,6 +132,26 @@ export function uniquePendingInvite(suffix = "") {
   return `${MOCK_INVITE_PENDING_PREFIX}${suffix}${rand}`;
 }
 
+/** Reset mock admin users/invites + actor role (shared mock Worker process). */
+export async function resetMockAdmin(request) {
+  const res = await request.post(`${MOCK_WORKER_URL}/__mock__/reset-admin`);
+  expect(res.ok()).toBeTruthy();
+}
+
+/** Set GET /api/me role for admin vs read UI gating in E2E. */
+export async function setMockActorRole(request, role) {
+  const res = await request.post(`${MOCK_WORKER_URL}/__mock__/set-actor`, {
+    data: { role },
+  });
+  expect(res.ok()).toBeTruthy();
+}
+
+/** Open Settings/manage modal (systems + admin sections when actor is admin). */
+export async function openManageModal(page) {
+  await page.locator("#manage-btn").click();
+  await expect(page.locator("#manage-modal")).toBeVisible();
+}
+
 export async function waitForDashboardData(page) {
   await expect(page.locator("#bat-pct")).not.toHaveText("--");
   await expect(page.locator("#bat-pct")).not.toHaveClass(/skeleton/);
