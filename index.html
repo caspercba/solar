@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=22">
+  <link rel="stylesheet" href="style.css?v=23">
 </head>
 <body>
 
@@ -59,6 +59,34 @@
       </form>
       <p class="setup-mode-hint" id="setup-mode-hint" data-i18n="setupModeHintToken" hidden>Legacy path for Home Assistant and bookmarked links.</p>
       <p id="setup-error" class="error" hidden></p>
+    </div>
+  </div>
+
+  <!-- Accept-invite screen (ADR 0003: ?proxy=…&invite=<secret> → set username + password) -->
+  <div id="invite-screen" class="screen" hidden>
+    <div class="setup-theme-wrap">
+      <button type="button" id="invite-theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
+    </div>
+    <div class="login-card">
+      <div class="login-icon">&#9728;</div>
+      <h1 data-i18n="appTitle">Solar Dashboard</h1>
+      <p class="login-subtitle" data-i18n="inviteSubtitle">Create your account</p>
+      <div class="lang-toggle" role="group" aria-labelledby="invite-lang-label">
+        <span id="invite-lang-label" class="lang-label" data-i18n="language">Language</span>
+        <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
+      </div>
+      <p class="setup-mode-hint invite-hint" data-i18n="inviteHint">Choose a username and password to join this dashboard. No email is sent.</p>
+      <form id="invite-form" autocomplete="on">
+        <input type="url" id="invite-proxy-url" data-i18n-placeholder="proxyUrl" placeholder="Proxy URL" autocomplete="url" required
+               value="https://solar-proxy.gaspar-solar.workers.dev">
+        <input type="text" id="invite-user" data-i18n-placeholder="username" placeholder="Username" autocomplete="username" required spellcheck="false" maxlength="64">
+        <input type="password" id="invite-pass" data-i18n-placeholder="invitePassword" placeholder="Password (min 8 characters)" autocomplete="new-password" required minlength="8">
+        <input type="password" id="invite-pass-confirm" data-i18n-placeholder="invitePasswordConfirm" placeholder="Confirm password" autocomplete="new-password" required minlength="8">
+        <button type="submit" id="invite-accept-btn" data-i18n="inviteAccept">Create account</button>
+      </form>
+      <p id="invite-accept-error" class="error" hidden></p>
+      <button type="button" id="invite-back-btn" class="btn-link invite-back-btn" data-i18n="inviteBackToSignIn">Already have an account? Sign in</button>
     </div>
   </div>
 
@@ -419,6 +447,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=22"></script>
+  <script type="module" src="app.js?v=23"></script>
 </body>
 </html>

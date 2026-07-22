@@ -101,6 +101,17 @@ describe("i18n", () => {
     expect(t("loginFailed")).toMatch(/Could not sign in/);
   });
 
+  it("translates accept-invite keys in English", () => {
+    expect(t("inviteSubtitle")).toBe("Create your account");
+    expect(t("inviteAccept")).toBe("Create account");
+    expect(t("inviteHint")).toMatch(/No email is sent/);
+    expect(t("inviteAcceptInvalid")).toMatch(/invalid/i);
+    expect(t("inviteAcceptRevoked")).toMatch(/revoked/i);
+    expect(t("inviteAcceptExpired")).toMatch(/expired/i);
+    expect(t("inviteAcceptConsumed")).toMatch(/already been used/i);
+    expect(t("inviteAcceptPasswordMismatch")).toMatch(/do not match/i);
+  });
+
   it("translates password-login keys in Spanish", () => {
     setLocale("es");
     expect(t("setupSubtitle")).toBe("Inicia sesión en tu proxy");
@@ -109,6 +120,17 @@ describe("i18n", () => {
     expect(t("loginInvalidCredentials")).toBe("Usuario o contraseña no válidos");
     expect(t("loginRateLimited")).toMatch(/Demasiados intentos/);
     expect(t("loginFailed")).toMatch(/No se pudo iniciar sesión/);
+  });
+
+  it("translates accept-invite keys in Spanish", () => {
+    setLocale("es");
+    expect(t("inviteSubtitle")).toBe("Crea tu cuenta");
+    expect(t("inviteAccept")).toBe("Crear cuenta");
+    expect(t("inviteHint")).toMatch(/no se envía correo/i);
+    expect(t("inviteAcceptInvalid")).toMatch(/no es válido/i);
+    expect(t("inviteAcceptRevoked")).toMatch(/revocada/i);
+    expect(t("inviteAcceptExpired")).toMatch(/caducado/i);
+    expect(t("inviteAcceptConsumed")).toMatch(/ya ha sido utilizada/i);
   });
 
   it("translates admin invite-mint keys in English", () => {

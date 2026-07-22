@@ -439,6 +439,33 @@ export function matchesDashboardRefreshShortcut({ key, ctrlKey, metaKey, shiftKe
 /** Admin invites (ADR 0003) — emitted vs converted vs revoked/expired. */
 export const INVITE_STATUSES = ["pending", "converted", "revoked", "expired"];
 
+/**
+ * Map POST /api/auth/invite/accept failures to an i18n key.
+ * Matches Worker error strings from assertInviteAcceptable / createUser.
+ */
+export function inviteAcceptErrorI18nKey(status, errorMessage) {
+  const code = Number(status) || 0;
+  const msg = String(errorMessage || "").toLowerCase();
+
+  if (code === 429 || msg.includes("too many requests")) return "inviteAcceptRateLimited";
+  if (code === 404 || msg.includes("invalid invite")) return "inviteAcceptInvalid";
+  if (msg.includes("revoked")) return "inviteAcceptRevoked";
+  if (msg.includes("expired")) return "inviteAcceptExpired";
+  if (msg.includes("already been used") || msg.includes("already used") || msg.includes("converted")) {
+    return "inviteAcceptConsumed";
+  }
+  if (msg.includes("already taken")) return "inviteAcceptUsernameTaken";
+  if (msg.includes("at least 8")) return "inviteAcceptPasswordTooShort";
+  if (
+    msg.includes("username may only") ||
+    msg.includes("at most 64") ||
+    msg.includes("username is required")
+  ) {
+    return "inviteAcceptUsernameInvalid";
+  }
+  return "inviteAcceptFailed";
+}
+
 /** i18n key for an invite's status badge; unknown statuses fall back to pending's key. */
 export function inviteStatusI18nKey(status) {
   const s = INVITE_STATUSES.includes(status) ? status : "pending";
