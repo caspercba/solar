@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=24">
+  <link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
 
@@ -57,7 +57,7 @@
         </div>
         <button type="submit" id="setup-btn" data-i18n="signIn">Sign in</button>
       </form>
-      <p class="setup-mode-hint" id="setup-mode-hint" data-i18n="setupModeHintToken" hidden>Legacy path for Home Assistant and bookmarked links.</p>
+      <p class="setup-mode-hint" id="setup-mode-hint" data-i18n="setupModeHintToken" hidden>Legacy path for Home Assistant and bookmarked links. Password login is recommended.</p>
       <p id="setup-error" class="error" hidden></p>
     </div>
   </div>
@@ -96,7 +96,7 @@
     <header>
       <h1 id="header-title" data-i18n="appTitle">Solar Dashboard</h1>
       <div class="header-right">
-        <div class="lang-toggle lang-toggle-compact" role="group" aria-label="Language">
+        <div class="lang-toggle lang-toggle-compact" role="group" data-i18n-aria="language" aria-label="Language">
           <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
           <button type="button" class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
         </div>
@@ -409,7 +409,7 @@
         <div id="invite-result" class="invite-result" hidden>
           <p class="manage-hint invite-once-note" data-i18n="adminInviteOnceNote">Copy now — this link is shown only once.</p>
           <div class="invite-url-row">
-            <input type="text" id="invite-url" class="invite-url" readonly aria-label="Magic link URL">
+            <input type="text" id="invite-url" class="invite-url" readonly data-i18n-aria="adminInviteUrlAria" aria-label="Magic link URL">
             <button type="button" id="invite-copy-btn" class="invite-copy-btn" data-i18n="adminInviteCopy">Copy</button>
           </div>
           <p id="invite-expires" class="manage-hint" hidden></p>
@@ -447,6 +447,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=24"></script>
+  <script type="module" src="app.js?v=25"></script>
 </body>
 </html>

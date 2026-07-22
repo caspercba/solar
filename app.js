@@ -2149,7 +2149,11 @@ function hideAdminInviteSection() {
   clearInvitesList();
 }
 
+/** Cached last-minted invite (ADR 0003) — kept so locale toggle can re-label expires/copy UI. */
+let lastInviteMinted = null;
+
 function clearInviteResult() {
+  lastInviteMinted = null;
   if (els.inviteResult) els.inviteResult.hidden = true;
   if (els.inviteUrl) els.inviteUrl.value = "";
   if (els.inviteExpires) {
@@ -2203,7 +2207,7 @@ function setUsersListMsg(text, kind) {
 function formatUserListDate(iso) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString(getLocale());
   } catch {
     return iso;
   }
@@ -2462,7 +2466,7 @@ function renderInvitesList() {
 function formatInviteListDate(iso) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString(getLocale());
   } catch {
     return iso;
   }
@@ -2525,6 +2529,7 @@ async function purgeStaleInvites() {
 
 function showInviteMinted(minted) {
   if (!els.inviteResult || !els.inviteUrl) return;
+  lastInviteMinted = minted;
   els.inviteUrl.value = minted.url || "";
   els.inviteResult.hidden = false;
   if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
@@ -2532,7 +2537,7 @@ function showInviteMinted(minted) {
     if (minted.expiresAt) {
       let when = minted.expiresAt;
       try {
-        when = new Date(minted.expiresAt).toLocaleString();
+        when = new Date(minted.expiresAt).toLocaleString(getLocale());
       } catch {
         /* keep ISO */
       }
@@ -2748,8 +2753,17 @@ function changeLocale(locale) {
     }
   }
   if (!detailModal.hidden && openDetailSysId) openSystemDetail(openDetailSysId);
-  else if (!manageModal.hidden) openManageModal();
-  if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
+  else if (!manageModal.hidden) {
+    // Re-render admin users/invites copy from cached state before reopening
+    // (openManageModal refreshes systems list + reloads admin panels).
+    if (lastInviteMinted) showInviteMinted(lastInviteMinted);
+    else if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
+    renderUsersList();
+    renderInvitesList();
+    openManageModal();
+  } else {
+    if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
+  }
   if (els.inviteMintBtn && !els.inviteMintBtn.disabled) {
     els.inviteMintBtn.textContent = t("adminInviteCreate");
   }

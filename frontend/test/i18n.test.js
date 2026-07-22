@@ -158,6 +158,21 @@ describe("i18n", () => {
     expect(t("userDisableConfirm", { username: "alice" })).toMatch(/alice/);
   });
 
+  it("translates admin invites-list keys in English", () => {
+    expect(t("adminInvitesListTitle")).toBe("Invites");
+    expect(t("adminInvitesPurgeBtn")).toBe("Purge stale");
+    expect(t("adminInvitesEmpty")).toBe("No invites yet.");
+    expect(t("adminInvitesPurged", { count: 2 })).toBe("Purged 2 stale invite(s)");
+    expect(t("inviteStatusPending")).toBe("Pending");
+    expect(t("inviteStatusConverted")).toBe("Converted");
+    expect(t("inviteStatusRevoked")).toBe("Revoked");
+    expect(t("inviteStatusExpired")).toBe("Expired");
+    expect(t("inviteRevoke")).toBe("Revoke");
+    expect(t("inviteRevokeConfirm")).toMatch(/stop working/);
+    expect(t("inviteNoLabel")).toBe("(no label)");
+    expect(t("adminInviteUrlAria")).toBe("Magic link URL");
+  });
+
   it("translates admin invite-mint keys in Spanish", () => {
     setLocale("es");
     expect(t("adminInviteTitle")).toBe("Invitar usuario");
@@ -177,5 +192,70 @@ describe("i18n", () => {
     expect(t("userEnable")).toBe("Activar");
     expect(t("userLastAdminDisable")).toMatch(/último admin/);
     expect(t("userDisableConfirm", { username: "alice" })).toMatch(/alice/);
+  });
+
+  it("translates admin invites-list keys in Spanish", () => {
+    setLocale("es");
+    expect(t("adminInvitesListTitle")).toBe("Invitaciones");
+    expect(t("adminInvitesPurgeBtn")).toBe("Purgar caducadas");
+    expect(t("adminInvitesEmpty")).toBe("Aún no hay invitaciones.");
+    expect(t("adminInvitesPurged", { count: 2 })).toMatch(/2/);
+    expect(t("inviteStatusPending")).toBe("Pendiente");
+    expect(t("inviteStatusConverted")).toBe("Convertida");
+    expect(t("inviteStatusRevoked")).toBe("Revocada");
+    expect(t("inviteStatusExpired")).toBe("Caducada");
+    expect(t("inviteRevoke")).toBe("Revocar");
+    expect(t("inviteRevokeConfirm")).toMatch(/dejará de funcionar/);
+    expect(t("inviteNoLabel")).toBe("(sin etiqueta)");
+    expect(t("adminInviteUrlAria")).toBe("URL del enlace mágico");
+  });
+
+  it("keeps EN/ES auth key sets in parity for login, invite, and admin screens", () => {
+    const authKeys = [
+      "setupSubtitle", "signIn", "signingIn", "signInWith", "setupModeHintToken",
+      "loginInvalidCredentials", "loginRateLimited", "loginFailed",
+      "logout", "sessionExpired",
+      "inviteSubtitle", "inviteHint", "invitePassword", "invitePasswordConfirm",
+      "inviteAccept", "inviteAccepting", "inviteBackToSignIn",
+      "inviteAcceptInvalid", "inviteAcceptRevoked", "inviteAcceptExpired",
+      "inviteAcceptConsumed", "inviteAcceptUsernameTaken", "inviteAcceptUsernameInvalid",
+      "inviteAcceptPasswordTooShort", "inviteAcceptPasswordMismatch",
+      "inviteAcceptRateLimited", "inviteAcceptFailed",
+      "adminUsersListTitle", "adminUsersHint", "adminUsersEmpty", "adminUsersLoadFailed",
+      "userCreatedAt", "userLastLoginAt", "userNeverLoggedIn",
+      "userStatusActive", "userStatusDisabled",
+      "userDisable", "userDisabling", "userDisableConfirm", "userDisableFailed",
+      "userEnable", "userEnabling", "userEnableFailed",
+      "userRoleChangeFailed", "userLastAdminDisable", "userLastAdminDemote", "userRoleAria",
+      "adminInviteTitle", "adminInviteHint", "adminInviteRole", "roleRead", "roleAdmin",
+      "adminInviteLabel", "adminInviteLabelPlaceholder", "adminInviteTtl",
+      "adminInviteTtlDefault", "adminInviteTtl1d", "adminInviteTtl3d", "adminInviteTtl7d",
+      "adminInviteTtl14d", "adminInviteTtl30d",
+      "adminInviteCreate", "adminInviteCreating", "adminInviteOnceNote",
+      "adminInviteCopy", "adminInviteCopied", "adminInviteCopyFailed", "adminInviteUrlAria",
+      "adminInviteExpires", "adminInviteCreated", "adminInviteFailed",
+      "adminInvitesListTitle", "adminInvitesPurgeBtn", "adminInvitesPurging",
+      "adminInvitesLoading", "adminInvitesEmpty", "adminInvitesLoadFailed",
+      "adminInvitesPurged", "adminInvitesPurgeFailed", "adminInvitesPurgeConfirm",
+      "adminInvitesNonePurgeable",
+      "inviteStatusPending", "inviteStatusConverted", "inviteStatusRevoked", "inviteStatusExpired",
+      "inviteRevoke", "inviteRevoking", "inviteRevokeConfirm", "inviteRevokeFailed",
+      "inviteCreatedAt", "inviteExpiresAt", "inviteConvertedAt", "inviteNoLabel",
+    ];
+    // Intentionally identical across locales (loanwords / proper nouns).
+    const allowSame = new Set(["roleAdmin"]);
+
+    for (const key of authKeys) {
+      const vars = { when: "X", username: "u", count: 1 };
+      setLocale("en");
+      const en = t(key, vars);
+      expect(en, `${key} en`).not.toBe(key);
+      setLocale("es");
+      const es = t(key, vars);
+      expect(es, `${key} es`).not.toBe(key);
+      if (!allowSame.has(key)) {
+        expect(es, `${key} differs`).not.toBe(en);
+      }
+    }
   });
 });
