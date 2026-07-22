@@ -43,7 +43,9 @@ const messages = {
 
     statusConnected: "Connected",
     statusDisconnected: "Disconnected",
-    disconnect: "Disconnect",
+    disconnect: "Log out",
+    logout: "Log out",
+    sessionExpired: "Your session ended or was revoked. Please sign in again.",
 
     tabCards: "Cards",
     tabFlow: "Flow",
@@ -302,7 +304,9 @@ const messages = {
 
     statusConnected: "Conectado",
     statusDisconnected: "Desconectado",
-    disconnect: "Desconectar",
+    disconnect: "Cerrar sesión",
+    logout: "Cerrar sesión",
+    sessionExpired: "Tu sesión terminó o fue revocada. Vuelve a iniciar sesión.",
 
     tabCards: "Tarjetas",
     tabFlow: "Flujo",

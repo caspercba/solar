@@ -49,8 +49,14 @@ function error(message, status = 400, origin = "*") {
 }
 
 let mockSystemCounter = 0;
+/** When true, the next checkAuth fails once (simulates revoked/disabled session). */
+let mockSessionExpired = false;
 
 function checkAuth(request) {
+  if (mockSessionExpired) {
+    mockSessionExpired = false;
+    return false;
+  }
   const token = process.env.MOCK_WORKER_TOKEN || MOCK_TOKEN;
   const header = request.headers.get("Authorization") || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -165,8 +171,37 @@ export async function handleMockWorkerRequest(request) {
     return json({ ok: true }, 200, origin);
   }
 
+  // Test-only: next authenticated request returns 401 (session revoked/disabled).
+  if (path === "/__mock__/expire-session" && request.method === "POST") {
+    mockSessionExpired = true;
+    return json({ ok: true }, 200, origin);
+  }
+
   if (!checkAuth(request)) {
     return error("Unauthorized", 401, origin);
+  }
+
+  // POST /api/auth/logout — revoke session (shared mock token stays valid for other tests)
+  if (path === "/api/auth/logout" && request.method === "POST") {
+    mockSessionExpired = false;
+    return json({ ok: true }, 200, origin);
+  }
+
+  // GET /api/me — current actor (default read; set MOCK_WORKER_ROLE=admin for admin E2E)
+  if (path === "/api/me" && request.method === "GET") {
+    const username = (process.env.MOCK_WORKER_USER || MOCK_USER).toLowerCase();
+    const role = process.env.MOCK_WORKER_ROLE === "admin" ? "admin" : "read";
+    return json(
+      {
+        userId: "e2e-mock-user",
+        tokenId: "e2e-mock-session",
+        username,
+        role,
+        actorId: "e2e-mock-user",
+      },
+      200,
+      origin,
+    );
   }
 
   if (path === "/api/systems" && request.method === "GET") {

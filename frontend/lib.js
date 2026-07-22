@@ -513,6 +513,22 @@ export function canDisableUser(users, userId) {
 }
 
 /**
+ * Build an Error with an HTTP `status` for auth / API callers.
+ * Session-expiry UX keys off `err.status === 401`.
+ */
+export function httpError(message, status) {
+  const code = Number(status) || 0;
+  const err = new Error(message || (code ? `HTTP ${code}` : "Request failed"));
+  err.status = code;
+  return err;
+}
+
+/** True when an error represents HTTP 401 Unauthorized (revoked/disabled session). */
+export function isUnauthorizedError(err) {
+  return Number(err?.status) === 401;
+}
+
+/**
  * Role change is allowed unless demoting the last active admin to `read`.
  * Promoting to admin is always allowed.
  */
