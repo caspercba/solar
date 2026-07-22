@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-07-21 (SOLAR-0122 coordination close)_
+_Last updated: 2026-07-22 (SOLAR-0134 tester-failure follow-up)_
 
 ## Done
 
@@ -81,55 +81,35 @@ _Last updated: 2026-07-21 (SOLAR-0122 coordination close)_
 - **Frontend login (SOLAR-0125)** — setup form uses username/password → `POST /api/auth/login`; session bearer stored in `localStorage`; mock Worker + Playwright setup updated.
 - **SOLAR-0121 coordination close** — Frontend ADR 0003 umbrella closed **without** implementing remaining UI here; accept-invite, admin users/invites, legacy token paste, logout/i18n stay on SOLAR-0126…0131 / 0145 / 0149.
 - **SOLAR-0122 coordination close (2026-07-21)** — Tests ADR 0003 umbrella closed **without** implementing new E2E specs here. Verified current state instead: Worker Vitest (`worker/test/routes.test.js`, "password users and invites (ADR 0003)") already exercises login, invite accept + reuse rejection, revoke, last-admin refusal, and role gates — full worker suite is 222/222 passing, frontend suite 101/101 passing. Playwright has no login/invite/admin specs yet and the mock Worker (`e2e/fixtures/mock-worker.js`) has no `/api/auth/invite/*` or `/api/admin/*` routes, so those must land on **SOLAR-0133** (login + accept-invite), **SOLAR-0134** (admin users/invites + last-admin), and **SOLAR-0135** (legacy `?token=`/token-paste) rather than this parent. Playwright browser install failed in this sandbox (no network egress to `cdn.playwright.dev`) — E2E was not runnable here; confirm green in CI.
+- **ADR 0003 frontend build-out complete (2026-07-22)** — accept-invite screen (SOLAR-0126), admin users list + role/disable (SOLAR-0127), admin create user with password (SOLAR-0128), admin mint magic-link invite (SOLAR-0129), admin invites list/revoke/purge (SOLAR-0130), legacy `?token=`/token-paste retained (SOLAR-0131), ES/EN auth i18n (SOLAR-0145), logout + session-expiry UX (SOLAR-0149), README/ARCHITECTURE/DEPLOY sync (SOLAR-0146), and optional Analytics Engine binding (SOLAR-0147) all landed on `main` today. All ten board tasks show `status: done`.
+- **Tester failure follow-up: SOLAR-0134 create-user E2E (2026-07-22)** — Tester reported `creates a user with username, password, and role` failing (`#admin-create-user-section` not found) because SOLAR-0128 hadn't shipped yet when the E2E branch was cut. Root-cause: sequencing, not a bug — commit `99701df` (PR #130, merged 2026-07-22 03:26 UTC) added the missing UI. Tester re-ran after the merge; SOLAR-0134 now shows `status: ready_to_merge` (all Playwright admin/invite/last-admin flows green on desktop-chrome + mobile-chrome). The duplicate follow-up task **SOLAR-0151** ("Fix: Admin create-user UI missing") is now superseded — marked `blocked` with a note for a human to close/delete rather than left schedulable.
 
 ## In Progress
 
-- (developer) Worker: invite KV registry + hash-only secrets (ADR 0003) — board run in flight
-- (developer) Worker: user KV registry + password hashing (ADR 0003) — board run in flight
+_None — no developer/tester work currently in flight. SOLAR-0133/0134/0135 (E2E) are `ready_to_merge`, awaiting orchestrator merge._
 
 ## Up Next
 
-_Priority order. Phases 1–4 and ADR 0002 Phases 1–2 are complete at v1.3.0. ADR 0003 Worker routes + login screen are on `main`; remaining FE/admin/E2E land via granular tasks. See PLAN.md §5.3, §12, §13 Q6, and ARCHITECTURE.md §3._
+_Priority order. Phases 1–4, ADR 0002 Phases 1–2, and ADR 0003 frontend (Worker + FE) are all complete on `main`. What remains is merging finished E2E work and clearing two infra-dead-lettered tasks before the release. See PLAN.md §5.3, §12, §13 Q6, and ARCHITECTURE.md §3._
 
-**Frontend (PLAN §5.3 — remaining after SOLAR-0121 close):**
-
-1. **SOLAR-0126** — Accept-invite screen (`?invite=` → set username/password → session)
-2. **SOLAR-0127** / **0128** _(done)_ — Admin users list + create user with password
-3. **SOLAR-0129** / **0130** — Admin mint magic-link invite (copy URL once) + invites list/revoke/purge
-4. **SOLAR-0131** — Keep legacy token paste + `?token=` deep links (HA/migration); `?token=` boot path still present after login change
-5. **SOLAR-0145** — ES/EN i18n for remaining auth screens
-6. **SOLAR-0149** — Logout + session expiry UX
-
-**Worker follow-ons / hardening (if still open on board):**
-
-7. **SOLAR-0136…0141** — confirm registry/route tasks match shipped modules (or archive as done)
-8. **SOLAR-0132** — Worker Vitest completeness for users/invites/auth edge cases
-
-**Tests:**
-
-9. **SOLAR-0133** / **0134** / **0135** — Playwright login, admin, legacy-token E2E
-10. **SOLAR-0148** — Security review pass
-
-**Docs / release:**
-
-11. **SOLAR-0146** — README / ARCHITECTURE / DEPLOY sync
-12. **SOLAR-0150** — Release notes + version bump
-
-**Phase 5 expansion (low priority):**
-
-13. ~~**SOLAR-0143** — Deye discovery spike~~ _(done — see Done)_
-14. **SOLAR-0147** — Optional Analytics Engine binding
+1. **SOLAR-0133 / 0134 / 0135** — `ready_to_merge`; orchestrator merges Playwright login/accept-invite, admin users/invites/last-admin, and legacy-token E2E specs.
+2. **SOLAR-0132** — Worker Vitest completeness for users/invites/auth edge cases. `status: failed`, dead-lettered on infra (`git clone` of `worker/tester/7e3ae468` not found in upstream), not a code failure — needs a fresh run/reassignment. Note: prior planning pass already found `routes.test.js` covers login/invite/last-admin/role-gates end to end (222/222 passing), so this task may be largely redundant — a human should decide retry vs. archive.
+3. **SOLAR-0148** — Security review of ADR 0003 auth/invites. `status: failed`, dead-lettered on infra (git push network timeout, then a separate run hit VM memory-budget exceeded) — needs a fresh run, not new findings.
+4. **SOLAR-0150** — Release notes + version bump for ADR 0003. `status: todo`, blocked transitively by SOLAR-0132 (hard dependency) until that's retried or removed as a dependency.
+5. **SOLAR-0151** — superseded duplicate ("Fix: Admin create-user UI missing"), now `blocked`; human should close/delete.
 
 **Deferred (no board tasks):**
 
-15. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`)
-16. Cloudflare Access on admin/token-minting surfaces (ADR 0002 Phase 3 — implement when requested)
-17. Password-reset invite purpose (ADR 0003 later iteration)
+6. WebSocket push — evaluated and deferred (`discovery/WEBSOCKET_REALTIME.md`)
+7. Cloudflare Access on admin/token-minting surfaces (ADR 0002 Phase 3 — implement when requested)
+8. Password-reset invite purpose (ADR 0003 later iteration)
 
 ## Blocked
 
-- **SOLAR-0121** — Frontend umbrella; **closed as coordination-only** (superseded by SOLAR-0125…0131; no full UI on this parent)
-- **SOLAR-0122** — Tests umbrella; **closed as coordination-only** (superseded by SOLAR-0132…0135; no new E2E specs on this parent). SOLAR-0132 (Worker Vitest) is effectively covered by existing `routes.test.js` ADR 0003 coverage — confirm/archive on the board. SOLAR-0133/0134/0135 (E2E) stay blocked until accept-invite/admin FE (SOLAR-0126…0130) exists for Playwright to drive.
+- **SOLAR-0132** — dead-lettered after 6 retries: worker sandbox couldn't `git clone` branch `worker/tester/7e3ae468` (branch not found in upstream origin). Infra/orchestration issue, not a code defect. Needs a fresh run.
+- **SOLAR-0148** — dead-lettered after 4 retries: one run failed pushing results (`github.com` connection timeout), a later run failed to start (`vmd start failed: memory budget exceeded`). Infra issue, not a code defect. Needs a fresh run.
+- **SOLAR-0150** — blocked transitively: depends on SOLAR-0132, which is dead-lettered (see above). Release notes/version bump can't proceed until that dependency clears or is revised.
+- **SOLAR-0151** — blocked as superseded/duplicate (see Done note above); awaiting human close/delete.
 
 ## Decisions Made
 
@@ -145,13 +125,14 @@ _Priority order. Phases 1–4 and ADR 0002 Phases 1–2 are complete at v1.3.0. 
 - **Test strategy** — Worker Vitest (adapters/routes), extracted frontend unit tests (Vitest + jsdom), Playwright E2E against mock Worker; no real inverter credentials in CI.
 - **Growatt sessions in KV** — session cookies persisted; plaintext password removed after first successful login when possible.
 - **Multi-user access — opaque keys (ADR 0002)** — shared `API_TOKEN` remains the default and needs no migration; mutation audit log (Phase 1) and per-user opaque KV keys with `read`/`admin` roles (Phase 2) are both implemented; Cloudflare Access (Phase 3) deferred to admin surfaces only, implement when requested.
-- **Multi-user access — password accounts + magic links (ADR 0003)** — Worker user/invite registry + auth/admin routes are on `main`; frontend **login** is on `main`. Remaining FE: accept-invite, admin users/invites panels, legacy token paste UX, logout/session expiry, auth i18n (SOLAR-0126…0131 / 0145 / 0149). No outbound email in v1. Opaque keys and `?token=` retained for machines/migration. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [docs/decisions/0003-password-users-and-magic-link-invites.md](./docs/decisions/0003-password-users-and-magic-link-invites.md).
+- **Multi-user access — password accounts + magic links (ADR 0003)** — Worker user/invite registry + auth/admin routes, and the full frontend (login, accept-invite, admin users/invites panels, legacy token paste UX, logout/session expiry, auth i18n) are all on `main` as of 2026-07-22. No outbound email in v1. Opaque keys and `?token=` retained for machines/migration. E2E coverage (SOLAR-0133/0134/0135) is `ready_to_merge`. See [ARCHITECTURE.md](./ARCHITECTURE.md) and [docs/decisions/0003-password-users-and-magic-link-invites.md](./docs/decisions/0003-password-users-and-magic-link-invites.md).
 - **ADR 0003 delivery shape (2026-07-21 planning)** — implement as granular board tasks (Worker → Frontend → Tests), not a single umbrella. **SOLAR-0121** (this parent) is coordination-only and must not absorb the full FE UI while 0125…0131 exist.
 
 ## Blocked / Open Questions
 
 1. Should frontend and worker share a Cloudflare project or remain independently deployable? _(Currently independently deployable — Pages for frontend, Workers for backend — and that has worked fine; revisit only if it becomes a pain point.)_
-2. Board hygiene — archive or mark done any Worker SOLAR-0136…0141 items that already match shipped `users.js` / `invites.js` / routes, so FE tasks are not falsely blocked.
+2. ~~Board hygiene — archive SOLAR-0136…0141~~ _(resolved — all six show `status: done` on the board)_
+3. Should SOLAR-0132 be retried as-is or archived as redundant, given `routes.test.js` already covers login/invite/last-admin/role-gates (222/222 passing)? Blocks SOLAR-0150 (release) either way until decided.
 
 ## Known Risks
 
@@ -162,4 +143,4 @@ _Priority order. Phases 1–4 and ADR 0002 Phases 1–2 are complete at v1.3.0. 
 - **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` must be set in production; dev-mode open auth remains a footgun if misconfigured (mitigated by fail-closed `PRODUCTION` guard).
 - **Invite / password sharing** — magic links sent out-of-band can leak; mitigate with TTL, single-use conversion, admin revoke, and hash-only storage (ADR 0003).
 - **Last-admin lockout** — user-admin routes must refuse deleting/disabling the final `admin` account.
-- **Partial FE for ADR 0003** — login shipped; accept-invite and admin panels not yet; E2E for those flows stays blocked until SOLAR-0126…0130 land.
+- **Infra dead-letters blocking release** — SOLAR-0132 and SOLAR-0148 both failed on sandbox/orchestration infra (git clone/push, VM memory budget), not code defects, and are now dead-lettered after repeated retries. SOLAR-0150 (release) has a hard dependency on SOLAR-0132 and can't proceed until it's re-run or the dependency is revised.
