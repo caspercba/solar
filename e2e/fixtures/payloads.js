@@ -9,6 +9,16 @@ export const MOCK_TOKEN = "e2e-test-token";
 export const MOCK_USER = "e2e-user";
 export const MOCK_PASSWORD = "e2e-password";
 
+/**
+ * Well-known invite secrets for mock Worker `POST /api/auth/invite/accept`.
+ * Pending secrets use the `e2e-pending-` prefix; each unique suffix is single-use.
+ */
+export const MOCK_INVITE_EXPIRED = "e2e-expired-invite";
+export const MOCK_INVITE_REVOKED = "e2e-revoked-invite";
+export const MOCK_INVITE_USED = "e2e-used-invite";
+export const MOCK_INVITE_INVALID = "e2e-invalid-invite";
+export const MOCK_INVITE_PENDING_PREFIX = "e2e-pending-";
+
 /** Date query param that returns empty intraday history (chart empty state). */
 export const EMPTY_HISTORY_DATE = "2026-01-01";
 

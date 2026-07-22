@@ -9,6 +9,8 @@
     "dev:down": "docker compose down",
     "dev:worker": "API_MODE=worker docker compose up --build",
     "dev:local": "node scripts/dev-local.js",
-    "dev:local:worker": "API_MODE=worker node scripts/dev-local.js"
+    "dev:local:worker": "API_MODE=worker node scripts/dev-local.js",
+    "test": "npm --prefix worker test && npm --prefix frontend test && npm --prefix e2e test",
+    "test:e2e": "npm --prefix e2e test"
   }
 }

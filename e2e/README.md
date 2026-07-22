@@ -35,6 +35,8 @@ Playwright starts two local servers automatically:
 
 Mock password login: `e2e-user` / `e2e-password` → session bearer `e2e-test-token` (defined in `fixtures/payloads.js`).
 
+Mock invite accept (`POST /api/auth/invite/accept`): secrets with prefix `e2e-pending-` succeed once; `e2e-expired-invite`, `e2e-revoked-invite`, `e2e-used-invite`, and other values map to Worker-style error responses.
+
 ## Manual server mode
 
 Useful while debugging a single spec:
@@ -68,6 +70,7 @@ Set `CI=1` to skip `fetch-deps.js`'s user-space library bootstrap and rely on sy
 | Spec | Flows |
 |------|-------|
 | `tests/setup.spec.js` | Invalid password / disabled user errors, password login, deep-link auto-login |
+| `tests/invite.spec.js` | Accept-invite happy path; invalid / expired / revoked / used invite errors |
 | `tests/dashboard.spec.js` | Cards SOC/watts, flow charge/discharge classes, system tabs, view toggle `localStorage` |
 | `tests/chart.spec.js` | History chart with mock data, empty state for date `2026-01-01` |
 | `tests/mobile-ptr.spec.js` | Pull-to-refresh smoke (mobile viewport) |

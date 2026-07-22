@@ -15,6 +15,10 @@ import {
   MOCK_TOKEN,
   MOCK_USER,
   MOCK_PASSWORD,
+  MOCK_INVITE_EXPIRED,
+  MOCK_INVITE_REVOKED,
+  MOCK_INVITE_USED,
+  MOCK_INVITE_PENDING_PREFIX,
   EMPTY_HISTORY_DATE,
   defaultAlerts,
   health,
@@ -25,7 +29,15 @@ import {
   resetSystems,
 } from "./payloads.js";
 
-export { EMPTY_HISTORY_DATE, MOCK_USER, MOCK_PASSWORD };
+export {
+  EMPTY_HISTORY_DATE,
+  MOCK_USER,
+  MOCK_PASSWORD,
+  MOCK_INVITE_EXPIRED,
+  MOCK_INVITE_REVOKED,
+  MOCK_INVITE_USED,
+  MOCK_INVITE_PENDING_PREFIX,
+};
 
 export const MOCK_PORT = Number(process.env.MOCK_WORKER_PORT) || 8790;
 export const MOCK_HOST = process.env.MOCK_WORKER_HOST || "127.0.0.1";
@@ -51,6 +63,48 @@ function error(message, status = 400, origin = "*") {
 let mockSystemCounter = 0;
 /** When true, the next checkAuth fails once (simulates revoked/disabled session). */
 let mockSessionExpired = false;
+/** Plaintext invite secrets already converted via POST /api/auth/invite/accept. */
+const consumedInvites = new Set();
+
+function resetInvites() {
+  consumedInvites.clear();
+}
+
+/**
+ * Mirror Worker assertInviteAcceptable + createUser for E2E (no real KV).
+ * @returns {{ ok: true, username: string, role: string } | { ok: false, error: string, status: number }}
+ */
+function evaluateInviteAccept({ invite, username, password }) {
+  if (!invite || !username || !password) {
+    return { ok: false, error: "Missing required fields: invite, username, password", status: 400 };
+  }
+  if (String(password).length < 8) {
+    return { ok: false, error: "Password must be at least 8 characters", status: 400 };
+  }
+
+  const secret = String(invite);
+  if (secret === MOCK_INVITE_EXPIRED) {
+    return { ok: false, error: "Invite has expired", status: 410 };
+  }
+  if (secret === MOCK_INVITE_REVOKED) {
+    return { ok: false, error: "Invite has been revoked", status: 410 };
+  }
+  if (secret === MOCK_INVITE_USED || consumedInvites.has(secret)) {
+    return { ok: false, error: "Invite has already been used", status: 410 };
+  }
+  if (!secret.startsWith(MOCK_INVITE_PENDING_PREFIX)) {
+    return { ok: false, error: "Invalid invite", status: 404 };
+  }
+
+  const userNorm = String(username).trim().toLowerCase();
+  const reserved = (process.env.MOCK_WORKER_USER || MOCK_USER).toLowerCase();
+  if (userNorm === reserved) {
+    return { ok: false, error: "Username already taken", status: 400 };
+  }
+
+  consumedInvites.add(secret);
+  return { ok: true, username: userNorm, role: "read" };
+}
 
 function checkAuth(request) {
   if (mockSessionExpired) {
@@ -163,11 +217,42 @@ export async function handleMockWorkerRequest(request) {
     );
   }
 
+  // POST /api/auth/invite/accept — create user from invite + session (no prior auth)
+  if (path === "/api/auth/invite/accept" && request.method === "POST") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return error("Invalid JSON body", 400, origin);
+    }
+    const result = evaluateInviteAccept(body || {});
+    if (!result.ok) return error(result.error, result.status, origin);
+
+    const token = process.env.MOCK_WORKER_TOKEN || MOCK_TOKEN;
+    return json(
+      {
+        token,
+        role: result.role,
+        username: result.username,
+        userId: "e2e-invite-user",
+        tokenId: "e2e-invite-session",
+      },
+      201,
+      origin,
+    );
+  }
+
   // Test-only: restore the default mock systems list. Not part of the real
   // Worker API — used by E2E specs that add/remove systems to avoid leaking
   // state into other spec files sharing this mock Worker process.
   if (path === "/__mock__/reset-systems" && request.method === "POST") {
     resetSystems();
+    return json({ ok: true }, 200, origin);
+  }
+
+  // Test-only: clear consumed invite secrets between specs.
+  if (path === "/__mock__/reset-invites" && request.method === "POST") {
+    resetInvites();
     return json({ ok: true }, 200, origin);
   }
 
@@ -417,6 +502,7 @@ export function startMockWorker(port = MOCK_PORT) {
     console.log(`[mock-worker] listening on http://${displayHost}:${port}`);
     console.log(`[mock-worker] login: ${user} / (MOCK_WORKER_PASSWORD)`);
     console.log(`[mock-worker] Bearer token: ${token}`);
+    console.log(`[mock-worker] invite: ${MOCK_INVITE_PENDING_PREFIX}* (single-use) / expired|revoked|used fixtures`);
     console.log(`[mock-worker] mock system id: ${MOCK_SYSTEM_ID}`);
   });
 

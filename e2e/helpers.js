@@ -3,6 +3,11 @@ import {
   MOCK_TOKEN,
   MOCK_USER,
   MOCK_PASSWORD,
+  MOCK_INVITE_EXPIRED,
+  MOCK_INVITE_REVOKED,
+  MOCK_INVITE_USED,
+  MOCK_INVITE_INVALID,
+  MOCK_INVITE_PENDING_PREFIX,
   EMPTY_HISTORY_DATE,
   ESTIMATED_SOC_HISTORY_DATE,
 } from "./fixtures/payloads.js";
@@ -10,7 +15,18 @@ import {
 export const MOCK_WORKER_PORT = Number(process.env.MOCK_WORKER_PORT) || 8790;
 export const FRONTEND_PORT = Number(process.env.FRONTEND_PORT) || 3456;
 export const MOCK_WORKER_URL = `http://127.0.0.1:${MOCK_WORKER_PORT}`;
-export { MOCK_TOKEN, MOCK_USER, MOCK_PASSWORD, EMPTY_HISTORY_DATE, ESTIMATED_SOC_HISTORY_DATE };
+export {
+  MOCK_TOKEN,
+  MOCK_USER,
+  MOCK_PASSWORD,
+  MOCK_INVITE_EXPIRED,
+  MOCK_INVITE_REVOKED,
+  MOCK_INVITE_USED,
+  MOCK_INVITE_INVALID,
+  MOCK_INVITE_PENDING_PREFIX,
+  EMPTY_HISTORY_DATE,
+  ESTIMATED_SOC_HISTORY_DATE,
+};
 
 /**
  * Reference "today" for chart/week-strip fixtures (mock history payloads are
@@ -62,6 +78,37 @@ export async function loginViaSetupForm(
   await page.locator("#setup-user").fill(username);
   await page.locator("#setup-pass").fill(password);
   await page.locator("#setup-btn").click();
+}
+
+/** Open accept-invite screen via ?proxy=&invite= deep link (ADR 0003). */
+export async function openInviteDeepLink(page, invite, { proxy = MOCK_WORKER_URL } = {}) {
+  const proxyEnc = encodeURIComponent(proxy);
+  const inviteEnc = encodeURIComponent(invite);
+  await page.goto(`/?proxy=${proxyEnc}&invite=${inviteEnc}`);
+  await expect(page.locator("#invite-screen")).toBeVisible();
+  await expect(page.locator("#setup-screen")).toBeHidden();
+  await expect(page.locator("#invite-proxy-url")).toHaveValue(proxy.replace(/\/+$/, ""));
+}
+
+/** Fill and submit the accept-invite form. */
+export async function submitInviteForm(
+  page,
+  {
+    username = "invitee",
+    password = "invite-password",
+    confirmPassword = password,
+  } = {},
+) {
+  await page.locator("#invite-user").fill(username);
+  await page.locator("#invite-pass").fill(password);
+  await page.locator("#invite-pass-confirm").fill(confirmPassword);
+  await page.locator("#invite-accept-btn").click();
+}
+
+/** Unique pending invite secret so parallel specs do not collide on single-use. */
+export function uniquePendingInvite(suffix = "") {
+  const rand = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${MOCK_INVITE_PENDING_PREFIX}${suffix}${rand}`;
 }
 
 export async function waitForDashboardData(page) {
