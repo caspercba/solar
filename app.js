@@ -305,6 +305,13 @@ const els = {
   usersList: $("users-list"),
   usersListEmpty: $("users-list-empty"),
   usersListMsg: $("users-list-msg"),
+  adminCreateUserSection: $("admin-create-user-section"),
+  adminCreateUserForm: $("admin-create-user-form"),
+  createUserUsername: $("create-user-username"),
+  createUserPassword: $("create-user-password"),
+  createUserRole: $("create-user-role"),
+  createUserBtn: $("create-user-btn"),
+  createUserMsg: $("create-user-msg"),
   adminInviteSection: $("admin-invite-section"),
   adminInviteForm: $("admin-invite-form"),
   inviteRole: $("invite-role"),
@@ -2142,11 +2149,19 @@ function renderGridInputLabelForm(sys) {
 
 function hideAdminInviteSection() {
   if (els.adminUsersListSection) els.adminUsersListSection.hidden = true;
+  if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = true;
   if (els.adminInviteSection) els.adminInviteSection.hidden = true;
   if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = true;
   clearInviteResult();
   clearUsersList();
   clearInvitesList();
+}
+
+function clearCreateUserMsg() {
+  if (!els.createUserMsg) return;
+  els.createUserMsg.hidden = true;
+  els.createUserMsg.textContent = "";
+  els.createUserMsg.className = "cred-msg";
 }
 
 function clearInviteResult() {
@@ -2167,6 +2182,7 @@ function clearInviteResult() {
 function syncAdminInviteSection() {
   const show = isAdminActor();
   if (els.adminUsersListSection) els.adminUsersListSection.hidden = !show;
+  if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = !show;
   if (els.adminInviteSection) els.adminInviteSection.hidden = !show;
   if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = !show;
   if (!show) {
@@ -2664,6 +2680,43 @@ if (els.invitesPurgeBtn) {
 }
 $("manage-add").addEventListener("click", openAddModal);
 detailBack.addEventListener("click", closeSystemDetail);
+
+if (els.adminCreateUserForm) {
+  els.adminCreateUserForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!isAdminActor()) return;
+
+    clearCreateUserMsg();
+    const btn = els.createUserBtn;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = t("adminCreateUserCreating");
+    }
+
+    const body = {
+      username: els.createUserUsername?.value?.trim() || "",
+      password: els.createUserPassword?.value || "",
+      role: els.createUserRole?.value || "read",
+    };
+
+    try {
+      await api("POST", "/api/admin/users", body);
+      if (els.adminCreateUserForm) els.adminCreateUserForm.reset();
+      await loadUsersList();
+    } catch (err) {
+      if (els.createUserMsg) {
+        els.createUserMsg.textContent = err.message || t("adminCreateUserFailed");
+        els.createUserMsg.className = "cred-msg cred-err";
+        els.createUserMsg.hidden = false;
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = t("adminCreateUserCreate");
+      }
+    }
+  });
+}
 
 if (els.adminInviteForm) {
   els.adminInviteForm.addEventListener("submit", async (e) => {
