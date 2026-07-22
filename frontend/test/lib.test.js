@@ -58,6 +58,7 @@ import {
   isInviteRevocable,
   hasPurgeableInvites,
   inviteAcceptErrorI18nKey,
+  adminCreateUserErrorI18nKey,
   countActiveAdmins,
   isLastActiveAdmin,
   canDisableUser,
@@ -715,6 +716,29 @@ describe("admin invites (ADR 0003) helpers", () => {
     ).toBe("inviteAcceptUsernameInvalid");
     expect(inviteAcceptErrorI18nKey(502, "upstream")).toBe("inviteAcceptFailed");
     expect(inviteAcceptErrorI18nKey(0, "")).toBe("inviteAcceptFailed");
+  });
+});
+
+describe("admin create user (ADR 0003) error mapping", () => {
+  it("maps Worker createUser errors to clear i18n keys", () => {
+    expect(adminCreateUserErrorI18nKey("Username already taken")).toBe("adminCreateUserUsernameTaken");
+    expect(adminCreateUserErrorI18nKey("Password must be at least 8 characters")).toBe(
+      "adminCreateUserPasswordTooShort",
+    );
+    expect(
+      adminCreateUserErrorI18nKey(
+        "Username may only contain letters, numbers, dots, underscores, and hyphens",
+      ),
+    ).toBe("adminCreateUserUsernameInvalid");
+    expect(adminCreateUserErrorI18nKey("Username is required")).toBe("adminCreateUserUsernameInvalid");
+    expect(adminCreateUserErrorI18nKey("Username must be at most 64 characters")).toBe(
+      "adminCreateUserUsernameInvalid",
+    );
+    expect(adminCreateUserErrorI18nKey("Invalid role: guest. Expected one of: read, admin")).toBe(
+      "adminCreateUserInvalidRole",
+    );
+    expect(adminCreateUserErrorI18nKey("something else")).toBe("adminCreateUserFailed");
+    expect(adminCreateUserErrorI18nKey("")).toBe("adminCreateUserFailed");
   });
 });
 
