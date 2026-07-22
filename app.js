@@ -46,6 +46,7 @@ import {
   isInviteRevocable,
   hasPurgeableInvites,
   inviteAcceptErrorI18nKey,
+  adminCreateUserErrorI18nKey,
   canDisableUser,
   canChangeUserRole,
   httpError,
@@ -301,6 +302,14 @@ const els = {
   themeBtn: $("theme-btn"),
   setupThemeBtn: $("setup-theme-btn"),
   themeSelect: $("theme-select"),
+  adminCreateUserSection: $("admin-create-user-section"),
+  adminCreateUserForm: $("admin-create-user-form"),
+  createUserUsername: $("create-user-username"),
+  createUserPass: $("create-user-pass"),
+  createUserPassConfirm: $("create-user-pass-confirm"),
+  createUserRole: $("create-user-role"),
+  createUserBtn: $("create-user-btn"),
+  createUserMsg: $("create-user-msg"),
   adminUsersListSection: $("admin-users-list-section"),
   usersList: $("users-list"),
   usersListEmpty: $("users-list-empty"),
@@ -2148,11 +2157,13 @@ function renderGridInputLabelForm(sys) {
 }
 
 function hideAdminInviteSection() {
+  if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = true;
   if (els.adminUsersListSection) els.adminUsersListSection.hidden = true;
   if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = true;
   if (els.adminInviteSection) els.adminInviteSection.hidden = true;
   if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = true;
   clearInviteResult();
+  clearCreateUserForm();
   clearUsersList();
   clearInvitesList();
 }
@@ -2164,7 +2175,11 @@ function clearCreateUserMsg() {
   els.createUserMsg.className = "cred-msg";
 }
 
+/** Cached last-minted invite (ADR 0003) — kept so locale toggle can re-label expires/copy UI. */
+let lastInviteMinted = null;
+
 function clearInviteResult() {
+  lastInviteMinted = null;
   if (els.inviteResult) els.inviteResult.hidden = true;
   if (els.inviteUrl) els.inviteUrl.value = "";
   if (els.inviteExpires) {
@@ -2181,18 +2196,86 @@ function clearInviteResult() {
 
 function syncAdminInviteSection() {
   const show = isAdminActor();
-  if (els.adminUsersListSection) els.adminUsersListSection.hidden = !show;
   if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = !show;
+  if (els.adminUsersListSection) els.adminUsersListSection.hidden = !show;
   if (els.adminInviteSection) els.adminInviteSection.hidden = !show;
   if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = !show;
   if (!show) {
     clearInviteResult();
+    clearCreateUserForm();
     clearInvitesList();
     clearUsersList();
     return;
   }
   loadUsersList();
   loadInvitesList();
+}
+
+function setCreateUserMsg(text, kind) {
+  if (!els.createUserMsg) return;
+  if (!text) {
+    els.createUserMsg.hidden = true;
+    els.createUserMsg.textContent = "";
+    els.createUserMsg.className = "cred-msg";
+    return;
+  }
+  els.createUserMsg.textContent = text;
+  els.createUserMsg.className = kind ? `cred-msg ${kind}` : "cred-msg";
+  els.createUserMsg.hidden = false;
+}
+
+/** Reset create-user form fields and message (admin section hide / after success). */
+function clearCreateUserForm({ keepMsg = false } = {}) {
+  if (els.adminCreateUserForm) els.adminCreateUserForm.reset();
+  if (els.createUserRole) els.createUserRole.value = "read";
+  if (!keepMsg) setCreateUserMsg("");
+}
+
+async function createUserFromForm() {
+  if (!isAdminActor()) return;
+
+  const username = els.createUserUsername?.value?.trim() || "";
+  const password = els.createUserPass?.value || "";
+  const confirm = els.createUserPassConfirm?.value || "";
+  const role = els.createUserRole?.value || "read";
+
+  setCreateUserMsg("");
+
+  if (password.length < 8) {
+    setCreateUserMsg(t("adminCreateUserPasswordTooShort"), "cred-err");
+    return;
+  }
+  if (password !== confirm) {
+    setCreateUserMsg(t("adminCreateUserPasswordMismatch"), "cred-err");
+    return;
+  }
+
+  const btn = els.createUserBtn;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t("adminCreateUserCreating");
+  }
+
+  try {
+    await api("POST", "/api/admin/users", { username, password, role });
+    clearCreateUserForm({ keepMsg: true });
+    setCreateUserMsg(t("adminCreateUserCreated"), "cred-ok");
+    await loadUsersList();
+  } catch (err) {
+    const key = adminCreateUserErrorI18nKey(err.message);
+    // Prefer mapped i18n when we recognize the Worker message; otherwise show raw.
+    const mapped = t(key);
+    const text =
+      key !== "adminCreateUserFailed" || !err.message
+        ? mapped
+        : err.message;
+    setCreateUserMsg(text, "cred-err");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t("adminCreateUserSubmit");
+    }
+  }
 }
 
 /** Reset users list state/DOM (called when the admin section is hidden). */
@@ -2219,7 +2302,7 @@ function setUsersListMsg(text, kind) {
 function formatUserListDate(iso) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString(getLocale());
   } catch {
     return iso;
   }
@@ -2478,7 +2561,7 @@ function renderInvitesList() {
 function formatInviteListDate(iso) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString(getLocale());
   } catch {
     return iso;
   }
@@ -2541,6 +2624,7 @@ async function purgeStaleInvites() {
 
 function showInviteMinted(minted) {
   if (!els.inviteResult || !els.inviteUrl) return;
+  lastInviteMinted = minted;
   els.inviteUrl.value = minted.url || "";
   els.inviteResult.hidden = false;
   if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
@@ -2548,7 +2632,7 @@ function showInviteMinted(minted) {
     if (minted.expiresAt) {
       let when = minted.expiresAt;
       try {
-        when = new Date(minted.expiresAt).toLocaleString();
+        when = new Date(minted.expiresAt).toLocaleString(getLocale());
       } catch {
         /* keep ISO */
       }
@@ -2684,37 +2768,7 @@ detailBack.addEventListener("click", closeSystemDetail);
 if (els.adminCreateUserForm) {
   els.adminCreateUserForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!isAdminActor()) return;
-
-    clearCreateUserMsg();
-    const btn = els.createUserBtn;
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = t("adminCreateUserCreating");
-    }
-
-    const body = {
-      username: els.createUserUsername?.value?.trim() || "",
-      password: els.createUserPassword?.value || "",
-      role: els.createUserRole?.value || "read",
-    };
-
-    try {
-      await api("POST", "/api/admin/users", body);
-      if (els.adminCreateUserForm) els.adminCreateUserForm.reset();
-      await loadUsersList();
-    } catch (err) {
-      if (els.createUserMsg) {
-        els.createUserMsg.textContent = err.message || t("adminCreateUserFailed");
-        els.createUserMsg.className = "cred-msg cred-err";
-        els.createUserMsg.hidden = false;
-      }
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = t("adminCreateUserCreate");
-      }
-    }
+    await createUserFromForm();
   });
 }
 
@@ -2801,10 +2855,22 @@ function changeLocale(locale) {
     }
   }
   if (!detailModal.hidden && openDetailSysId) openSystemDetail(openDetailSysId);
-  else if (!manageModal.hidden) openManageModal();
-  if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
+  else if (!manageModal.hidden) {
+    // Re-render admin users/invites copy from cached state before reopening
+    // (openManageModal refreshes systems list + reloads admin panels).
+    if (lastInviteMinted) showInviteMinted(lastInviteMinted);
+    else if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
+    renderUsersList();
+    renderInvitesList();
+    openManageModal();
+  } else {
+    if (els.inviteCopyBtn) els.inviteCopyBtn.textContent = t("adminInviteCopy");
+  }
   if (els.inviteMintBtn && !els.inviteMintBtn.disabled) {
     els.inviteMintBtn.textContent = t("adminInviteCreate");
+  }
+  if (els.createUserBtn && !els.createUserBtn.disabled) {
+    els.createUserBtn.textContent = t("adminCreateUserSubmit");
   }
   if (els.invitesPurgeBtn && !els.invitesPurgeBtn.disabled) {
     els.invitesPurgeBtn.textContent = t("adminInvitesPurgeBtn");

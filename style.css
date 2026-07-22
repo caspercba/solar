@@ -1497,7 +1497,8 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 .cred-ok { color: var(--accent-bat); }
 .cred-err { color: var(--error); }
 
-.admin-invite-form { margin-bottom: .5rem; }
+.admin-invite-form,
+.admin-create-user-form { margin-bottom: .5rem; }
 
 .invite-result {
   display: flex;

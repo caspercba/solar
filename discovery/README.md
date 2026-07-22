@@ -10,6 +10,9 @@ This folder holds reverse-engineered vendor API docs, Python validation scripts,
 | [**ws_probe.py**](./ws_probe.py) | Stdlib probe: WebSocket handshake test + optional legacy `ws` host comparison |
 | [**fetch_plant_json.py**](./fetch_plant_json.py) | ShineMonitor Python client (login + sample queries) |
 | [**growatt/**](./growatt/) | Growatt API reference + `fetch_data.py` |
+| [**solis/**](./solis/) | SolisCloud discovery spike (Phase 5) — official HMAC API |
+| [**sma/**](./sma/) | SMA Sunny Portal / ennexOS discovery spike (Phase 5) — official OAuth2 Monitoring/Live APIs |
+| [**deye/**](./deye/) | Deye / Solarman cloud discovery spike (Phase 5) — OpenAPI + DeyeCloud |
 
 ---
 
