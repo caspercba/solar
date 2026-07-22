@@ -463,7 +463,7 @@ Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, esca
 
 ### 10.3 Nice to Have
 
-10. **Additional adapters** — Solis, Deye, SMA (each needs a discovery pass like existing folders when hardware access exists). Victron VRM was spiked then withdrawn (ADR 0001).
+10. **Additional adapters** — Solis, Deye, SMA discovery spikes exist under `discovery/`; production adapters still TBD by user need. Victron VRM was spiked then withdrawn (ADR 0001).
 11. **Home Assistant integration** — done (`worker/src/ha.js` REST bridge + README integration docs).
 12. **Dark/light theme toggle** — done, with persisted preference (system-preference auto-detection not implemented).
 13. **WebSocket push** — evaluated and deferred; see `discovery/WEBSOCKET_REALTIME.md`. Decision: keep HTTP polling.
@@ -555,7 +555,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] Third-party adapter framework documented (`discovery/ADAPTER_GUIDE.md`)
 - [x] Home Assistant bridge
 - [x] i18n (ES)
-- [ ] Solis / Deye / SMA adapters — unstarted (Victron withdrawn — ADR 0001)
+- [ ] Solis / Deye / SMA **production adapters** — discovery spikes done (`discovery/solis/`, `discovery/deye/`, `discovery/sma/`); adapters deferred pending user need (Victron withdrawn — ADR 0001)
 - [x] Per-system grid input label (§5.1)
 - [x] Dashboard low-SOC warning on cards (§5.1)
 - [x] Generator runtime tracking (§5.1)
