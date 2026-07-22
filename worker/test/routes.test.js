@@ -50,7 +50,7 @@ describe("worker routes", () => {
     const res = await call(request("/api/health"));
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toEqual({ ok: true, version: "1.1.0" });
+    expect(json).toEqual({ ok: true, version: "1.4.0" });
   });
 
   it("returns 401 when auth token is missing on protected routes", async () => {

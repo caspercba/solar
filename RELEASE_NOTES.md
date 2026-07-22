@@ -4,6 +4,37 @@
 
 - Nothing yet.
 
+## v1.4.0
+
+### Auth — password users & magic-link invites (ADR 0003)
+
+- Add password-backed user accounts with hashed credentials in KV (`admin` /
+  `read` roles).
+- Add username/password login (`POST /api/auth/login`) that mints an opaque
+  session bearer for the browser; logout revokes the session.
+- Add admin-issued magic-link invites (copyable URL, no outbound email): mint,
+  accept (set username + password), revoke, and purge stale invites.
+- Add admin UI for users (list, create with password, role change, disable) and
+  invites (list with conversion status, revoke, purge), with last-admin
+  lockout protection.
+- Retain legacy `?token=` deep links and token-paste on the setup screen for
+  machines and migration; opaque API keys (ADR 0002) remain supported.
+- Add logout and session-expiry UX; EN/ES i18n covers the new auth screens.
+
+### Auth — opaque keys & audit (ADR 0002)
+
+- Add mutation audit logging for admin API routes.
+- Add per-user opaque API keys in KV with `read` / `admin` roles (alongside the
+  shared `API_TOKEN`).
+
+### Tests & docs
+
+- Add Playwright E2E coverage for login, accept-invite, admin users/invites
+  (including last-admin), and legacy token paste against the mock Worker.
+- Expand Worker Vitest coverage for users, invites, and auth route edge cases.
+- Sync README, ARCHITECTURE, and Worker deploy docs for the password-login and
+  invite flows.
+
 ## v1.3.0
 
 ### Dashboard & UX

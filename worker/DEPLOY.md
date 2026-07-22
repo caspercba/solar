@@ -437,7 +437,7 @@ Note the deployed URL, e.g. `https://solar-proxy.<subdomain>.workers.dev`.
 
 ```bash
 curl -sS "https://solar-proxy.<subdomain>.workers.dev/api/health"
-# Expected: {"ok":true,"version":"1.1.0"}
+# Expected: {"ok":true,"version":"1.4.0"}
 ```
 
 **Auth gate:**
