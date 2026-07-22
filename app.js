@@ -45,6 +45,8 @@ import {
   inviteStatusBadgeClass,
   isInviteRevocable,
   hasPurgeableInvites,
+  sortAdminUsers,
+  isUserDisabled,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -199,6 +201,9 @@ function isAdminActor() {
 /** Cached admin invites list (ADR 0003) — emitted vs converted vs revoked/expired. */
 let invitesListState = [];
 
+/** Cached admin password users list (ADR 0003). */
+let usersListState = [];
+
 /** Page origin for Worker-built magic links (strip query/hash; drop index.html). */
 function inviteFrontendUrl() {
   try {
@@ -272,6 +277,17 @@ const els = {
   themeBtn: $("theme-btn"),
   setupThemeBtn: $("setup-theme-btn"),
   themeSelect: $("theme-select"),
+  adminCreateUserSection: $("admin-create-user-section"),
+  adminCreateUserForm: $("admin-create-user-form"),
+  createUserUsername: $("create-user-username"),
+  createUserPassword: $("create-user-password"),
+  createUserRole: $("create-user-role"),
+  createUserBtn: $("create-user-btn"),
+  createUserMsg: $("create-user-msg"),
+  adminUsersListSection: $("admin-users-list-section"),
+  usersList: $("users-list"),
+  usersListEmpty: $("users-list-empty"),
+  usersListMsg: $("users-list-msg"),
   adminInviteSection: $("admin-invite-section"),
   adminInviteForm: $("admin-invite-form"),
   inviteRole: $("invite-role"),
@@ -2004,15 +2020,127 @@ function clearInviteResult() {
   }
 }
 
+function setCreateUserMsg(text, kind) {
+  if (!els.createUserMsg) return;
+  if (!text) {
+    els.createUserMsg.hidden = true;
+    els.createUserMsg.textContent = "";
+    els.createUserMsg.className = "cred-msg";
+    return;
+  }
+  els.createUserMsg.textContent = text;
+  els.createUserMsg.className = kind ? `cred-msg ${kind}` : "cred-msg";
+  els.createUserMsg.hidden = false;
+}
+
+function clearCreateUserForm() {
+  if (els.createUserUsername) els.createUserUsername.value = "";
+  if (els.createUserPassword) els.createUserPassword.value = "";
+  if (els.createUserRole) els.createUserRole.value = "read";
+  setCreateUserMsg("");
+}
+
+function setUsersListMsg(text, kind) {
+  if (!els.usersListMsg) return;
+  if (!text) {
+    els.usersListMsg.hidden = true;
+    els.usersListMsg.textContent = "";
+    els.usersListMsg.className = "cred-msg";
+    return;
+  }
+  els.usersListMsg.textContent = text;
+  els.usersListMsg.className = kind ? `cred-msg ${kind}` : "cred-msg";
+  els.usersListMsg.hidden = false;
+}
+
+function clearUsersList() {
+  usersListState = [];
+  if (els.usersList) els.usersList.innerHTML = "";
+  if (els.usersListEmpty) els.usersListEmpty.hidden = true;
+  setUsersListMsg("");
+}
+
+/** Render `usersListState` — username, role, created/last login (ADR 0003). */
+function renderUsersList() {
+  if (!els.usersList) return;
+  els.usersList.innerHTML = "";
+  const users = sortAdminUsers(usersListState);
+  const hasUsers = users.length > 0;
+  if (els.usersListEmpty) els.usersListEmpty.hidden = hasUsers;
+
+  for (const user of users) {
+    const row = document.createElement("div");
+    row.className = "user-row";
+    row.dataset.userId = user.id || "";
+
+    const info = document.createElement("div");
+    info.className = "user-row-info";
+
+    const topLine = document.createElement("div");
+    topLine.className = "user-row-top";
+
+    const name = document.createElement("span");
+    name.className = "user-row-username";
+    name.textContent = user.username || "";
+    topLine.appendChild(name);
+
+    const roleBadge = document.createElement("span");
+    roleBadge.className = "invite-role-badge";
+    roleBadge.textContent = t(user.role === "admin" ? "roleAdmin" : "roleRead");
+    topLine.appendChild(roleBadge);
+
+    if (isUserDisabled(user)) {
+      const disabledBadge = document.createElement("span");
+      disabledBadge.className = "user-status-disabled";
+      disabledBadge.textContent = t("adminUserDisabled");
+      topLine.appendChild(disabledBadge);
+    }
+
+    info.appendChild(topLine);
+
+    const metaLine = document.createElement("div");
+    metaLine.className = "user-row-meta";
+    const metaParts = [t("adminUserCreatedAt", { when: formatInviteListDate(user.createdAt) })];
+    if (user.lastLoginAt) {
+      metaParts.push(t("adminUserLastLogin", { when: formatInviteListDate(user.lastLoginAt) }));
+    } else {
+      metaParts.push(t("adminUserNeverLoggedIn"));
+    }
+    metaLine.textContent = metaParts.join(" · ");
+    info.appendChild(metaLine);
+
+    row.appendChild(info);
+    els.usersList.appendChild(row);
+  }
+}
+
+async function loadUsersList() {
+  if (!els.usersList) return;
+  setUsersListMsg("");
+  try {
+    usersListState = await api("GET", "/api/admin/users");
+    if (!Array.isArray(usersListState)) usersListState = [];
+  } catch (err) {
+    usersListState = [];
+    setUsersListMsg(err.message || t("adminUsersLoadFailed"), "cred-err");
+  }
+  renderUsersList();
+}
+
 function syncAdminInviteSection() {
   const show = isAdminActor();
+  if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = !show;
+  if (els.adminUsersListSection) els.adminUsersListSection.hidden = !show;
   if (els.adminInviteSection) els.adminInviteSection.hidden = !show;
   if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = !show;
   if (!show) {
+    clearCreateUserForm();
+    clearUsersList();
     clearInviteResult();
     clearInvitesList();
     return;
   }
+  loadUsersList();
   loadInvitesList();
 }
 
@@ -2292,6 +2420,7 @@ els.manageBtn.addEventListener("click", openManageModal);
 $("manage-close").addEventListener("click", () => {
   manageModal.hidden = true;
   clearInviteResult();
+  setCreateUserMsg("");
 });
 
 if (els.invitesPurgeBtn) {
@@ -2299,6 +2428,38 @@ if (els.invitesPurgeBtn) {
 }
 $("manage-add").addEventListener("click", openAddModal);
 detailBack.addEventListener("click", closeSystemDetail);
+
+if (els.adminCreateUserForm) {
+  els.adminCreateUserForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!isAdminActor()) return;
+
+    const username = els.createUserUsername?.value?.trim() || "";
+    const password = els.createUserPassword?.value || "";
+    const role = els.createUserRole?.value || "read";
+
+    setCreateUserMsg("");
+    const btn = els.createUserBtn;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = t("adminCreateUserCreating");
+    }
+
+    try {
+      await api("POST", "/api/admin/users", { username, password, role });
+      clearCreateUserForm();
+      setCreateUserMsg(t("adminCreateUserCreated"), "cred-ok");
+      await loadUsersList();
+    } catch (err) {
+      setCreateUserMsg(err.message || t("adminCreateUserFailed"), "cred-err");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = t("adminCreateUserSubmit");
+      }
+    }
+  });
+}
 
 if (els.adminInviteForm) {
   els.adminInviteForm.addEventListener("submit", async (e) => {
@@ -2390,6 +2551,12 @@ function changeLocale(locale) {
   }
   if (els.invitesPurgeBtn && !els.invitesPurgeBtn.disabled) {
     els.invitesPurgeBtn.textContent = t("adminInvitesPurgeBtn");
+  }
+  if (els.createUserBtn && !els.createUserBtn.disabled) {
+    els.createUserBtn.textContent = t("adminCreateUserSubmit");
+  }
+  if (!manageModal.hidden && isAdminActor()) {
+    renderUsersList();
   }
 }
 

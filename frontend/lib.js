@@ -436,6 +436,24 @@ export function matchesDashboardRefreshShortcut({ key, ctrlKey, metaKey, shiftKe
   return false;
 }
 
+/** Sort password users for the admin list (active first, then username). */
+export function sortAdminUsers(users) {
+  if (!Array.isArray(users)) return [];
+  return [...users].sort((a, b) => {
+    const aDisabled = Boolean(a?.disabledAt);
+    const bDisabled = Boolean(b?.disabledAt);
+    if (aDisabled !== bDisabled) return aDisabled ? 1 : -1;
+    const au = String(a?.username || "").toLowerCase();
+    const bu = String(b?.username || "").toLowerCase();
+    return au.localeCompare(bu);
+  });
+}
+
+/** True when the user record is soft-disabled. */
+export function isUserDisabled(user) {
+  return Boolean(user?.disabledAt);
+}
+
 /** Admin invites (ADR 0003) — emitted vs converted vs revoked/expired. */
 export const INVITE_STATUSES = ["pending", "converted", "revoked", "expired"];
 
