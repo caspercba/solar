@@ -618,6 +618,8 @@ Both adapters return the same shape from `GET /api/systems/:id/data`:
 | [discovery/growatt/API.md](./discovery/growatt/API.md) | Growatt API reference |
 | [discovery/solis/README.md](./discovery/solis/README.md) | Solis cloud API discovery spike (Phase 5, no production adapter yet) |
 | [discovery/solis/API.md](./discovery/solis/API.md) | Solis API reference + adapter viability assessment |
+| [discovery/sma/README.md](./discovery/sma/README.md) | SMA Sunny Portal / ennexOS discovery spike (Phase 5, no production adapter yet) |
+| [discovery/sma/API.md](./discovery/sma/API.md) | SMA Monitoring/Live API reference + adapter viability assessment |
 | [RELEASE_NOTES.md](./RELEASE_NOTES.md) | Version history |
 
 ## Repository Layout

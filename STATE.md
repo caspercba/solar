@@ -62,6 +62,7 @@ _Last updated: 2026-07-21 (SOLAR-0122 coordination close)_
 - **Growatt weather strip** — optional temperature/condition/irradiance on cards view
 - **Worker route edge cases** — CORS preflight and adapter 502 paths covered (`auth.test.js`)
 - **Solis cloud API discovery spike (SOLAR-0142)** — `discovery/solis/` (API.md, README.md, fetch_data.py); official HMAC-signed B2B API (unlike ShineMonitor/Growatt reverse-engineering); viable but deferred — manual key-activation onboarding and unverified field variants without a live test account (see API.md §7). No production adapter.
+- **SMA cloud API discovery spike (SOLAR-0144)** — `discovery/sma/` (API.md, README.md, fetch_data.py); official OAuth2 Monitoring + Live APIs (Sunny Portal Classic + ennexOS); `EnergyBalance` maps cleanly to PLAN §3 including `dieselGeneration`; deferred — B2B client credentials + owner consent + commercial per-system fees (see API.md §8). No production adapter.
 - **Planning pass (2026-07-09)** — PLAN.md and STATE.md reconciled against codebase and task board; Phases 1–4 complete at **v1.3.0** tag
 - **Multi-user token / audit-log spike** — ADR 0002 (`docs/decisions/0002-multi-user-token-and-audit-log.md`): phased model (shared token default → mutation audit → optional per-user KV keys); JWT and Cloudflare Access as primary auth rejected
 - **Generator runtime tracking** — session-only counter (per system, `localStorage`, resets on disconnect) shown on the generator card while `grid.active`
@@ -115,7 +116,7 @@ _Priority order. Phases 1–4 and ADR 0002 Phases 1–2 are complete at v1.3.0. 
 
 **Phase 5 expansion (low priority):**
 
-13. **SOLAR-0143** / **0144** — Deye / SMA discovery spikes (Solis done — SOLAR-0142)
+13. **SOLAR-0143** — Deye discovery spike (Solis + SMA done — SOLAR-0142 / SOLAR-0144)
 14. **SOLAR-0147** — Optional Analytics Engine binding
 
 **Deferred (no board tasks):**
