@@ -51,6 +51,7 @@ import {
   canChangeUserRole,
   httpError,
   isUnauthorizedError,
+  aggregateHourlyConsumption,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -365,6 +366,11 @@ const fEls = {
   energyEmptyMsg: $("energy-empty-msg"),
   energyRetryBtn: $("energy-retry-btn"),
   energyLoading: $("energy-loading"),
+  consumptionChart: $("consumption-chart"),
+  consumptionEmpty: $("consumption-empty"),
+  consumptionEmptyMsg: $("consumption-empty-msg"),
+  consumptionLoading: $("consumption-loading"),
+  consumptionTotalValue: $("consumption-total-value"),
   socEstimatedBadge: $("soc-estimated-badge"),
   fpSolar: $("fp-solar"),
   fpGen: $("fp-gen"),
@@ -1106,7 +1112,10 @@ function updateMetaThemeColor(theme) {
 
 function refreshChartsForTheme() {
   if (currentView !== "chart") return;
-  if (chartHistory?.points?.length) renderChart(chartHistory);
+  if (chartHistory?.points?.length) {
+    renderChart(chartHistory);
+    renderConsumptionChart(chartHistory);
+  }
   if (lastEnergySummary) renderEnergyChart(lastEnergySummary);
 }
 
@@ -1175,6 +1184,21 @@ function setEnergyChartState(state, opts = {}) {
   if (state !== "ready") {
     const socLegend = document.querySelector(".legend-soc-range-item");
     if (socLegend) socLegend.hidden = true;
+  }
+}
+
+function setConsumptionChartState(state) {
+  if (fEls.consumptionLoading) fEls.consumptionLoading.hidden = state !== "loading";
+  if (fEls.consumptionChart) fEls.consumptionChart.hidden = state !== "ready";
+  if (fEls.consumptionEmpty) {
+    fEls.consumptionEmpty.hidden = state !== "empty" && state !== "error";
+    fEls.consumptionEmpty.classList.toggle("chart-empty-error", state === "error");
+  }
+  if (fEls.consumptionEmptyMsg && (state === "empty" || state === "error")) {
+    fEls.consumptionEmptyMsg.textContent = t("consumptionEmpty");
+  }
+  if (fEls.consumptionTotalValue && state !== "ready") {
+    fEls.consumptionTotalValue.textContent = "–";
   }
 }
 
@@ -1488,6 +1512,90 @@ function renderEnergyChart(data) {
   return true;
 }
 
+function renderConsumptionChart(data) {
+  const canvas = fEls.consumptionChart;
+  if (!canvas) return false;
+
+  const points = data?.points || [];
+  if (!points.length) return false;
+
+  const { hours, totalKwh } = aggregateHourlyConsumption(points, data.intervalMinutes || 5);
+  if (!hours.length) return false;
+
+  setConsumptionChartState("ready");
+  if (fEls.consumptionTotalValue) {
+    fEls.consumptionTotalValue.textContent = `${totalKwh < 10 ? totalKwh.toFixed(2) : totalKwh.toFixed(1)} kWh`;
+  }
+  const CHART_COLORS = getChartColors();
+
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(280, Math.round(rect.width || 500));
+  const height = 160;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.height = height + "px";
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const pad = { top: 16, right: 12, bottom: 24, left: 40 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const n = hours.length;
+  const groupW = plotW / n;
+  const barGap = Math.min(4, groupW * 0.2);
+  const barW = Math.max(3, groupW - barGap);
+
+  let yMax = 0;
+  for (const h of hours) yMax = Math.max(yMax, h.kwh);
+  if (yMax === 0) yMax = 1;
+  yMax += yMax * 0.1 || 0.1;
+
+  ctx.strokeStyle = CHART_COLORS.grid;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (plotH * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = CHART_COLORS.text;
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++) {
+    const val = yMax - (yMax * i) / 4;
+    const y = pad.top + (plotH * i) / 4;
+    ctx.fillText(val < 10 ? val.toFixed(1) : Math.round(val).toString(), pad.left - 6, y);
+  }
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const labelEvery = n > 12 ? 3 : n > 6 ? 2 : 1;
+  for (let i = 0; i < n; i += labelEvery) {
+    const cx = pad.left + groupW * i + groupW / 2;
+    ctx.fillText(String(hours[i].hour), cx, pad.top + plotH + 6);
+  }
+
+  function barHeightFor(kwh) {
+    return (kwh / yMax) * plotH;
+  }
+
+  ctx.fillStyle = CHART_COLORS.load;
+  for (let i = 0; i < n; i++) {
+    const h = barHeightFor(hours[i].kwh);
+    const x = pad.left + groupW * i + barGap / 2;
+    const y = pad.top + plotH - h;
+    ctx.fillRect(x, y, barW, h);
+  }
+
+  return true;
+}
+
 function loadChartDate() {
   try {
     return localStorage.getItem(CHART_DATE_KEY);
@@ -1647,6 +1755,7 @@ async function loadChartView() {
   renderChartWeekStrip(date, todayIsoDate());
   setIntradayChartState("loading");
   setEnergyChartState("loading");
+  setConsumptionChartState("loading");
   const qs = `?date=${encodeURIComponent(date)}`;
   const [historyResult, summaryResult] = await Promise.allSettled([
     api("GET", `/api/systems/${activeSystemId}/history${qs}`),
@@ -1668,12 +1777,16 @@ async function loadChartView() {
       setIntradayChartState("empty");
       historyOk = true;
     }
+    if (!renderConsumptionChart(history)) {
+      setConsumptionChartState("empty");
+    }
   } else {
     console.error("chart view history error:", historyResult.reason);
     chartHistory = null;
     setIntradayChartState("error", {
       message: chartErrorMessage(historyResult.reason, t("chartLoadError")),
     });
+    setConsumptionChartState("error");
   }
 
   if (summaryResult.status === "fulfilled") {
