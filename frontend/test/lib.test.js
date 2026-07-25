@@ -6,6 +6,7 @@ import {
   sanitizeExportName,
   csvCell,
   historyToCsv,
+  aggregateHourlyConsumption,
   escapeAttr,
   clampPct,
   solarPctFromPower,
@@ -165,6 +166,50 @@ describe("historyToCsv", () => {
       { time: "18:00", solar: 0, load: 100, battery: 40, soc: 72 },
     ]);
     expect(csv).toContain("18:00,0,100,40,72");
+  });
+});
+
+describe("aggregateHourlyConsumption", () => {
+  it("sums load power into kWh per hour at the given interval, filling hours from 0", () => {
+    const { hours, totalKwh } = aggregateHourlyConsumption(
+      [
+        { time: "06:00", load: 600 },
+        { time: "06:05", load: 600 },
+        { time: "06:10", load: 0 },
+        { time: "07:00", load: 1200 },
+      ],
+      5,
+    );
+    expect(hours).toHaveLength(8);
+    expect(hours[6]).toEqual({ hour: 6, kwh: 0.1 });
+    expect(hours[7]).toEqual({ hour: 7, kwh: 0.1 });
+    expect(hours[0]).toEqual({ hour: 0, kwh: 0 });
+    expect(totalKwh).toBeCloseTo(0.2);
+  });
+
+  it("fills gaps with zero-kWh hours up to the last hour with data", () => {
+    const { hours } = aggregateHourlyConsumption(
+      [
+        { time: "00:00", load: 100 },
+        { time: "02:00", load: 100 },
+      ],
+      60,
+    );
+    expect(hours.map((h) => h.hour)).toEqual([0, 1, 2]);
+    expect(hours[1]).toEqual({ hour: 1, kwh: 0 });
+  });
+
+  it("treats negative load as zero consumption", () => {
+    const { hours, totalKwh } = aggregateHourlyConsumption(
+      [{ time: "00:00", load: -50 }],
+      5,
+    );
+    expect(hours).toEqual([{ hour: 0, kwh: 0 }]);
+    expect(totalKwh).toBe(0);
+  });
+
+  it("returns an empty result for no points", () => {
+    expect(aggregateHourlyConsumption([], 5)).toEqual({ hours: [], totalKwh: 0 });
   });
 });
 

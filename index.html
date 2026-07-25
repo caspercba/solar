@@ -278,6 +278,19 @@
         <span class="legend-item legend-soc-item" hidden><span class="legend-swatch legend-soc"></span><span data-i18n="legendSocPct">SOC (%)</span><span id="soc-estimated-badge" class="soc-estimated-badge" hidden data-i18n="socEstimated" data-i18n-title="socEstimatedTitle" title="SOC estimated from battery voltage">Estimated</span></span>
       </div>
 
+      <h3 class="energy-summary-title" data-i18n="consumptionTitle">Daily Consumption</h3>
+      <div class="chart-wrap consumption-chart-wrap">
+        <canvas id="consumption-chart" width="500" height="160"></canvas>
+        <div id="consumption-empty" class="chart-empty" hidden>
+          <p id="consumption-empty-msg" class="chart-empty-msg" data-i18n="consumptionEmpty">No consumption data for this date</p>
+        </div>
+        <div id="consumption-loading" class="chart-loading" hidden data-i18n="chartLoading">Loading chart…</div>
+      </div>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-swatch legend-load"></span><span data-i18n="legendLoadKwh">Load kWh</span></span>
+        <span class="legend-item"><span data-i18n="consumptionTotal">Total</span>:&nbsp;<span id="consumption-total-value">–</span></span>
+      </div>
+
       <h3 class="energy-summary-title" data-i18n="energySummaryTitle">7-Day Energy</h3>
       <div class="chart-wrap energy-chart-wrap">
         <canvas id="energy-chart" width="500" height="180"></canvas>

@@ -43,6 +43,27 @@ export function historyToCsv(points) {
   return lines.join("\r\n");
 }
 
+/** Aggregate intraday load samples (W) into hourly consumption (kWh), from hour 0 through the last hour with data. */
+export function aggregateHourlyConsumption(points, intervalMinutes = 5) {
+  const hourly = new Map();
+  for (const p of points || []) {
+    const hour = Number.parseInt(String(p?.time || "").split(":")[0], 10);
+    if (!Number.isFinite(hour)) continue;
+    const loadW = Math.max(0, p.load ?? 0);
+    const kwh = (loadW * (intervalMinutes / 60)) / 1000;
+    hourly.set(hour, (hourly.get(hour) || 0) + kwh);
+  }
+  const maxHour = hourly.size ? Math.max(...hourly.keys()) : -1;
+  const hours = [];
+  let totalKwh = 0;
+  for (let h = 0; h <= maxHour; h++) {
+    const kwh = hourly.get(h) || 0;
+    hours.push({ hour: h, kwh });
+    totalKwh += kwh;
+  }
+  return { hours, totalKwh };
+}
+
 export function escapeAttr(value) {
   return String(value)
     .replace(/&/g, "&amp;")

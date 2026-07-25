@@ -105,6 +105,9 @@ const messages = {
     legendSolarKwh: "Solar kWh",
     legendLoadKwh: "Load kWh",
     legendSocRange: "SOC min–max",
+    consumptionTitle: "Daily Consumption",
+    consumptionEmpty: "No consumption data for this date",
+    consumptionTotal: "Total",
 
     retry: "Retry",
     retrying: "Retrying…",
@@ -383,6 +386,9 @@ const messages = {
     legendSolarKwh: "Solar kWh",
     legendLoadKwh: "Carga kWh",
     legendSocRange: "SOC mín–máx",
+    consumptionTitle: "Consumo Diario",
+    consumptionEmpty: "Sin datos de consumo para esta fecha",
+    consumptionTotal: "Total",
 
     retry: "Reintentar",
     retrying: "Reintentando…",
