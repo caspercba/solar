@@ -96,12 +96,7 @@
     <header>
       <h1 id="header-title" data-i18n="appTitle">Solar Dashboard</h1>
       <div class="header-right">
-        <div class="lang-toggle lang-toggle-compact" role="group" data-i18n-aria="language" aria-label="Language">
-          <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
-          <button type="button" class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
-        </div>
         <span id="status-dot" class="dot dot-ok" data-i18n-title="statusConnected" title="Connected"></span>
-        <button type="button" id="theme-btn" title="Theme: Dark" aria-label="Theme: Dark">&#x1F319;</button>
         <button id="manage-btn" data-i18n-title="settingsTitle" title="Settings">&#x2699;</button>
         <button id="disconnect-btn" data-i18n-title="logout" data-i18n-aria="logout" title="Log out" aria-label="Log out">&#x2715;</button>
       </div>
@@ -365,6 +360,11 @@
       <section class="settings-section">
         <h3 class="settings-section-title" data-i18n="preferences">Preferences</h3>
         <div class="manage-settings">
+          <label id="settings-lang-label" data-i18n="language">Language</label>
+          <div class="lang-toggle" role="group" aria-labelledby="settings-lang-label">
+            <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
+            <button type="button" class="lang-btn" data-lang="es" aria-pressed="false">ES</button>
+          </div>
           <label for="theme-select" data-i18n="theme">Theme</label>
           <select id="theme-select" data-i18n-aria="themeAria" aria-label="Color theme">
             <option value="dark" data-i18n="themeDark">Dark</option>
