@@ -705,7 +705,7 @@ function renderComparisonGrid() {
       : latestTs.includes("T")
         ? latestTs.split("T")[1]?.split(".")[0]
         : latestTs;
-    els.lastUpdate.textContent = `Last update: ${timePart}`;
+    els.lastUpdate.textContent = t("lastUpdate", { time: timePart });
   }
 
   // Before any system has settled (pure skeleton paint on Home entry), leave the status dot

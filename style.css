@@ -615,16 +615,25 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 1rem 1.1rem;
-  transition: border-color .2s, box-shadow .2s;
+  transition: border-color .2s, box-shadow .2s, transform .1s;
 }
 
 .compare-card[role="button"] {
   cursor: pointer;
 }
 
-.compare-card[role="button"]:hover,
-.compare-card[role="button"]:focus-visible {
+.compare-card[role="button"]:hover {
   border-color: var(--accent-sol);
+}
+
+.compare-card[role="button"]:focus-visible {
+  outline: 2px solid var(--accent-sol);
+  outline-offset: 2px;
+  border-color: var(--accent-sol);
+}
+
+.compare-card[role="button"]:active {
+  transform: scale(.98);
 }
 
 .compare-card.compare-lowest-soc {
