@@ -367,6 +367,11 @@ const fEls = {
   energyEmptyMsg: $("energy-empty-msg"),
   energyRetryBtn: $("energy-retry-btn"),
   energyLoading: $("energy-loading"),
+  todayProductionChart: $("today-production-chart"),
+  todayProductionEmpty: $("today-production-empty"),
+  todayProductionEmptyMsg: $("today-production-empty-msg"),
+  todayProductionLoading: $("today-production-loading"),
+  todayProductionValue: $("today-production-value"),
   productionChart: $("production-chart"),
   productionEmpty: $("production-empty"),
   productionEmptyMsg: $("production-empty-msg"),
@@ -421,6 +426,7 @@ let currentView = "cards";
 let historyLoading = false;
 let chartHistory = null;
 let lastEnergySummary = null;
+let lastTodayProduction = null;
 let lastRenderData = null;
 let lastCompareData = null;
 
@@ -494,6 +500,7 @@ function setView(view, { persist = true } = {}) {
     els.systemTabs.hidden = false;
   }
   if (isChart) loadChartView();
+  if (view === "cards") loadTodayProduction();
 }
 
 function loadCompareView() {
@@ -874,6 +881,7 @@ function renderSystemTabs() {
         loadChartView();
       } else {
         pollNow();
+        if (currentView === "cards") loadTodayProduction();
       }
     });
     els.systemTabs.appendChild(btn);
@@ -1117,6 +1125,9 @@ function updateMetaThemeColor(theme) {
 }
 
 function refreshChartsForTheme() {
+  if (currentView === "cards" && lastTodayProduction) {
+    renderTodayProductionTile(lastTodayProduction);
+  }
   if (currentView !== "chart") return;
   if (chartHistory?.points?.length) {
     renderChart(chartHistory);
@@ -1607,6 +1618,150 @@ function renderEnergyChart(data) {
   return true;
 }
 
+function setTodayProductionState(state) {
+  if (fEls.todayProductionLoading) fEls.todayProductionLoading.hidden = state !== "loading";
+  if (fEls.todayProductionChart) fEls.todayProductionChart.hidden = state !== "ready";
+  if (fEls.todayProductionEmpty) {
+    fEls.todayProductionEmpty.hidden = state !== "empty" && state !== "error";
+    fEls.todayProductionEmpty.classList.toggle("chart-empty-error", state === "error");
+  }
+  if (fEls.todayProductionEmptyMsg && (state === "empty" || state === "error")) {
+    fEls.todayProductionEmptyMsg.textContent = t("todayProductionEmpty");
+  }
+  if (fEls.todayProductionValue && state !== "ready") {
+    fEls.todayProductionValue.textContent = "--";
+  }
+}
+
+function formatKwhValue(totalKwh) {
+  return totalKwh < 10 ? totalKwh.toFixed(2) : totalKwh.toFixed(1);
+}
+
+function hexToRgba(hex, alpha) {
+  const clean = String(hex || "").trim().replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return `rgba(245,158,11,${alpha})`;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Full-width amber sparkline of today's intraday solar power (Cards landing tile). */
+function renderTodaySparkline(canvas, points, color) {
+  if (!canvas) return false;
+
+  const samples = [];
+  for (const p of points || []) {
+    const [hh, mm] = String(p?.time || "").split(":").map(Number);
+    if (!Number.isFinite(hh)) continue;
+    samples.push({ hour: hh + (Number.isFinite(mm) ? mm / 60 : 0), watts: Math.max(0, p?.solar ?? 0) });
+  }
+  if (!samples.length) return false;
+
+  const CHART_COLORS = getChartColors();
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(280, Math.round(rect.width || 500));
+  const height = 200;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.height = height + "px";
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const pad = { top: 16, right: 12, bottom: 24, left: 12 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const baseY = pad.top + plotH;
+
+  const minHour = Math.floor(samples[0].hour);
+  const maxHour = Math.max(minHour + 1, Math.ceil(samples[samples.length - 1].hour));
+  const hourSpan = maxHour - minHour;
+
+  let yMax = 0;
+  for (const s of samples) yMax = Math.max(yMax, s.watts);
+  if (yMax === 0) yMax = 1;
+
+  const xAt = (hour) => pad.left + ((hour - minHour) / hourSpan) * plotW;
+  const yAt = (watts) => baseY - (watts / yMax) * plotH;
+
+  ctx.strokeStyle = CHART_COLORS.grid;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  for (let i = 1; i <= 3; i++) {
+    const y = pad.top + (plotH * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.moveTo(xAt(samples[0].hour), yAt(samples[0].watts));
+  for (const s of samples.slice(1)) ctx.lineTo(xAt(s.hour), yAt(s.watts));
+  ctx.lineTo(xAt(samples[samples.length - 1].hour), baseY);
+  ctx.lineTo(xAt(samples[0].hour), baseY);
+  ctx.closePath();
+  const gradient = ctx.createLinearGradient(0, pad.top, 0, baseY);
+  gradient.addColorStop(0, hexToRgba(color, 0.55));
+  gradient.addColorStop(1, hexToRgba(color, 0));
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(xAt(samples[0].hour), yAt(samples[0].watts));
+  for (const s of samples.slice(1)) ctx.lineTo(xAt(s.hour), yAt(s.watts));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = "round";
+  ctx.stroke();
+
+  ctx.fillStyle = CHART_COLORS.text;
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const tickStep = hourSpan > 9 ? 3 : hourSpan > 4 ? 2 : 1;
+  for (let h = minHour; h <= maxHour; h += tickStep) {
+    ctx.fillText(String(h), xAt(h), baseY + 6);
+  }
+
+  return true;
+}
+
+function renderTodayProductionTile(data) {
+  const canvas = fEls.todayProductionChart;
+  if (!canvas) return false;
+
+  const points = data?.points || [];
+  if (!points.length) return false;
+
+  const { totalKwh } = aggregateHourlyProduction(points, data.intervalMinutes || 5);
+  if (!renderTodaySparkline(canvas, points, getChartColors().solar)) return false;
+
+  setTodayProductionState("ready");
+  if (fEls.todayProductionValue) fEls.todayProductionValue.textContent = formatKwhValue(totalKwh);
+  return true;
+}
+
+async function loadTodayProduction() {
+  if (!activeSystemId || currentView !== "cards") return;
+  setTodayProductionState("loading");
+  try {
+    const data = await api("GET", `/api/systems/${activeSystemId}/history`);
+    lastTodayProduction = data;
+    if (!renderTodayProductionTile(data)) {
+      setTodayProductionState("empty");
+    }
+  } catch (err) {
+    lastTodayProduction = null;
+    console.error("today production error:", err);
+    setTodayProductionState("error");
+  }
+}
+
 function renderProductionChart(data) {
   const canvas = fEls.productionChart;
   if (!canvas) return false;
@@ -1932,6 +2087,7 @@ async function refreshDashboardNow() {
       : pollNow();
     await refresh;
     if (!loadConn() || els.dashScreen.hidden) return;
+    if (currentView === "cards") loadTodayProduction();
     if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), getPollMs());
   } finally {
     dashboardRefreshing = false;

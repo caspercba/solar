@@ -503,6 +503,45 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
 
 .sep { margin: 0 .35rem; opacity: .4; }
 
+/* ---------- TODAY'S PRODUCTION TILE ---------- */
+
+.card-today-production {
+  padding: 0;
+  overflow: hidden;
+}
+
+.cards > .card-today-production { flex: 1 1 100%; width: 100%; }
+
+.today-production-chart-wrap {
+  position: relative;
+  min-height: 200px;
+}
+
+.today-production-overlay {
+  position: absolute;
+  top: 1.25rem;
+  left: 1.5rem;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.today-production-overlay .card-title {
+  display: block;
+  margin-bottom: .35rem;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: .95rem;
+}
+
+.today-production-kwh .big-number { color: var(--accent-sol); font-size: 2.5rem; }
+.today-production-kwh .unit { margin-left: .25rem; }
+
+#today-production-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 /* ---------- GENERATOR CARD ---------- */
 
 .card-gen { border-color: var(--card-border); }
