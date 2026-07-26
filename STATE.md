@@ -13,7 +13,8 @@ Board: [Gordofast — solar](http://100.103.17.20:3000/projects/4fef956d-9607-40
 - **v1.4.0** tagged and deployed locally (Pages + Worker) — GitHub Actions deploy still unfunded; tag `v1.4.0` is on origin
 - ADR 0003 marked Done in decision doc
 - Chart view: daily production + daily consumption tiles; daily solar production tile polish
-- **SOLAR-0160** — Cards landing "Today's production" tile: full-width amber sparkline with overlaid kWh total, current plant-local day, i18n + empty/loading states (Playwright coverage tracked separately as SOLAR-0161)
+- **SOLAR-0160** — Cards landing "Today's production" tile: full-width amber sparkline with overlaid kWh total, current plant-local day, i18n + empty/loading states
+- **SOLAR-0161** — Playwright coverage for the Cards "Today's production" tile (data + empty states); reuses tested `aggregateHourlyProduction` frontend helper
 - Pages stage fix — include `frontend/i18n.js` (`scripts/stage-frontend.sh`)
 - Prior board work through SOLAR-0154 archived `done`
 
@@ -26,7 +27,6 @@ _None_
 _Live board (`task.list`). Priority order:_
 
 1. **SOLAR-0155** — `backlog`, high — Release: cut and push `v1.4.0` tag _(largely done manually 2026-07-26; confirm/close on board)_
-2. **SOLAR-0161** — `todo`, tester — Test Cards Today’s production tile _(SOLAR-0160 implemented on branch `worker/developer/SOLAR-0160-r2`, pending merge)_
 
 **Deferred (no board tasks — wait for human request):**
 
