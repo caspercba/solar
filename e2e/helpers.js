@@ -152,19 +152,72 @@ export async function openManageModal(page) {
   await expect(page.locator("#manage-modal")).toBeVisible();
 }
 
+/** Wait until DETAIL has painted realtime metrics for the active system. */
 export async function waitForDashboardData(page) {
   await expect(page.locator("#bat-pct")).not.toHaveText("--");
   await expect(page.locator("#bat-pct")).not.toHaveClass(/skeleton/);
 }
 
+/**
+ * Wait until HOME summary tiles have settled (at least one non-skeleton tile with data).
+ * Compare-as-landing: post-login default is HOME, not Cards.
+ */
+export async function waitForHomeData(page) {
+  await expect(page.locator("#compare-view")).toBeVisible();
+  await expect(page.locator(".compare-card").first()).not.toHaveClass(/skeleton/);
+  await expect(page.locator(".compare-card .compare-value").first()).not.toHaveText("--%");
+}
+
+/** @deprecated Use waitForHomeData — kept as an alias for older call sites. */
+export async function waitForCompareData(page) {
+  return waitForHomeData(page);
+}
+
+/** HOME tile locator for a system name (skeleton or loaded). */
+export function homeTile(page, systemName) {
+  return page.locator(".compare-card", { hasText: systemName });
+}
+
+/**
+ * Tap a HOME summary tile to open DETAIL for that system.
+ * Default detail subview is Flow (or last persisted cards/flow/chart).
+ */
+export async function openHomeSystem(page, systemName) {
+  const tile = homeTile(page, systemName);
+  await expect(tile).toBeVisible();
+  await expect(tile).not.toHaveClass(/skeleton/);
+  await tile.click();
+  await expect(page.locator("#detail-nav")).toBeVisible();
+  await expect(page.locator("#detail-system-name")).toHaveText(systemName);
+  await expect(page.locator("#compare-view")).toBeHidden();
+}
+
+/** Return from DETAIL to HOME via the back control. */
+export async function backToHome(page) {
+  await page.locator("#detail-back-btn").click();
+  await expect(page.locator("#compare-view")).toBeVisible();
+  await expect(page.locator("#detail-nav")).toBeHidden();
+  await expect(page.locator("#view-toggle")).toBeHidden();
+}
+
+/**
+ * From HOME, open a system in DETAIL and optionally switch the detail subview.
+ * Flow still updates `#bat-pct` in the DOM via renderData, so waitForDashboardData works.
+ */
+export async function enterSystemDetail(page, systemName, { view } = {}) {
+  await openHomeSystem(page, systemName);
+  if (view) await switchView(page, view);
+  await waitForDashboardData(page);
+}
+
+/** Switch DETAIL view tabs (Cards | Flow | Chart). Compare tab was removed. */
 export async function switchView(page, view) {
   const tabId = view === "flow"
     ? "#tab-flow"
     : view === "chart"
       ? "#tab-chart"
-      : view === "compare"
-        ? "#tab-compare"
-        : "#tab-cards";
+      : "#tab-cards";
+  await expect(page.locator("#view-toggle")).toBeVisible();
   await page.locator(tabId).click();
 }
 
@@ -189,12 +242,6 @@ export async function swipeChartDay(page, { direction = "prev", distance = 120 }
     await touch("touchMove", x);
   }
   await touch("touchEnd");
-}
-
-export async function waitForCompareData(page) {
-  await expect(page.locator("#compare-view")).toBeVisible();
-  await expect(page.locator(".compare-card").first()).not.toHaveClass(/skeleton/);
-  await expect(page.locator(".compare-card .compare-value").first()).not.toHaveText("--%");
 }
 
 /** Simulate a downward pull on the dashboard (requires hasTouch / mobile project). */

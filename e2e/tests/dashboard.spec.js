@@ -4,7 +4,11 @@ import {
   clearAppStorage,
   loginViaDeepLink,
   waitForDashboardData,
-  waitForCompareData,
+  waitForHomeData,
+  homeTile,
+  openHomeSystem,
+  enterSystemDetail,
+  backToHome,
   switchView,
 } from "../helpers.js";
 import { MOCK_SYSTEM_ID, MOCK_SYSTEM_ID_2 } from "../fixtures/payloads.js";
@@ -13,11 +17,163 @@ test.beforeEach(async ({ page }) => {
   await disableServiceWorker(page);
   await page.goto("/");
   await clearAppStorage(page);
-  await loginViaDeepLink(page);
-  await waitForDashboardData(page);
 });
 
-test.describe("Cards view", () => {
+test.describe("HOME landing (compare-as-landing)", () => {
+  test("after login with ≥2 systems, landing shows summary tiles not Cards", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+
+    await expect(page.locator("#compare-view")).toBeVisible();
+    await expect(page.locator("#cards-view")).toBeHidden();
+    await expect(page.locator("#flow-view")).toBeHidden();
+    await expect(page.locator("#chart-view")).toBeHidden();
+    await expect(page.locator("#view-toggle")).toBeHidden();
+    await expect(page.locator("#detail-nav")).toBeHidden();
+    await expect(page.locator("#tab-compare")).toHaveCount(0);
+
+    const cards = page.locator(".compare-card");
+    await expect(cards).toHaveCount(2);
+    await expect(homeTile(page, "Mock Home Solar")).toBeVisible();
+    await expect(homeTile(page, "Mock Cabin")).toBeVisible();
+  });
+
+  test("renders side-by-side metrics and highlights lowest SOC and generator", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+
+    const cabin = homeTile(page, "Mock Cabin");
+    const home = homeTile(page, "Mock Home Solar");
+
+    await expect(cabin).toHaveClass(/compare-lowest-soc/);
+    await expect(cabin).toHaveClass(/compare-gen-active/);
+    await expect(cabin.locator(".compare-highlight-lowest")).toBeVisible();
+    await expect(cabin.locator(".compare-highlight-gen")).toBeVisible();
+    await expect(cabin.locator(".compare-metric-soc .compare-value")).toHaveText("45%");
+    await expect(cabin.locator(".compare-metric-solar .compare-value")).toHaveText("1200 W");
+    await expect(cabin.locator(".compare-metric-load .compare-value")).toHaveText("850 W");
+    await expect(cabin.locator(".gen-badge")).toHaveText("ON");
+
+    await expect(home).not.toHaveClass(/compare-lowest-soc/);
+    await expect(home).not.toHaveClass(/compare-gen-active/);
+    await expect(home.locator(".compare-metric-soc .compare-value")).toHaveText("72%");
+    await expect(home.locator(".gen-badge")).toHaveText("OFF");
+  });
+
+  test("fills home tiles independently when one system is slow", async ({ page }) => {
+    await page.route(`**/api/systems/${MOCK_SYSTEM_ID_2}/data`, async (route) => {
+      await new Promise((r) => setTimeout(r, 2500));
+      await route.continue();
+    });
+
+    await loginViaDeepLink(page);
+    await expect(page.locator("#compare-view")).toBeVisible();
+
+    const home = homeTile(page, "Mock Home Solar");
+    const cabin = homeTile(page, "Mock Cabin");
+
+    await expect(home).not.toHaveClass(/skeleton/, { timeout: 5_000 });
+    await expect(home.locator(".compare-metric-soc .compare-value")).toHaveText("72%");
+    await expect(cabin).toHaveClass(/skeleton/);
+
+    await expect(cabin).not.toHaveClass(/skeleton/, { timeout: 10_000 });
+    await expect(cabin.locator(".compare-metric-soc .compare-value")).toHaveText("45%");
+  });
+
+  test("tap tile opens DETAIL; back returns to HOME", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+
+    await openHomeSystem(page, "Mock Cabin");
+    await waitForDashboardData(page);
+
+    await expect(page.locator("#detail-system-name")).toHaveText("Mock Cabin");
+    await expect(page.locator("#view-toggle")).toBeVisible();
+    await expect(page.locator("#tab-cards")).toBeVisible();
+    await expect(page.locator("#tab-flow")).toBeVisible();
+    await expect(page.locator("#tab-chart")).toBeVisible();
+    await expect(page.locator("#tab-compare")).toHaveCount(0);
+
+    // Default detail subview is Flow (mock 3).
+    await expect(page.locator("#flow-view")).toBeVisible();
+    await expect(page.locator("#bat-pct")).toHaveText("45");
+
+    const activeId = await page.evaluate(() => localStorage.getItem("solar_active"));
+    expect(activeId).toBe(MOCK_SYSTEM_ID_2);
+
+    await backToHome(page);
+    await waitForHomeData(page);
+    await expect(page.locator(".compare-card")).toHaveCount(2);
+  });
+
+  test("single-system account still gets one HOME tile then DETAIL on tap", async ({ page }) => {
+    await page.route("**/api/systems", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: MOCK_SYSTEM_ID,
+            name: "Mock Home Solar",
+            service: "shinemonitor",
+            username: "mock-user@example.com",
+            alerts: { enabled: false },
+            gridInputLabel: "generator",
+          },
+        ]),
+      });
+    });
+
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+
+    await expect(page.locator(".compare-card")).toHaveCount(1);
+    await expect(homeTile(page, "Mock Home Solar")).toBeVisible();
+    await expect(page.locator("#cards-view")).toBeHidden();
+
+    await enterSystemDetail(page, "Mock Home Solar", { view: "cards" });
+    await expect(page.locator("#cards-view")).toBeVisible();
+    await expect(page.locator("#bat-pct")).toHaveText("72");
+  });
+
+  test("Compare tab is absent from DETAIL view-tabs", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await openHomeSystem(page, "Mock Home Solar");
+
+    await expect(page.locator("#view-toggle")).toBeVisible();
+    await expect(page.locator("#tab-cards")).toBeVisible();
+    await expect(page.locator("#tab-flow")).toBeVisible();
+    await expect(page.locator("#tab-chart")).toBeVisible();
+    await expect(page.locator("#tab-compare")).toHaveCount(0);
+  });
+
+  test("legacy compare localStorage preference lands on HOME", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await page.evaluate(() => localStorage.setItem("solar_view", "compare"));
+    await page.reload();
+    await expect(page.locator("#dashboard-screen")).toBeVisible();
+    await waitForHomeData(page);
+    await expect(page.locator("#compare-view")).toBeVisible();
+    await expect(page.locator("#tab-compare")).toHaveCount(0);
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem("solar_view")))
+      .not.toBe("compare");
+  });
+});
+
+test.describe("Cards view (DETAIL)", () => {
+  test.beforeEach(async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "cards" });
+  });
+
   test("renders mock SOC and watts", async ({ page }) => {
     await expect(page.locator("#cards-view")).toBeVisible();
     await expect(page.locator("#bat-pct")).toHaveText("72");
@@ -59,7 +215,8 @@ test.describe("Cards view", () => {
     });
 
     await page.reload();
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "cards" });
 
     await expect(page.locator("#today-production-chart")).toBeHidden();
     await expect(page.locator("#today-production-empty")).toBeVisible();
@@ -68,9 +225,11 @@ test.describe("Cards view", () => {
   });
 });
 
-test.describe("Flow view", () => {
+test.describe("Flow view (DETAIL)", () => {
   test("shows charging animation class for home system", async ({ page }) => {
-    await switchView(page, "flow");
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "flow" });
 
     await expect(page.locator("#flow-view")).toBeVisible();
     const batPath = page.locator("#fp-bat");
@@ -80,9 +239,9 @@ test.describe("Flow view", () => {
   });
 
   test("shows discharging animation class when cabin system selected", async ({ page }) => {
-    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
-    await waitForDashboardData(page);
-    await switchView(page, "flow");
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Cabin", { view: "flow" });
 
     const batPath = page.locator("#fp-bat");
     await expect(batPath).toHaveClass(/discharging/);
@@ -90,36 +249,35 @@ test.describe("Flow view", () => {
   });
 });
 
-test.describe("System tabs", () => {
-  test("shows tabs when two or more systems configured", async ({ page }) => {
-    const tabs = page.locator("#system-tabs .sys-tab");
-    await expect(tabs).toHaveCount(2);
-    await expect(tabs.nth(0)).toHaveText("Mock Home Solar");
-    await expect(tabs.nth(1)).toHaveText("Mock Cabin");
-    await expect(tabs.nth(0)).toHaveClass(/active/);
-  });
-
-  test("switches active system and reloads data", async ({ page }) => {
-    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
-    await waitForDashboardData(page);
+test.describe("System switching via HOME tiles", () => {
+  test("tap-through switches active system and reloads data", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Cabin", { view: "cards" });
 
     await expect(page.locator("#bat-pct")).toHaveText("45");
     await expect(page.locator("#bat-direction")).toHaveText("Discharging");
-    await expect(page.locator("#system-tabs .sys-tab.active")).toHaveText("Mock Cabin");
+    await expect(page.locator("#detail-system-name")).toHaveText("Mock Cabin");
 
     const activeId = await page.evaluate(() => localStorage.getItem("solar_active"));
     expect(activeId).toBe(MOCK_SYSTEM_ID_2);
   });
 
-  test("restores active system from localStorage on reload", async ({ page }) => {
-    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
+  test("persists active system id across reload (HOME still lands first)", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await openHomeSystem(page, "Mock Cabin");
     await waitForDashboardData(page);
 
     await page.reload();
     await expect(page.locator("#dashboard-screen")).toBeVisible();
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
+    await expect(page.locator("#compare-view")).toBeVisible();
 
-    await expect(page.locator("#system-tabs .sys-tab.active")).toHaveText("Mock Cabin");
+    const activeId = await page.evaluate(() => localStorage.getItem("solar_active"));
+    expect(activeId).toBe(MOCK_SYSTEM_ID_2);
+
+    await enterSystemDetail(page, "Mock Cabin", { view: "cards" });
     await expect(page.locator("#bat-pct")).toHaveText("45");
   });
 });
@@ -128,13 +286,17 @@ test.describe("Generator runtime", () => {
   const GEN_RUNTIME_KEY = `solar_gen_runtime_${MOCK_SYSTEM_ID_2}`;
 
   test("shows no runtime badge while generator is off", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "cards" });
     await expect(page.locator("#gen-status")).toHaveText("OFF");
     await expect(page.locator("#gen-runtime")).toBeHidden();
   });
 
   test("shows accumulated runtime while generator is active and persists across reload", async ({ page }) => {
-    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
-    await waitForDashboardData(page);
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Cabin", { view: "cards" });
     await expect(page.locator("#gen-status")).toHaveText("ON");
 
     // Seed 26 minutes accumulated in a prior poll, as if the generator has
@@ -146,16 +308,17 @@ test.describe("Generator runtime", () => {
 
     await page.reload();
     await expect(page.locator("#dashboard-screen")).toBeVisible();
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Cabin", { view: "cards" });
 
-    await expect(page.locator("#system-tabs .sys-tab.active")).toHaveText("Mock Cabin");
     await expect(page.locator("#gen-runtime")).toBeVisible();
     await expect(page.locator("#gen-runtime-value")).toHaveText("26m");
   });
 
   test("resets on disconnect", async ({ page }) => {
-    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
-    await waitForDashboardData(page);
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Cabin", { view: "cards" });
 
     await page.evaluate(
       ({ key, seconds }) => localStorage.setItem(key, JSON.stringify({ accumulatedSec: seconds, activeSince: null })),
@@ -169,17 +332,18 @@ test.describe("Generator runtime", () => {
     expect(stored).toBeNull();
 
     await loginViaDeepLink(page);
-    await waitForDashboardData(page);
-    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Cabin", { view: "cards" });
 
     await expect(page.locator("#gen-runtime")).toBeHidden();
   });
 });
 
 test.describe("View toggle persistence", () => {
-  test("persists selected view in localStorage across reload", async ({ page }) => {
-    await switchView(page, "flow");
+  test("persists detail subview in localStorage; reload lands on HOME then restores subview", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "flow" });
     await expect(page.locator("#flow-view")).toBeVisible();
 
     await expect
@@ -188,65 +352,19 @@ test.describe("View toggle persistence", () => {
 
     await page.reload();
     await expect(page.locator("#dashboard-screen")).toBeVisible();
+    await waitForHomeData(page);
+    await expect(page.locator("#compare-view")).toBeVisible();
+
+    await openHomeSystem(page, "Mock Home Solar");
     await expect(page.locator("#flow-view")).toBeVisible();
     await expect(page.locator("#tab-flow")).toHaveClass(/active/);
 
     await switchView(page, "chart");
     await expect(page.locator("#chart-view")).toBeVisible();
     await page.reload();
+    await waitForHomeData(page);
+    await openHomeSystem(page, "Mock Home Solar");
     await expect(page.locator("#chart-view")).toBeVisible();
-  });
-});
-
-test.describe("Compare view", () => {
-  test("shows Compare tab when two or more systems configured", async ({ page }) => {
-    await expect(page.locator("#tab-compare")).toBeVisible();
-    await expect(page.locator("#tab-compare")).toHaveText("Compare");
-  });
-
-  test("renders side-by-side metrics and highlights lowest SOC and generator", async ({ page }) => {
-    await switchView(page, "compare");
-    await waitForCompareData(page);
-
-    const cards = page.locator(".compare-card");
-    await expect(cards).toHaveCount(2);
-
-    const cabin = page.locator(".compare-card", { hasText: "Mock Cabin" });
-    const home = page.locator(".compare-card", { hasText: "Mock Home Solar" });
-
-    await expect(cabin).toHaveClass(/compare-lowest-soc/);
-    await expect(cabin).toHaveClass(/compare-gen-active/);
-    await expect(cabin.locator(".compare-highlight-lowest")).toBeVisible();
-    await expect(cabin.locator(".compare-highlight-gen")).toBeVisible();
-    await expect(cabin.locator(".compare-metric-soc .compare-value")).toHaveText("45%");
-    await expect(cabin.locator(".compare-metric-solar .compare-value")).toHaveText("1200 W");
-    await expect(cabin.locator(".compare-metric-load .compare-value")).toHaveText("850 W");
-    await expect(cabin.locator(".gen-badge")).toHaveText("ON");
-
-    await expect(home).not.toHaveClass(/compare-lowest-soc/);
-    await expect(home).not.toHaveClass(/compare-gen-active/);
-    await expect(home.locator(".compare-metric-soc .compare-value")).toHaveText("72%");
-    await expect(home.locator(".gen-badge")).toHaveText("OFF");
-  });
-
-  test("persists compare view in localStorage across reload", async ({ page }) => {
-    await switchView(page, "compare");
-    await waitForCompareData(page);
-
-    await expect
-      .poll(() => page.evaluate(() => localStorage.getItem("solar_view")))
-      .toBe("compare");
-
-    await page.reload();
-    await expect(page.locator("#compare-view")).toBeVisible();
-    await expect(page.locator("#tab-compare")).toHaveClass(/active/);
-    await waitForCompareData(page);
-  });
-
-  test("hides system tabs while comparing all systems", async ({ page }) => {
-    await switchView(page, "compare");
-    await waitForCompareData(page);
-    await expect(page.locator("#system-tabs")).toBeHidden();
   });
 });
 
@@ -254,6 +372,10 @@ test.describe("Keyboard refresh", () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
   test("F5 refreshes data without reloading the page", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "cards" });
+
     let dataRequestCount = 0;
     await page.route("**/api/systems/*/data", async (route) => {
       dataRequestCount += 1;
@@ -271,6 +393,10 @@ test.describe("Keyboard refresh", () => {
   });
 
   test("Ctrl+R refreshes data without reloading the page", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "cards" });
+
     let dataRequestCount = 0;
     await page.route("**/api/systems/*/data", async (route) => {
       dataRequestCount += 1;
@@ -288,7 +414,9 @@ test.describe("Keyboard refresh", () => {
   });
 
   test("does not intercept F5 when a text input is focused", async ({ page }) => {
-    await switchView(page, "chart");
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "chart" });
     await expect(page.locator("#chart-loading")).toBeHidden();
 
     let historyRequestCount = 0;
@@ -323,14 +451,18 @@ test.describe("Poll error toast", () => {
   }
 
   test("shows toast with retry on cards view and clears after success", async ({ page }) => {
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "cards" });
+
     await failNextDataPoll(page);
-    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
+    await backToHome(page);
+    await openHomeSystem(page, "Mock Cabin");
 
     const toast = page.locator("#poll-error-toast");
     await expect(toast).toBeVisible();
     await expect(page.locator("#poll-error-msg")).toHaveText("Fetch failed: vendor offline");
     await expect(page.locator("#status-dot")).toHaveClass(/dot-err/);
-    await expect(page.locator("#cards-view")).toBeVisible();
 
     await restoreDataPoll(page);
     await page.locator("#poll-retry-btn").click();
@@ -341,11 +473,13 @@ test.describe("Poll error toast", () => {
   });
 
   test("shows toast on flow view", async ({ page }) => {
-    await switchView(page, "flow");
+    await loginViaDeepLink(page);
+    await waitForHomeData(page);
+    await enterSystemDetail(page, "Mock Home Solar", { view: "flow" });
+
     await failNextDataPoll(page);
-    // Home Solar is already the active tab by default; switch to Cabin so the
-    // click actually triggers a new poll instead of being a same-tab no-op.
-    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
+    await backToHome(page);
+    await openHomeSystem(page, "Mock Cabin");
 
     await expect(page.locator("#poll-error-toast")).toBeVisible();
     await expect(page.locator("#flow-view")).toBeVisible();

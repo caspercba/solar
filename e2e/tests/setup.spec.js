@@ -4,6 +4,7 @@ import {
   clearAppStorage,
   loginViaSetupForm,
   loginViaDeepLink,
+  waitForHomeData,
   MOCK_WORKER_URL,
   MOCK_TOKEN,
 } from "../helpers.js";
@@ -36,7 +37,8 @@ test.describe("Setup screen", () => {
 
     await expect(page.locator("#dashboard-screen")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#setup-screen")).toBeHidden();
-    await expect(page.locator("#system-tabs")).toBeVisible();
+    await waitForHomeData(page);
+    await expect(page.locator(".compare-card")).toHaveCount(2);
   });
 
   test("password login stores session bearer in localStorage", async ({ page }) => {
@@ -54,7 +56,8 @@ test.describe("Setup screen", () => {
     await loginViaDeepLink(page);
 
     await expect(page.locator("#dashboard-screen")).toBeVisible();
-    await expect(page.locator("#system-tabs button")).toHaveCount(2);
+    await waitForHomeData(page);
+    await expect(page.locator(".compare-card")).toHaveCount(2);
   });
 
   test("persists connection in localStorage", async ({ page }) => {

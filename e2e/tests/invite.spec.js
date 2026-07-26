@@ -11,6 +11,7 @@ import {
   MOCK_INVITE_REVOKED,
   MOCK_INVITE_USED,
   MOCK_INVITE_INVALID,
+  waitForHomeData,
 } from "../helpers.js";
 
 test.beforeEach(async ({ page }) => {
@@ -31,7 +32,8 @@ test.describe("Accept invite (ADR 0003)", () => {
     await expect(page.locator("#dashboard-screen")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#invite-screen")).toBeHidden();
     await expect(page.locator("#setup-screen")).toBeHidden();
-    await expect(page.locator("#system-tabs")).toBeVisible();
+    await waitForHomeData(page);
+    await expect(page.locator(".compare-card")).toHaveCount(2);
 
     const stored = await page.evaluate(() => localStorage.getItem("solar_conn"));
     expect(stored).toBeTruthy();

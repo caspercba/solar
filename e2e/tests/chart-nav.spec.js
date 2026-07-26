@@ -3,7 +3,8 @@ import {
   disableServiceWorker,
   clearAppStorage,
   loginViaDeepLink,
-  waitForDashboardData,
+  waitForHomeData,
+  enterSystemDetail,
   switchView,
   swipeChartDay,
   mockToday,
@@ -17,8 +18,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await clearAppStorage(page);
   await loginViaDeepLink(page);
-  await waitForDashboardData(page);
-  await switchView(page, "chart");
+  await waitForHomeData(page);
+  await enterSystemDetail(page, "Mock Home Solar", { view: "chart" });
   await expect(page.locator("#chart-loading")).toBeHidden();
 });
 
