@@ -64,6 +64,8 @@ const messages = {
     compareGridOn: "Grid ON",
     compareUnavailable: "Unavailable",
     compareLoadError: "Could not load comparison data.",
+    compareOpenSystem: "Open {name}",
+    compareLoadingSystem: "Loading {name}",
 
     batIdle: "Idle",
     batCharging: "Charging",
@@ -352,6 +354,8 @@ const messages = {
     compareGridOn: "Red ENCENDIDA",
     compareUnavailable: "No disponible",
     compareLoadError: "No se pudieron cargar los datos de comparación.",
+    compareOpenSystem: "Abrir {name}",
+    compareLoadingSystem: "Cargando {name}",
 
     batIdle: "Inactiva",
     batCharging: "Cargando",

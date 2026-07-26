@@ -594,10 +594,11 @@ function compareSkeletonCardHtml(sys) {
 }
 
 /** Tap/keyboard-activate a home tile to drill into that system's DETAIL. */
-function makeTileTappable(card, systemId) {
+function makeTileTappable(card, systemId, name) {
   if (!systemId) return;
   card.setAttribute("role", "button");
   card.tabIndex = 0;
+  if (name) card.setAttribute("aria-label", t("compareOpenSystem", { name }));
   const open = () => enterDetail(systemId);
   card.addEventListener("click", open);
   card.addEventListener("keydown", (e) => {
@@ -628,6 +629,8 @@ function renderComparisonGrid() {
 
     if (!d) {
       card.className = "compare-card skeleton";
+      card.setAttribute("aria-label", t("compareLoadingSystem", { name: sys.name }));
+      card.setAttribute("aria-busy", "true");
       card.innerHTML = compareSkeletonCardHtml(sys);
       fEls.compareGrid.appendChild(card);
       continue;
@@ -650,7 +653,7 @@ function renderComparisonGrid() {
         </div>
         <p class="compare-error">${escapeAttr(d.error || t("compareUnavailable"))}</p>
       `;
-      makeTileTappable(card, d.systemId || sys.id);
+      makeTileTappable(card, d.systemId || sys.id, name);
       fEls.compareGrid.appendChild(card);
       continue;
     }
@@ -692,7 +695,7 @@ function renderComparisonGrid() {
       </div>
       <p class="compare-status">${escapeAttr(d.status || "--")}</p>
     `;
-    makeTileTappable(card, d.systemId);
+    makeTileTappable(card, d.systemId, d.name);
     fEls.compareGrid.appendChild(card);
 
     const ts = d.timestamp;

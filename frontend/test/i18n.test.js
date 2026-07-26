@@ -79,6 +79,9 @@ describe("i18n", () => {
     expect(t("flowGrid")).toBe("GRID");
     expect(t("compareUnavailable")).toBe("Unavailable");
     expect(t("compareLoadError")).toBe("Could not load comparison data.");
+    expect(t("allSystems")).toBe("All systems");
+    expect(t("compareOpenSystem", { name: "Casa" })).toBe("Open Casa");
+    expect(t("compareLoadingSystem", { name: "Casa" })).toBe("Loading Casa");
   });
 
   it("translates compare view keys in Spanish", () => {
@@ -90,6 +93,9 @@ describe("i18n", () => {
     expect(t("flowGrid")).toBe("RED");
     expect(t("compareUnavailable")).toBe("No disponible");
     expect(t("compareLoadError")).toBe("No se pudieron cargar los datos de comparación.");
+    expect(t("allSystems")).toBe("Todos los sistemas");
+    expect(t("compareOpenSystem", { name: "Casa" })).toBe("Abrir Casa");
+    expect(t("compareLoadingSystem", { name: "Casa" })).toBe("Cargando Casa");
   });
 
   it("translates password-login keys in English", () => {
