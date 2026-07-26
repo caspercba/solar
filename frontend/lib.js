@@ -43,14 +43,17 @@ export function historyToCsv(points) {
   return lines.join("\r\n");
 }
 
-/** Aggregate intraday load samples (W) into hourly consumption (kWh), from hour 0 through the last hour with data. */
-export function aggregateHourlyConsumption(points, intervalMinutes = 5) {
+/**
+ * Aggregate intraday power samples (W) for a field into hourly energy (kWh),
+ * from hour 0 through the last hour with data.
+ */
+export function aggregateHourlyEnergy(points, field, intervalMinutes = 5) {
   const hourly = new Map();
   for (const p of points || []) {
     const hour = Number.parseInt(String(p?.time || "").split(":")[0], 10);
     if (!Number.isFinite(hour)) continue;
-    const loadW = Math.max(0, p.load ?? 0);
-    const kwh = (loadW * (intervalMinutes / 60)) / 1000;
+    const watts = Math.max(0, p?.[field] ?? 0);
+    const kwh = (watts * (intervalMinutes / 60)) / 1000;
     hourly.set(hour, (hourly.get(hour) || 0) + kwh);
   }
   const maxHour = hourly.size ? Math.max(...hourly.keys()) : -1;
@@ -62,6 +65,16 @@ export function aggregateHourlyConsumption(points, intervalMinutes = 5) {
     totalKwh += kwh;
   }
   return { hours, totalKwh };
+}
+
+/** Aggregate intraday load samples (W) into hourly consumption (kWh). */
+export function aggregateHourlyConsumption(points, intervalMinutes = 5) {
+  return aggregateHourlyEnergy(points, "load", intervalMinutes);
+}
+
+/** Aggregate intraday solar samples (W) into hourly production (kWh). */
+export function aggregateHourlyProduction(points, intervalMinutes = 5) {
+  return aggregateHourlyEnergy(points, "solar", intervalMinutes);
 }
 
 export function escapeAttr(value) {

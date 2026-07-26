@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=26">
+  <link rel="stylesheet" href="style.css?v=27">
 </head>
 <body>
 
@@ -273,6 +273,19 @@
         <span class="legend-item legend-soc-item" hidden><span class="legend-swatch legend-soc"></span><span data-i18n="legendSocPct">SOC (%)</span><span id="soc-estimated-badge" class="soc-estimated-badge" hidden data-i18n="socEstimated" data-i18n-title="socEstimatedTitle" title="SOC estimated from battery voltage">Estimated</span></span>
       </div>
 
+      <h3 class="energy-summary-title" data-i18n="productionTitle">Daily Production</h3>
+      <div class="chart-wrap production-chart-wrap">
+        <canvas id="production-chart" width="500" height="160"></canvas>
+        <div id="production-empty" class="chart-empty" hidden>
+          <p id="production-empty-msg" class="chart-empty-msg" data-i18n="productionEmpty">No production data for this date</p>
+        </div>
+        <div id="production-loading" class="chart-loading" hidden data-i18n="chartLoading">Loading chart…</div>
+      </div>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-swatch legend-solar"></span><span data-i18n="legendSolarKwhHourly">Solar kWh</span></span>
+        <span class="legend-item"><span data-i18n="productionTotal">Total</span>:&nbsp;<span id="production-total-value">–</span></span>
+      </div>
+
       <h3 class="energy-summary-title" data-i18n="consumptionTitle">Daily Consumption</h3>
       <div class="chart-wrap consumption-chart-wrap">
         <canvas id="consumption-chart" width="500" height="160"></canvas>
@@ -500,6 +513,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=26"></script>
+  <script type="module" src="app.js?v=27"></script>
 </body>
 </html>
