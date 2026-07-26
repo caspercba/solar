@@ -27,10 +27,14 @@ _None_
 _Live board (`task.list`). Priority order:_
 
 1. **SOLAR-0155** — `backlog`, high — Release: v1.4.0 tag is confirmed pushed to origin; remaining scope narrowed to confirming CI release-gate/deploy (or documenting manual `wrangler deploy`) and that production `/api/health` reports 1.4.0
+2. **SOLAR-0164** — `backlog`, medium — Compare-as-landing: navigation shell (home vs detail states)
+3. **SOLAR-0165** — `backlog`, medium — Compare-as-landing: home tile grid (independent per-tile loading); depends on SOLAR-0164
+4. **SOLAR-0166** — `backlog`, medium — Compare-as-landing: detail wiring (Cards/Flow/Chart for active system); depends on SOLAR-0164
+5. **SOLAR-0167** — `backlog`, medium — Compare-as-landing: i18n + a11y strings; depends on SOLAR-0165/0166
+6. **SOLAR-0168** — `backlog`, low — Compare-as-landing: polish (focus states, home PTR, last-update line); depends on SOLAR-0165/0166
+7. **SOLAR-0169** — `backlog`, medium (tester) — Compare-as-landing: Playwright E2E coverage; depends on SOLAR-0164…0168
 
-**Spec ready — cut board tasks when starting implementation:**
-
-- **Compare as landing** — home = compare summary tiles; per-tile spinner; tap → Cards/Flow/Chart detail. Mocks approved 2026-07-26. Spec + suggested task split: [`docs/mocks/compare-as-landing.md`](./docs/mocks/compare-as-landing.md). Also §5.5 in `PLAN.md`.
+**Compare as landing** — spec + mocks approved 2026-07-26; board tasks SOLAR-0164…0169 cut 2026-07-26 (this planning pass) from [`docs/mocks/compare-as-landing.md`](./docs/mocks/compare-as-landing.md)'s suggested task breakdown. Also §5.5 in `PLAN.md`. None started yet — a human still needs to promote SOLAR-0164 from backlog to `todo` to begin.
 
 **Deferred (no board tasks — wait for human request):**
 
@@ -53,7 +57,7 @@ _None on the live board._
 - **Multi-user — password accounts + invites (ADR 0003)** — shipped end-to-end at v1.4.0; no outbound email; opaque keys and `?token=` retained for machines/migration.
 - **Frontend and Worker stay independently deployable** — Pages vs Workers; CORS allowlist.
 - **Cards today’s production tile** — full-width line graph with kWh overlay (not side-by-side); current day only; mock in `docs/mocks/`.
-- **Compare as landing (approved, not built)** — dashboard home is multi-system compare tiles; detail is per-system Cards/Flow/Chart; mocks + full task-oriented spec in `docs/mocks/compare-as-landing.md`.
+- **Compare as landing (approved, board tasks cut, not built)** — dashboard home is multi-system compare tiles; detail is per-system Cards/Flow/Chart; mocks + full task-oriented spec in `docs/mocks/compare-as-landing.md`; implementation tracked as SOLAR-0164…0169.
 
 ## Blocked / Open Questions
 
