@@ -26,7 +26,7 @@ _None_
 
 _Live board (`task.list`). Priority order:_
 
-1. **SOLAR-0155** — `backlog`, high — Release: cut and push `v1.4.0` tag _(largely done manually 2026-07-26; confirm/close on board)_
+1. **SOLAR-0155** — `backlog`, high — Release: v1.4.0 tag is confirmed pushed to origin; remaining scope narrowed to confirming CI release-gate/deploy (or documenting manual `wrangler deploy`) and that production `/api/health` reports 1.4.0
 
 **Deferred (no board tasks — wait for human request):**
 
