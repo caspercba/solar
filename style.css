@@ -78,7 +78,6 @@
 }
 
 [data-theme="high-contrast"] .vtab,
-[data-theme="high-contrast"] .sys-tab,
 [data-theme="high-contrast"] .chart-day-pill {
   border-width: 2px;
 }
@@ -287,38 +286,33 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   right: 1rem;
 }
 
-/* ---------- SYSTEM TABS ---------- */
+/* ---------- DETAIL NAV (back to home) ---------- */
 
-.system-tabs {
+.detail-nav {
   display: flex;
-  gap: .35rem;
+  align-items: center;
+  gap: .6rem;
   padding: 0 1.25rem .5rem;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
-.sys-tab {
+.detail-back-link {
   background: transparent;
-  border: 1px solid var(--card-border);
-  border-radius: 8px;
+  border: none;
   color: var(--text-dim);
-  padding: .45rem 1rem;
-  font-size: .8rem;
+  padding: .3rem .2rem;
+  font-size: .85rem;
   font-weight: 500;
   cursor: pointer;
-  white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  transition: background .2s, color .2s;
 }
 
-.sys-tab:hover { color: var(--text); }
+.detail-back-link:hover { color: var(--text); }
 
-.sys-tab.active {
-  background: var(--accent-sol);
-  color: var(--accent-on);
-  border-color: var(--accent-sol);
+.detail-system-name {
+  font-size: .85rem;
   font-weight: 600;
+  color: var(--text);
 }
 
 /* ---------- INVERTER STATUS ---------- */
@@ -622,6 +616,15 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   border-radius: 12px;
   padding: 1rem 1.1rem;
   transition: border-color .2s, box-shadow .2s;
+}
+
+.compare-card[role="button"] {
+  cursor: pointer;
+}
+
+.compare-card[role="button"]:hover,
+.compare-card[role="button"]:focus-visible {
+  border-color: var(--accent-sol);
 }
 
 .compare-card.compare-lowest-soc {
