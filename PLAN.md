@@ -58,7 +58,7 @@ Full diagram, KV map, and auth layering: **[ARCHITECTURE.md](./ARCHITECTURE.md)*
 │  Storage: localStorage (proxy URL, token, active system, view)  │
 │  Auth: username/password login (primary); ?invite= accept;      │
 │  legacy paste bearer / ?token=… for HA & migration              │
-│  Views: Cards / Flow / Chart (intraday canvas)                  │
+│  Views: HOME summary tiles → DETAIL Cards / Flow / Chart          │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ HTTPS  Authorization: Bearer <token>
                            ▼
@@ -313,25 +313,25 @@ Glanceable **current-day** solar production on the Cards landing (not Chart). Ap
 - [x] **i18n + empty/loading** — EN/ES strings; empty/error states consistent with Chart production tile
 - [x] **Tests** — frontend unit helpers if extracted; Playwright asserts tile + total on Cards view _(SOLAR-0161)_
 
-### 5.5 Planned — Compare as landing (summary home)
+### 5.5 Compare as landing (summary home) — shipped
 
-Make the **dashboard home** the multi-system compare tile grid; drill into one system for Cards / Flow / Chart. Spec + mocks approved 2026-07-26 — board tasks cut 2026-07-26 (SOLAR-0164…0169). Navigation shell (SOLAR-0164), home tile grid (SOLAR-0165), and polish (SOLAR-0168) shipped 2026-07-26; i18n/a11y and E2E remain.
+Make the **dashboard home** the multi-system compare tile grid; drill into one system for Cards / Flow / Chart. Spec + mocks approved 2026-07-26; board tasks SOLAR-0164…0169 done 2026-07-26.
 
 - Spec: [docs/mocks/compare-as-landing.md](./docs/mocks/compare-as-landing.md)
 - Mocks: [loading](./docs/mocks/compare-landing-loading.png) · [loaded](./docs/mocks/compare-landing-loaded.png) · [detail flow](./docs/mocks/compare-landing-detail-flow.png)
 
-Checklist (for later SOLAR-* tasks):
+Checklist:
 
 - [x] **Home = compare grid** — default landing is summary tiles only; no Cards/Flow/Chart/Compare tabs on home; no system-tabs on home; header keeps status · settings · logout _(SOLAR-0164)_
 - [x] **Per-tile loading** — independent per-system fetch (`GET /api/systems/:id/data` once per tile, not the combined `all/data` batch) so each tile settles on its own; skeleton per system; error tile without stuck spinner _(SOLAR-0165)_
 - [x] **Tap → detail** — set active system; show back (“All systems”); Cards | Flow | Chart for that system; retire standalone Compare tab _(SOLAR-0164)_
 - [x] **Persistence** — map saved view `compare` → home; persist detail subview as cards/flow/chart only _(SOLAR-0164)_
 - [x] **Single-system** — still one home tile (do not skip home); removed `systems.length < 2` gate that hid Compare _(SOLAR-0164/0165)_
-- [ ] **i18n + a11y** — back label EN/ES; tile open/loading labels
+- [x] **i18n + a11y** — back label EN/ES; tile open/loading labels _(SOLAR-0167)_
 - [x] **Polish** — visible `:focus-visible` ring (outline, distinct from hover) on HOME tiles; pull-to-refresh on HOME already reused `pollCompareNow()` via `refreshDashboardNow()`/`pollNow()` (verified, no gap); last-update line on HOME now uses the `lastUpdate` i18n string instead of a hardcoded "Last update: …" _(SOLAR-0168)_
-- [ ] **E2E** — landing, per-tile load, tap-through, back; update helpers that used `#tab-compare`
+- [x] **E2E** — landing, per-tile load, tap-through, back; helpers updated away from `#tab-compare` _(SOLAR-0169)_
 
-Open decisions (resolve in first implementation task): default detail subview on first tap (Flow vs last-used vs Cards); whether to keep `#system-tabs` on detail (proposal: remove).
+**Follow-ups (implementation bugs from SOLAR-0169 run):** HOME grid not refreshed after removing a non-active system _(SOLAR-0170)_; duplicate `#admin-create-user-section` markup breaks admin create-user E2E _(SOLAR-0171, pre-existing)_.
 
 ---
 
@@ -483,7 +483,7 @@ Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, esca
 
 5. **PWA** — done (`manifest.json`, service worker).
 6. **Alerts / notifications** — done. Webhook when SOC drops below threshold via Worker cron trigger with per-system cooldown; card-level visual warning in the polled UI via `socWarnThreshold`; E2E coverage for the alerts config form.
-7. **Comparison view** — done as a tab (`/api/systems/all/data`-backed side-by-side cards, lowest-SOC/generator highlights). **Next:** promote compare to default landing (§5.5; mocks in `docs/mocks/`).
+7. **Comparison view** — done as default HOME landing (§5.5; per-tile independent fetch; tap → DETAIL Cards/Flow/Chart). Follow-ups: SOLAR-0170 (HOME refresh after remove), SOLAR-0171 (duplicate admin create-user markup).
 8. **Configurable thresholds** — done for low-battery (`alerts.lowSocThreshold`) and per-system generator-detection sensitivity (`gridDetect` voltage/power minima in manage UI).
 9. **i18n** — done. EN/ES toggle, persisted in `localStorage`, covers dashboard, manage modal, themes, and compare view strings.
 
@@ -593,7 +593,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] Per-user opaque API keys in KV (ADR 0002 Phase 2)
 - [x] **Password users + magic-link invites (ADR 0003)** — Worker user/invite registry + auth routes; frontend login + accept-invite; admin users/invites UI; E2E; release notes at v1.4.0 (§5.3)
 - [x] **Cards “Today’s production” tile** — full-width sparkline + overlay kWh for current day only (§5.4; mock in `docs/mocks/`) — board **SOLAR-0160**; Playwright coverage tracked as **SOLAR-0161**
-- [ ] **Compare as landing** — summary tiles as home; tap → per-system detail (§5.5; mocks + spec in `docs/mocks/`) — board tasks SOLAR-0164…0169 cut 2026-07-26
+- [x] **Compare as landing** — summary tiles as home; tap → per-system detail (§5.5; SOLAR-0164…0169 done). Open fixes: SOLAR-0170 (HOME refresh after remove), SOLAR-0171 (duplicate admin create-user IDs)
 
 ---
 
