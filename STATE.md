@@ -17,6 +17,7 @@ Board: [Gordofast — solar](http://100.103.17.20:3000/projects/4fef956d-9607-40
 - **SOLAR-0161** — Playwright coverage for the Cards "Today's production" tile (data + empty states); reuses tested `aggregateHourlyProduction` frontend helper
 - Pages stage fix — include `frontend/i18n.js` (`scripts/stage-frontend.sh`)
 - Prior board work through SOLAR-0154 archived `done`
+- **SOLAR-0168** — Compare-as-landing polish: visible keyboard `:focus-visible` ring on HOME tiles (outline, distinct from hover/active); confirmed HOME pull-to-refresh already re-fetches all tiles (shares `pollCompareNow()` via `refreshDashboardNow()`); HOME last-update line now uses the `lastUpdate` i18n string instead of a hardcoded "Last update: …"
 
 ## In Progress
 

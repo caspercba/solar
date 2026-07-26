@@ -315,7 +315,7 @@ Glanceable **current-day** solar production on the Cards landing (not Chart). Ap
 
 ### 5.5 Planned — Compare as landing (summary home)
 
-Make the **dashboard home** the multi-system compare tile grid; drill into one system for Cards / Flow / Chart. Spec + mocks approved 2026-07-26 — board tasks cut 2026-07-26 (SOLAR-0164…0169). Navigation shell (SOLAR-0164) and home tile grid (SOLAR-0165) shipped 2026-07-26; i18n/a11y, polish, and E2E remain.
+Make the **dashboard home** the multi-system compare tile grid; drill into one system for Cards / Flow / Chart. Spec + mocks approved 2026-07-26 — board tasks cut 2026-07-26 (SOLAR-0164…0169). Navigation shell (SOLAR-0164), home tile grid (SOLAR-0165), and polish (SOLAR-0168) shipped 2026-07-26; i18n/a11y and E2E remain.
 
 - Spec: [docs/mocks/compare-as-landing.md](./docs/mocks/compare-as-landing.md)
 - Mocks: [loading](./docs/mocks/compare-landing-loading.png) · [loaded](./docs/mocks/compare-landing-loaded.png) · [detail flow](./docs/mocks/compare-landing-detail-flow.png)
@@ -328,6 +328,7 @@ Checklist (for later SOLAR-* tasks):
 - [x] **Persistence** — map saved view `compare` → home; persist detail subview as cards/flow/chart only _(SOLAR-0164)_
 - [x] **Single-system** — still one home tile (do not skip home); removed `systems.length < 2` gate that hid Compare _(SOLAR-0164/0165)_
 - [ ] **i18n + a11y** — back label EN/ES; tile open/loading labels
+- [x] **Polish** — visible `:focus-visible` ring (outline, distinct from hover) on HOME tiles; pull-to-refresh on HOME already reused `pollCompareNow()` via `refreshDashboardNow()`/`pollNow()` (verified, no gap); last-update line on HOME now uses the `lastUpdate` i18n string instead of a hardcoded "Last update: …" _(SOLAR-0168)_
 - [ ] **E2E** — landing, per-tile load, tap-through, back; update helpers that used `#tab-compare`
 
 Open decisions (resolve in first implementation task): default detail subview on first tap (Flow vs last-used vs Cards); whether to keep `#system-tabs` on detail (proposal: remove).
