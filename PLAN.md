@@ -315,7 +315,7 @@ Glanceable **current-day** solar production on the Cards landing (not Chart). Ap
 
 ### 5.5 Planned — Compare as landing (summary home)
 
-Make the **dashboard home** the multi-system compare tile grid; drill into one system for Cards / Flow / Chart. Spec + mocks approved 2026-07-26 — **not implemented yet** (cut board tasks from the spec when ready).
+Make the **dashboard home** the multi-system compare tile grid; drill into one system for Cards / Flow / Chart. Spec + mocks approved 2026-07-26 — board tasks cut 2026-07-26 (SOLAR-0164…0169), not started.
 
 - Spec: [docs/mocks/compare-as-landing.md](./docs/mocks/compare-as-landing.md)
 - Mocks: [loading](./docs/mocks/compare-landing-loading.png) · [loaded](./docs/mocks/compare-landing-loaded.png) · [detail flow](./docs/mocks/compare-landing-detail-flow.png)
@@ -592,7 +592,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] Per-user opaque API keys in KV (ADR 0002 Phase 2)
 - [x] **Password users + magic-link invites (ADR 0003)** — Worker user/invite registry + auth routes; frontend login + accept-invite; admin users/invites UI; E2E; release notes at v1.4.0 (§5.3)
 - [x] **Cards “Today’s production” tile** — full-width sparkline + overlay kWh for current day only (§5.4; mock in `docs/mocks/`) — board **SOLAR-0160**; Playwright coverage tracked as **SOLAR-0161**
-- [ ] **Compare as landing** — summary tiles as home; tap → per-system detail (§5.5; mocks + spec in `docs/mocks/`) — board tasks not cut yet
+- [ ] **Compare as landing** — summary tiles as home; tap → per-system detail (§5.5; mocks + spec in `docs/mocks/`) — board tasks SOLAR-0164…0169 cut 2026-07-26
 
 ---
 
