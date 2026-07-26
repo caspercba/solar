@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=28">
+  <link rel="stylesheet" href="style.css?v=29">
 </head>
 <body>
 
@@ -102,17 +102,21 @@
       </div>
     </header>
 
-    <!-- System tabs -->
-    <nav id="system-tabs" class="system-tabs" hidden></nav>
+    <!-- Detail back row: shown only in DETAIL app state -->
+    <nav id="detail-nav" class="detail-nav" hidden>
+      <button type="button" id="detail-back-btn" class="detail-back-link" data-i18n-aria="allSystems" aria-label="All systems">
+        <span aria-hidden="true">&#8249;</span> <span data-i18n="allSystems">All systems</span>
+      </button>
+      <span id="detail-system-name" class="detail-system-name"></span>
+    </nav>
 
-    <nav class="view-toggle">
+    <nav id="view-toggle" class="view-toggle" hidden>
       <button class="vtab active" id="tab-cards" data-i18n="tabCards">Cards</button>
       <button class="vtab" id="tab-flow" data-i18n="tabFlow">Flow</button>
       <button class="vtab" id="tab-chart" data-i18n="tabChart">Chart</button>
-      <button class="vtab" id="tab-compare" hidden data-i18n="tabCompare">Compare</button>
     </nav>
 
-    <main id="cards-view" class="cards">
+    <main id="cards-view" class="cards" hidden>
       <div class="inverter-status-row">
         <span id="inverter-status" class="inverter-status status-unavailable">--</span>
       </div>
@@ -260,7 +264,7 @@
       </svg>
     </section>
 
-    <section id="compare-view" class="compare-view" hidden>
+    <section id="compare-view" class="compare-view">
       <div id="compare-grid" class="compare-grid"></div>
     </section>
 
@@ -530,6 +534,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=28"></script>
+  <script type="module" src="app.js?v=29"></script>
 </body>
 </html>

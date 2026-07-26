@@ -50,7 +50,8 @@ const messages = {
     tabCards: "Cards",
     tabFlow: "Flow",
     tabChart: "Chart",
-    tabCompare: "Compare",
+
+    allSystems: "All systems",
 
     cardBattery: "Battery",
     cardSolar: "Solar",
@@ -337,7 +338,8 @@ const messages = {
     tabCards: "Tarjetas",
     tabFlow: "Flujo",
     tabChart: "Gráfico",
-    tabCompare: "Comparar",
+
+    allSystems: "Todos los sistemas",
 
     cardBattery: "Batería",
     cardSolar: "Solar",

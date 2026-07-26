@@ -90,6 +90,20 @@ const VIEW_KEY = "solar_view";
 const ACTIVE_KEY = "solar_active";
 const CHART_DATE_KEY = "solar_chart_date";
 const CHART_SWIPE_THRESHOLD = 50;
+/** Default DETAIL subview on first tile tap — matches mock 3 (docs/mocks/compare-as-landing.md). */
+const DEFAULT_DETAIL_VIEW = "flow";
+
+/**
+ * `VIEW_KEY` used to store the top-level view, including "compare". Now HOME is
+ * implicit (always the landing state) and `VIEW_KEY` only persists the DETAIL
+ * subview. Legacy "compare" migrates to HOME (i.e. it's just dropped).
+ */
+function loadDetailViewPreference() {
+  const saved = localStorage.getItem(VIEW_KEY);
+  if (saved === "cards" || saved === "flow" || saved === "chart") return saved;
+  if (saved === "compare") localStorage.removeItem(VIEW_KEY);
+  return DEFAULT_DETAIL_VIEW;
+}
 
 /* ── Proxy connection ── */
 function saveConn(data) { localStorage.setItem(CONN_KEY, JSON.stringify(data)); }
@@ -269,7 +283,6 @@ const els = {
   disconnectBtn: $("disconnect-btn"),
   manageBtn: $("manage-btn"),
   statusDot: $("status-dot"),
-  systemTabs: $("system-tabs"),
   batCard: $("card-battery"),
   batLowBadge: $("bat-low-badge"),
   batPct: $("bat-pct"),
@@ -347,10 +360,13 @@ const fEls = {
   chartView: $("chart-view"),
   compareView: $("compare-view"),
   compareGrid: $("compare-grid"),
+  viewToggle: $("view-toggle"),
+  detailNav: $("detail-nav"),
+  detailBackBtn: $("detail-back-btn"),
+  detailSystemName: $("detail-system-name"),
   tabCards: $("tab-cards"),
   tabFlow: $("tab-flow"),
   tabChart: $("tab-chart"),
-  tabCompare: $("tab-compare"),
   chartDate: $("chart-date"),
   chartPrev: $("chart-prev"),
   chartNext: $("chart-next"),
@@ -422,6 +438,9 @@ let pollTimer = null;
 let pollRetrying = false;
 let dashboardRefreshing = false;
 let hasData = false;
+/** HOME = multi-system summary tiles (default landing). DETAIL = one system's Cards/Flow/Chart. */
+let appState = "home";
+/** Detail subview only — "compare" is no longer a `currentView` value, it's the home app state. */
 let currentView = "cards";
 let historyLoading = false;
 let chartHistory = null;
@@ -471,40 +490,67 @@ function setLoading(on) {
   }
 }
 
-/* ── View toggle ── */
-function updateCompareTabVisibility() {
-  const show = systems.length >= 2;
-  if (fEls.tabCompare) fEls.tabCompare.hidden = !show;
-  if (!show && currentView === "compare") setView("cards");
+/* ── App state (home vs detail) + detail view toggle ── */
+
+/** Show the HOME summary grid, or the DETAIL Cards/Flow/Chart surfaces for `activeSystemId`. */
+function setAppState(state) {
+  appState = state;
+  const isDetail = state === "detail";
+  if (fEls.viewToggle) fEls.viewToggle.hidden = !isDetail;
+  if (fEls.detailNav) fEls.detailNav.hidden = !isDetail;
+  if (fEls.compareView) fEls.compareView.hidden = isDetail;
+  if (isDetail) {
+    if (fEls.detailSystemName) fEls.detailSystemName.textContent = getSystemById(activeSystemId)?.name || "";
+  } else {
+    fEls.cardsView.hidden = true;
+    fEls.flowView.hidden = true;
+    fEls.chartView.hidden = true;
+    if (fEls.detailSystemName) fEls.detailSystemName.textContent = "";
+    loadCompareView();
+  }
+}
+
+/** Return to HOME (summary tiles). */
+function enterHome() {
+  setAppState("home");
+}
+
+/** Drill into DETAIL for `systemId` (or the current active system), showing `view` or the persisted detail subview. */
+function enterDetail(systemId, { view } = {}) {
+  if (systemId) {
+    activeSystemId = systemId;
+    localStorage.setItem(ACTIVE_KEY, systemId);
+    applyGridInputLabels(systemId);
+  }
+  // Cards/Flow haven't been rendered for this system yet (or came from HOME's
+  // aggregate poll, which doesn't set `hasData` for the single-system fetch).
+  hasData = false;
+  setLoading(true);
+  setAppState("detail");
+  setView(view || currentView);
+  if (currentView !== "chart") pollNow();
 }
 
 function setView(view, { persist = true } = {}) {
-  if (view === "compare" && systems.length < 2) view = "cards";
+  if (view !== "cards" && view !== "flow" && view !== "chart") view = DEFAULT_DETAIL_VIEW;
   currentView = view;
   if (persist) localStorage.setItem(VIEW_KEY, view);
   const isFlow = view === "flow";
   const isChart = view === "chart";
-  const isCompare = view === "compare";
-  fEls.cardsView.hidden = isFlow || isChart || isCompare;
-  fEls.flowView.hidden = !isFlow;
-  fEls.chartView.hidden = !isChart;
-  if (fEls.compareView) fEls.compareView.hidden = !isCompare;
+  if (appState === "detail") {
+    fEls.cardsView.hidden = isFlow || isChart;
+    fEls.flowView.hidden = !isFlow;
+    fEls.chartView.hidden = !isChart;
+  }
   fEls.tabCards.classList.toggle("active", view === "cards");
   fEls.tabFlow.classList.toggle("active", isFlow);
   fEls.tabChart.classList.toggle("active", isChart);
-  if (fEls.tabCompare) fEls.tabCompare.classList.toggle("active", isCompare);
-  if (isCompare) {
-    els.systemTabs.hidden = true;
-    loadCompareView();
-  } else if (systems.length > 1) {
-    els.systemTabs.hidden = false;
-  }
-  if (isChart) loadChartView();
-  if (view === "cards") loadTodayProduction();
+  if (appState === "detail" && isChart) loadChartView();
+  if (appState === "detail" && view === "cards") loadTodayProduction();
 }
 
 function loadCompareView() {
-  if (systems.length < 2) return;
+  if (!systems.length) return;
   if (!hasData) setCompareLoading(true);
   pollNow();
 }
@@ -545,6 +591,20 @@ function setCompareLoading(on) {
   }
 }
 
+/** Tap/keyboard-activate a home tile to drill into that system's DETAIL. */
+function makeTileTappable(card, systemId) {
+  if (!systemId) return;
+  card.setAttribute("role", "button");
+  card.tabIndex = 0;
+  const open = () => enterDetail(systemId);
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    open();
+  });
+}
+
 function renderComparison(allData) {
   if (!fEls.compareGrid) return;
   hasData = true;
@@ -573,6 +633,7 @@ function renderComparison(allData) {
         </div>
         <p class="compare-error">${escapeAttr(d?.error || t("compareUnavailable"))}</p>
       `;
+      makeTileTappable(card, d?.systemId);
       fEls.compareGrid.appendChild(card);
       continue;
     }
@@ -614,6 +675,7 @@ function renderComparison(allData) {
       </div>
       <p class="compare-status">${escapeAttr(d.status || "--")}</p>
     `;
+    makeTileTappable(card, d.systemId);
     fEls.compareGrid.appendChild(card);
 
     const ts = d.timestamp;
@@ -635,7 +697,7 @@ function renderComparison(allData) {
 fEls.tabCards.addEventListener("click", () => setView("cards"));
 fEls.tabFlow.addEventListener("click", () => setView("flow"));
 fEls.tabChart.addEventListener("click", () => setView("chart"));
-if (fEls.tabCompare) fEls.tabCompare.addEventListener("click", () => setView("compare"));
+if (fEls.detailBackBtn) fEls.detailBackBtn.addEventListener("click", enterHome);
 fEls.chartDate.addEventListener("change", () => selectChartDate(fEls.chartDate.value));
 if (fEls.chartPrev) {
   fEls.chartPrev.addEventListener("click", () => navigateChartDay(-1));
@@ -845,47 +907,6 @@ function setPollRetrying(retrying) {
   if (!els.pollRetryBtn) return;
   els.pollRetryBtn.disabled = retrying;
   els.pollRetryBtn.textContent = retrying ? t("retrying") : t("retry");
-}
-
-/* ── System tabs ── */
-function renderSystemTabs() {
-  els.systemTabs.innerHTML = "";
-  updateCompareTabVisibility();
-  if (currentView === "compare") {
-    els.systemTabs.hidden = true;
-    return;
-  }
-  if (systems.length <= 1) {
-    els.systemTabs.hidden = true;
-    if (systems.length === 1) {
-      els.headerTitle.textContent = systems[0].name;
-    }
-    return;
-  }
-  els.systemTabs.hidden = false;
-  els.headerTitle.textContent = t("appTitle");
-
-  for (const sys of systems) {
-    const btn = document.createElement("button");
-    btn.className = "sys-tab" + (sys.id === activeSystemId ? " active" : "");
-    btn.textContent = sys.name;
-    btn.addEventListener("click", () => {
-      if (sys.id === activeSystemId) return;
-      activeSystemId = sys.id;
-      localStorage.setItem(ACTIVE_KEY, sys.id);
-      hasData = false;
-      setLoading(true);
-      renderSystemTabs();
-      applyGridInputLabels(sys.id);
-      if (currentView === "chart") {
-        loadChartView();
-      } else {
-        pollNow();
-        if (currentView === "cards") loadTodayProduction();
-      }
-    });
-    els.systemTabs.appendChild(btn);
-  }
 }
 
 /* ── Render normalized data ── */
@@ -2012,8 +2033,8 @@ async function loadChartView() {
 
 /* ── Polling ── */
 async function pollNow() {
-  if (currentView === "compare") {
-    if (systems.length < 2) return;
+  if (appState === "home") {
+    if (!systems.length) return;
     if (!hasData) setCompareLoading(true);
     try {
       const data = await api("GET", "/api/systems/all/data");
@@ -2049,8 +2070,8 @@ async function pollNow() {
 }
 
 async function retryPollNow() {
-  if (currentView === "compare") {
-    if (systems.length < 2 || pollRetrying) return;
+  if (appState === "home") {
+    if (!systems.length || pollRetrying) return;
     setPollRetrying(true);
     await pollNow();
     return;
@@ -2082,13 +2103,13 @@ async function refreshDashboardNow() {
   dashboardRefreshing = true;
   try {
     if (pollTimer) clearTimeout(pollTimer);
-    const refresh = currentView === "chart"
+    const refresh = appState === "detail" && currentView === "chart"
       ? loadChartView()
       : pollNow();
     await refresh;
     if (!loadConn() || els.dashScreen.hidden) return;
-    if (currentView === "cards") loadTodayProduction();
-    if (currentView !== "chart") pollTimer = setTimeout(() => startPolling(), getPollMs());
+    if (appState === "detail" && currentView === "cards") loadTodayProduction();
+    if (!(appState === "detail" && currentView === "chart")) pollTimer = setTimeout(() => startPolling(), getPollMs());
   } finally {
     dashboardRefreshing = false;
   }
@@ -2105,7 +2126,6 @@ async function loadSystems() {
   } else {
     activeSystemId = null;
   }
-  renderSystemTabs();
   applyGridInputLabels(activeSystemId);
 }
 
@@ -2207,7 +2227,6 @@ addForm.addEventListener("submit", async (e) => {
     hideDevicePicker();
     await loadSystems();
     if (systems.length === 1) activeSystemId = systems[0].id;
-    renderSystemTabs();
     startPolling();
   } catch (err) {
     addError.textContent = err.message;
@@ -2456,7 +2475,7 @@ function renderGridInputLabelForm(sys) {
         applyGridInputLabels(sys.id);
         if (lastRenderData) renderData(lastRenderData);
       }
-      if (currentView === "compare" && lastCompareData) {
+      if (appState === "home" && lastCompareData) {
         renderComparison(lastCompareData);
       }
       msg.textContent = t("gridInputLabelSaved");
@@ -3060,7 +3079,7 @@ function openSystemDetail(sysId) {
     openManageModal();
     if (activeSystemId === sys.id && systems.length) {
       activeSystemId = systems[0].id;
-      renderSystemTabs();
+      if (appState === "detail") enterHome();
       startPolling();
     }
   };
@@ -3158,9 +3177,8 @@ function changeLocale(locale) {
   syncLangToggle();
   refreshPollIntervalOptions();
   applyGridInputLabels(activeSystemId);
-  renderSystemTabs();
   if (lastRenderData) renderData(lastRenderData);
-  if (currentView === "compare" && lastCompareData) renderComparison(lastCompareData);
+  if (appState === "home" && lastCompareData) renderComparison(lastCompareData);
   if (els.pollErrorToast && !els.pollErrorToast.hidden) {
     setPollRetrying(pollRetrying);
   }
@@ -3281,7 +3299,8 @@ async function finishLogin(url, token) {
   await refreshCurrentActor();
   await loadSystems();
   showDash();
-  setView(localStorage.getItem(VIEW_KEY) || "cards");
+  currentView = loadDetailViewPreference();
+  enterHome();
 
   if (!systems.length) {
     openAddModal();
@@ -3547,9 +3566,9 @@ applyTranslations();
 syncLangToggle();
 initLangToggle();
 setSetupMode("password");
-// Systems aren't loaded yet, so a stored "compare" view would be wrongly
-// downgraded here; paint optimistically without persisting that downgrade.
-setView(localStorage.getItem(VIEW_KEY) || "cards", { persist: false });
+// HOME is always the default landing; only the DETAIL subview preference is persisted.
+currentView = loadDetailViewPreference();
+enterHome();
 
 (async function boot() {
   const params = new URLSearchParams(location.search);
@@ -3573,7 +3592,7 @@ setView(localStorage.getItem(VIEW_KEY) || "cards", { persist: false });
 
   const conn = loadConn();
   if (!conn) {
-    setView("cards");
+    enterHome();
     showSetup();
     return;
   }
@@ -3582,14 +3601,15 @@ setView(localStorage.getItem(VIEW_KEY) || "cards", { persist: false });
     await refreshCurrentActor();
     await loadSystems();
     showDash();
-    setView(localStorage.getItem(VIEW_KEY) || "cards");
+    currentView = loadDetailViewPreference();
+    enterHome();
     if (systems.length) {
       startPolling();
     } else {
       openAddModal();
     }
   } catch (err) {
-    setView("cards");
+    enterHome();
     // 401 already triggered forceReLogin() inside api() with a re-login prompt.
     if (isUnauthorizedError(err)) return;
     showSetup();
