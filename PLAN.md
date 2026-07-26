@@ -1,6 +1,6 @@
 # Solar Dashboard — Project Plan
 
-_Last updated: 2026-07-22_
+_Last updated: 2026-07-26_
 
 ## 1. Project Definition
 
@@ -285,6 +285,7 @@ Adapters expose `fetchHistorySummary(systemConfig, days?, endDate?)` for bar cha
 - [x] **Per-system grid input label** — `gridInputLabel` field (`generator` | `grid`, default `generator`) at add time or in manage UI; cards and flow diagram render from it (§13 Q3)
 - [x] **Dashboard low-SOC warning on cards** — card styling and badge when SOC is below the user-configured `socWarnThreshold` preference (separate from webhook alert threshold)
 - [x] **Per-system generator detection thresholds** — configurable `gridDetect` voltage/power minima in manage UI
+- [x] **Chart daily production / consumption tiles** — canvas series + totals under Chart view (same-day vendor history)
 
 ### 5.2 Service adapter roadmap — see §6 (ShineMonitor + Growatt shipped; Solis/Deye/SMA optional)
 
@@ -302,6 +303,15 @@ Humans use username/password (or an admin-issued magic link) instead of sharing 
 - [x] **Worker + E2E tests** — invite lifecycle, last-admin protection, role gates; Playwright login/accept-invite, admin users/invites, legacy-token _(SOLAR-0132…0135)_
 
 Normative design: [docs/decisions/0003-password-users-and-magic-link-invites.md](./docs/decisions/0003-password-users-and-magic-link-invites.md). Architecture sketch: [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+### 5.4 Planned — Cards “Today’s production” tile
+
+Glanceable **current-day** solar production on the Cards landing (not Chart). Approved mock: [docs/mocks/daily-solar-production-tile.png](./docs/mocks/daily-solar-production-tile.png).
+
+- [ ] **Cards tile UI** — full-width amber line sparkline; **kWh total overlaid** (top-left); title “Today’s production”; reuse solar accent (`--accent-sol`)
+- [ ] **Data binding** — current calendar day only; series + total kWh from existing vendor history / production helpers (no new KV archive)
+- [ ] **i18n + empty/loading** — EN/ES strings; empty/error states consistent with Chart production tile
+- [ ] **Tests** — frontend unit helpers if extracted; Playwright asserts tile + total on Cards view
 
 ---
 
@@ -467,6 +477,7 @@ Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, esca
 15. **Generator runtime tracking** — done. Session-only counter, per system, persisted in `localStorage`, resets on disconnect (§5.1).
 16. **E2E tests** — done for the core flows including alerts config and manage-systems add/remove (§7.3.4).
 17. **Docker-compose local dev** — done (`docker-compose.yml`, `scripts/dev-local.js`).
+18. **Cards “Today’s production” tile** — planned. Full-width amber sparkline with overlay kWh for the current day only; mock approved in `docs/mocks/daily-solar-production-tile.png` (§5.4).
 
 ---
 
@@ -561,6 +572,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] Mutation audit log for admin API routes (ADR 0002 Phase 1)
 - [x] Per-user opaque API keys in KV (ADR 0002 Phase 2)
 - [x] **Password users + magic-link invites (ADR 0003)** — Worker user/invite registry + auth routes; frontend login + accept-invite; admin users/invites UI; E2E; release notes at v1.4.0 (§5.3)
+- [ ] **Cards “Today’s production” tile** — full-width sparkline + overlay kWh for current day only (§5.4; mock in `docs/mocks/`)
 
 ---
 

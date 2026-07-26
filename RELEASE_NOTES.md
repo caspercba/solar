@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Docs: approved Cards landing mock for **Today’s production** tile (full-width amber sparkline + overlay kWh) — see `docs/mocks/daily-solar-production-tile.png` and PLAN §5.4.
+- Fix: stage `frontend/i18n.js` for Cloudflare Pages deploys (`scripts/stage-frontend.sh`).
+- Chart: daily solar production tile polish (see recent Chart-view work on `main`).
 
 ## v1.4.0
 

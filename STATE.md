@@ -1,6 +1,8 @@
 # Project State
 
-_Last updated: 2026-07-22_
+_Last updated: 2026-07-26_
+
+Board: [Gordofast — solar](http://100.103.17.20:3000/projects/4fef956d-9607-40d9-8625-b910b544acb5)
 
 ## Done
 
@@ -8,19 +10,23 @@ _Last updated: 2026-07-22_
 - ADR 0002 Phases 1–2 — mutation audit log + per-user opaque API keys
 - ADR 0003 — password users, magic-link invites, auth/admin UI, Worker Vitest + Playwright E2E (`invite.spec.js`, `admin.spec.js`, `legacy-token.spec.js`, setup login)
 - Discovery spikes for Solis / Deye / SMA (`discovery/{solis,deye,sma}/`); Victron withdrawn (ADR 0001)
-- **v1.4.0** version bump on `main` (`package.json`, `GET /api/health`, `RELEASE_NOTES.md`); ARCHITECTURE.md synced to shipped auth UX
-- Prior board work through SOLAR-0154 archived `done` (Worker/FE/tests/docs/release notes)
+- **v1.4.0** tagged and deployed locally (Pages + Worker) — GitHub Actions deploy still unfunded; tag `v1.4.0` is on origin
+- ADR 0003 marked Done in decision doc
+- Chart view: daily production + daily consumption tiles; daily solar production tile polish
+- Pages stage fix — include `frontend/i18n.js` (`scripts/stage-frontend.sh`)
+- Prior board work through SOLAR-0154 archived `done`
 
 ## In Progress
 
-- **SOLAR-0153** — planner: read md files and create new tasks (this pass)
+_None_
 
 ## Up Next
 
 _Live board (`task.list`). Priority order:_
 
-1. **SOLAR-0155** — `backlog`, high — cut and push annotated git tag `v1.4.0` so CI can deploy the Worker (notes/version already at 1.4.0; only tags `v1.3.0` / `v1.3.1` exist locally).
-2. **SOLAR-0156** — `backlog`, low — mark ADR 0003 relationship/recommendation text Done (still says Planned).
+1. **SOLAR-0155** — `backlog`, high — Release: cut and push `v1.4.0` tag _(largely done manually 2026-07-26; confirm/close on board)_
+2. **SOLAR-0160** — `backlog`, developer — Cards: Today’s production tile (sparkline + overlay kWh); mock `docs/mocks/daily-solar-production-tile.png`
+3. **SOLAR-0161** — `backlog`, tester — Test Cards Today’s production tile (depends on 0160)
 
 **Deferred (no board tasks — wait for human request):**
 
@@ -42,6 +48,7 @@ _None on the live board._
 - **Multi-user — opaque keys (ADR 0002)** — shared `API_TOKEN` + KV keys (`read`/`admin`) + mutation audit; Cloudflare Access optional later.
 - **Multi-user — password accounts + invites (ADR 0003)** — shipped end-to-end at v1.4.0; no outbound email; opaque keys and `?token=` retained for machines/migration.
 - **Frontend and Worker stay independently deployable** — Pages vs Workers; CORS allowlist.
+- **Cards today’s production tile** — full-width line graph with kWh overlay (not side-by-side); current day only; mock in `docs/mocks/`.
 
 ## Blocked / Open Questions
 
@@ -55,4 +62,4 @@ _None on the live board._
 - **Production secrets** — `API_TOKEN` and `CREDENTIALS_KEY` required; fail-closed when `PRODUCTION` set.
 - **Invite / password sharing** — mitigate with TTL, single-use conversion, revoke, hash-only storage.
 - **Last-admin lockout** — user-admin routes refuse deleting/disabling the final `admin`.
-- **Untagged v1.4.0** — code/docs report 1.4.0 but no git tag yet; production Worker deploy will not run until SOLAR-0155 lands.
+- **CI unfunded** — GitHub Actions tests/deploys may not run; prefer local `wrangler` + manual tag when releasing.

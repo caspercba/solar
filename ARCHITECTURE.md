@@ -1,8 +1,8 @@
 # Architecture
 
-_Last updated: 2026-07-22_
+_Last updated: 2026-07-26_
 
-Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation details and deploy steps live in [README.md](./README.md) and [worker/DEPLOY.md](./worker/DEPLOY.md). Auth evolution: [ADR 0002](./docs/decisions/0002-multi-user-token-and-audit-log.md) (opaque keys + audit), [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md) (password users + magic-link invites — Worker routes and full frontend auth UX shipped: password login, accept-invite, admin users/invites panels, logout/session-expiry; legacy `?token=` / pasted bearer retained for HA and migration).
+Companion to [PLAN.md](./PLAN.md) and [STATE.md](./STATE.md). Implementation details and deploy steps live in [README.md](./README.md) and [worker/DEPLOY.md](./worker/DEPLOY.md). Auth evolution: [ADR 0002](./docs/decisions/0002-multi-user-token-and-audit-log.md) (opaque keys + audit), [ADR 0003](./docs/decisions/0003-password-users-and-magic-link-invites.md) (password users + magic-link invites — Worker routes and full frontend auth UX shipped: password login, accept-invite, admin users/invites panels, logout/session-expiry; legacy `?token=` / pasted bearer retained for HA and migration). UI mocks for planned Cards work live under [docs/mocks/](./docs/mocks/).
 
 ## 1. System overview
 
