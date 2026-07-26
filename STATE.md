@@ -28,6 +28,10 @@ _Live board (`task.list`). Priority order:_
 
 1. **SOLAR-0155** — `backlog`, high — Release: v1.4.0 tag is confirmed pushed to origin; remaining scope narrowed to confirming CI release-gate/deploy (or documenting manual `wrangler deploy`) and that production `/api/health` reports 1.4.0
 
+**Spec ready — cut board tasks when starting implementation:**
+
+- **Compare as landing** — home = compare summary tiles; per-tile spinner; tap → Cards/Flow/Chart detail. Mocks approved 2026-07-26. Spec + suggested task split: [`docs/mocks/compare-as-landing.md`](./docs/mocks/compare-as-landing.md). Also §5.5 in `PLAN.md`.
+
 **Deferred (no board tasks — wait for human request):**
 
 - Solis / Deye / SMA production adapters (discovery only)
@@ -49,6 +53,7 @@ _None on the live board._
 - **Multi-user — password accounts + invites (ADR 0003)** — shipped end-to-end at v1.4.0; no outbound email; opaque keys and `?token=` retained for machines/migration.
 - **Frontend and Worker stay independently deployable** — Pages vs Workers; CORS allowlist.
 - **Cards today’s production tile** — full-width line graph with kWh overlay (not side-by-side); current day only; mock in `docs/mocks/`.
+- **Compare as landing (approved, not built)** — dashboard home is multi-system compare tiles; detail is per-system Cards/Flow/Chart; mocks + full task-oriented spec in `docs/mocks/compare-as-landing.md`.
 
 ## Blocked / Open Questions
 
