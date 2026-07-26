@@ -315,18 +315,18 @@ Glanceable **current-day** solar production on the Cards landing (not Chart). Ap
 
 ### 5.5 Planned — Compare as landing (summary home)
 
-Make the **dashboard home** the multi-system compare tile grid; drill into one system for Cards / Flow / Chart. Spec + mocks approved 2026-07-26 — board tasks cut 2026-07-26 (SOLAR-0164…0169), not started.
+Make the **dashboard home** the multi-system compare tile grid; drill into one system for Cards / Flow / Chart. Spec + mocks approved 2026-07-26 — board tasks cut 2026-07-26 (SOLAR-0164…0169). Navigation shell (SOLAR-0164) and home tile grid (SOLAR-0165) shipped 2026-07-26; i18n/a11y, polish, and E2E remain.
 
 - Spec: [docs/mocks/compare-as-landing.md](./docs/mocks/compare-as-landing.md)
 - Mocks: [loading](./docs/mocks/compare-landing-loading.png) · [loaded](./docs/mocks/compare-landing-loaded.png) · [detail flow](./docs/mocks/compare-landing-detail-flow.png)
 
 Checklist (for later SOLAR-* tasks):
 
-- [ ] **Home = compare grid** — default landing is summary tiles only; no Cards/Flow/Chart/Compare tabs on home; no system-tabs on home; header keeps status · settings · logout
-- [ ] **Per-tile loading** — spinner (and/or skeleton) per system; fill independently as data arrives; error tile without stuck spinner
-- [ ] **Tap → detail** — set active system; show back (“All systems”); Cards | Flow | Chart for that system; retire standalone Compare tab
-- [ ] **Persistence** — map saved view `compare` → home; persist detail subview as cards/flow/chart only
-- [ ] **Single-system** — still one home tile (do not skip home); remove `systems.length < 2` gate that hid Compare
+- [x] **Home = compare grid** — default landing is summary tiles only; no Cards/Flow/Chart/Compare tabs on home; no system-tabs on home; header keeps status · settings · logout _(SOLAR-0164)_
+- [x] **Per-tile loading** — independent per-system fetch (`GET /api/systems/:id/data` once per tile, not the combined `all/data` batch) so each tile settles on its own; skeleton per system; error tile without stuck spinner _(SOLAR-0165)_
+- [x] **Tap → detail** — set active system; show back (“All systems”); Cards | Flow | Chart for that system; retire standalone Compare tab _(SOLAR-0164)_
+- [x] **Persistence** — map saved view `compare` → home; persist detail subview as cards/flow/chart only _(SOLAR-0164)_
+- [x] **Single-system** — still one home tile (do not skip home); removed `systems.length < 2` gate that hid Compare _(SOLAR-0164/0165)_
 - [ ] **i18n + a11y** — back label EN/ES; tile open/loading labels
 - [ ] **E2E** — landing, per-tile load, tap-through, back; update helpers that used `#tab-compare`
 

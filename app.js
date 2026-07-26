@@ -438,6 +438,10 @@ let pollTimer = null;
 let pollRetrying = false;
 let dashboardRefreshing = false;
 let hasData = false;
+/** Whether HOME has rendered at least once — tracked separately from `hasData` (DETAIL's own
+ * loading flag) so returning to HOME from DETAIL reuses already-loaded tiles instead of
+ * flashing every tile back to skeleton and re-fetching all systems. */
+let homeHasData = false;
 /** HOME = multi-system summary tiles (default landing). DETAIL = one system's Cards/Flow/Chart. */
 let appState = "home";
 /** Detail subview only — "compare" is no longer a `currentView` value, it's the home app state. */
@@ -447,7 +451,8 @@ let chartHistory = null;
 let lastEnergySummary = null;
 let lastTodayProduction = null;
 let lastRenderData = null;
-let lastCompareData = null;
+/** HOME tile data, keyed by systemId: full data object (loaded), `{systemId,name,error}` (error), or absent (still loading). */
+let compareData = {};
 
 /* ── Loading skeleton ── */
 const skeletonTargets = () => [
@@ -522,8 +527,8 @@ function enterDetail(systemId, { view } = {}) {
     localStorage.setItem(ACTIVE_KEY, systemId);
     applyGridInputLabels(systemId);
   }
-  // Cards/Flow haven't been rendered for this system yet (or came from HOME's
-  // aggregate poll, which doesn't set `hasData` for the single-system fetch).
+  // Cards/Flow haven't been rendered for this system yet — `hasData` is DETAIL's own
+  // loading flag (separate from `homeHasData`), so this doesn't disturb HOME's tiles.
   hasData = false;
   setLoading(true);
   setAppState("detail");
@@ -549,46 +554,43 @@ function setView(view, { persist = true } = {}) {
   if (appState === "detail" && view === "cards") loadTodayProduction();
 }
 
+/** Enter/re-enter HOME: paint one tile per system (skeleton where data hasn't arrived yet), then poll. */
 function loadCompareView() {
   if (!systems.length) return;
-  if (!hasData) setCompareLoading(true);
-  pollNow();
+  if (!homeHasData) {
+    compareData = {};
+    renderComparisonGrid();
+  }
+  pollCompareNow();
 }
 
-function setCompareLoading(on) {
-  if (!fEls.compareGrid) return;
-  if (!on) return;
-  fEls.compareGrid.innerHTML = "";
-  for (const sys of systems) {
-    const card = document.createElement("article");
-    card.className = "compare-card skeleton";
-    card.innerHTML = `
-      <div class="compare-card-header">
-        <h3 class="compare-name">${escapeAttr(sys.name)}</h3>
+/** One skeleton tile — reused by renderComparisonGrid for systems still loading. */
+function compareSkeletonCardHtml(sys) {
+  return `
+    <div class="compare-card-header">
+      <h3 class="compare-name">${escapeAttr(sys.name)}</h3>
+    </div>
+    <div class="compare-metrics">
+      <div class="compare-metric compare-metric-soc">
+        <span class="compare-label">${t("cardBattery")}</span>
+        <span class="compare-value">--%</span>
+        <div class="compare-bar-wrap"><div class="compare-bar" style="width:0%"></div></div>
       </div>
-      <div class="compare-metrics">
-        <div class="compare-metric compare-metric-soc">
-          <span class="compare-label">${t("cardBattery")}</span>
-          <span class="compare-value">--%</span>
-          <div class="compare-bar-wrap"><div class="compare-bar" style="width:0%"></div></div>
-        </div>
-        <div class="compare-metric compare-metric-solar">
-          <span class="compare-label">${t("cardSolar")}</span>
-          <span class="compare-value">-- W</span>
-        </div>
-        <div class="compare-metric compare-metric-load">
-          <span class="compare-label">${t("cardLoad")}</span>
-          <span class="compare-value">-- W</span>
-        </div>
-        <div class="compare-metric compare-metric-gen">
-          <span class="compare-label">${t(gridInputCardKey(sys.gridInputLabel))}</span>
-          <span class="compare-value">--</span>
-        </div>
+      <div class="compare-metric compare-metric-solar">
+        <span class="compare-label">${t("cardSolar")}</span>
+        <span class="compare-value">-- W</span>
       </div>
-      <p class="compare-status">--</p>
-    `;
-    fEls.compareGrid.appendChild(card);
-  }
+      <div class="compare-metric compare-metric-load">
+        <span class="compare-label">${t("cardLoad")}</span>
+        <span class="compare-value">-- W</span>
+      </div>
+      <div class="compare-metric compare-metric-gen">
+        <span class="compare-label">${t(gridInputCardKey(sys.gridInputLabel))}</span>
+        <span class="compare-value">--</span>
+      </div>
+    </div>
+    <p class="compare-status">--</p>
+  `;
 }
 
 /** Tap/keyboard-activate a home tile to drill into that system's DETAIL. */
@@ -605,18 +607,33 @@ function makeTileTappable(card, systemId) {
   });
 }
 
-function renderComparison(allData) {
+/**
+ * Redraw the HOME grid from current `systems` + `compareData` — one tile per system, each
+ * independently in a loading (no entry yet), error (`.error`), or loaded state. Called every
+ * time any single system's fetch settles, so a slow system never blocks the others from
+ * showing data.
+ */
+function renderComparisonGrid() {
   if (!fEls.compareGrid) return;
-  hasData = true;
-  lastCompareData = allData;
+  homeHasData = true;
 
-  const lowestIds = new Set(findLowestSocIds(allData));
+  const loaded = systems.map((sys) => compareData[sys.id]).filter((d) => d && !d.error);
+  const lowestIds = new Set(findLowestSocIds(loaded));
   let latestTs = null;
 
   fEls.compareGrid.innerHTML = "";
-  for (const d of allData) {
+  for (const sys of systems) {
+    const d = compareData[sys.id];
     const card = document.createElement("article");
-    const hasError = !d || d.error;
+
+    if (!d) {
+      card.className = "compare-card skeleton";
+      card.innerHTML = compareSkeletonCardHtml(sys);
+      fEls.compareGrid.appendChild(card);
+      continue;
+    }
+
+    const hasError = !!d.error;
     const genOn = !hasError && (d.grid?.active ?? false);
     const isLowest = !hasError && lowestIds.has(d.systemId);
     const gridLabel = getGridInputLabel(d.systemId);
@@ -626,14 +643,14 @@ function renderComparison(allData) {
       + (genOn ? " compare-gen-active" : "");
 
     if (hasError) {
-      const name = d?.name || systems.find((s) => s.id === d?.systemId)?.name || "System";
+      const name = d.name || sys.name || "System";
       card.innerHTML = `
         <div class="compare-card-header">
           <h3 class="compare-name">${escapeAttr(name)}</h3>
         </div>
-        <p class="compare-error">${escapeAttr(d?.error || t("compareUnavailable"))}</p>
+        <p class="compare-error">${escapeAttr(d.error || t("compareUnavailable"))}</p>
       `;
-      makeTileTappable(card, d?.systemId);
+      makeTileTappable(card, d.systemId || sys.id);
       fEls.compareGrid.appendChild(card);
       continue;
     }
@@ -691,7 +708,11 @@ function renderComparison(allData) {
     els.lastUpdate.textContent = `Last update: ${timePart}`;
   }
 
-  setStatus(allData.some((d) => d && !d.error));
+  // Before any system has settled (pure skeleton paint on Home entry), leave the status dot
+  // alone rather than flashing "disconnected" for tiles that simply haven't responded yet.
+  if (Object.values(compareData).some((d) => d !== undefined)) {
+    setStatus(loaded.length > 0);
+  }
 }
 
 fEls.tabCards.addEventListener("click", () => setView("cards"));
@@ -2031,24 +2052,58 @@ async function loadChartView() {
   setStatus(historyOk);
 }
 
+/**
+ * Fetch each HOME system's data independently (one request per system) so a slow system
+ * never blocks the others from settling — each tile updates as soon as its own fetch resolves.
+ * Single-flight: a poll already in progress (e.g. a slow tick) is left to finish rather than
+ * starting a second overlapping fan-out that could race writes into `compareData`.
+ */
+let compareInFlight = false;
+async function pollCompareNow() {
+  if (!systems.length) return;
+  if (compareInFlight) {
+    setPollRetrying(false);
+    return;
+  }
+  compareInFlight = true;
+  try {
+    const settled = await Promise.allSettled(systems.map(async (sys) => {
+      try {
+        compareData[sys.id] = await api("GET", `/api/systems/${sys.id}/data`);
+      } catch (err) {
+        compareData[sys.id] = { systemId: sys.id, name: sys.name, error: chartErrorMessage(err, t("compareUnavailable")) };
+        renderComparisonGrid();
+        throw err;
+      }
+      renderComparisonGrid();
+    }));
+
+    if (settled.some((r) => r.status === "rejected" && isUnauthorizedError(r.reason))) {
+      setStatus(false);
+      return;
+    }
+    const firstFailure = settled.find((r) => r.status === "rejected");
+    if (!firstFailure) {
+      hidePollError();
+      return;
+    }
+    if (settled.every((r) => r.status === "rejected")) {
+      console.error("compare poll error:", firstFailure.reason);
+      setStatus(false);
+      showPollError(chartErrorMessage(firstFailure.reason, t("compareLoadError")));
+    } else {
+      hidePollError();
+    }
+  } finally {
+    compareInFlight = false;
+    setPollRetrying(false);
+  }
+}
+
 /* ── Polling ── */
 async function pollNow() {
   if (appState === "home") {
-    if (!systems.length) return;
-    if (!hasData) setCompareLoading(true);
-    try {
-      const data = await api("GET", "/api/systems/all/data");
-      renderComparison(data);
-      hidePollError();
-    } catch (err) {
-      console.error("compare poll error:", err);
-      setCompareLoading(false);
-      setStatus(false);
-      if (isUnauthorizedError(err)) return;
-      showPollError(chartErrorMessage(err, t("compareLoadError")));
-    } finally {
-      setPollRetrying(false);
-    }
+    await pollCompareNow();
     return;
   }
 
@@ -2475,8 +2530,8 @@ function renderGridInputLabelForm(sys) {
         applyGridInputLabels(sys.id);
         if (lastRenderData) renderData(lastRenderData);
       }
-      if (appState === "home" && lastCompareData) {
-        renderComparison(lastCompareData);
+      if (appState === "home" && homeHasData) {
+        renderComparisonGrid();
       }
       msg.textContent = t("gridInputLabelSaved");
       msg.className = "grid-input-label-msg alert-ok";
@@ -3178,7 +3233,7 @@ function changeLocale(locale) {
   refreshPollIntervalOptions();
   applyGridInputLabels(activeSystemId);
   if (lastRenderData) renderData(lastRenderData);
-  if (appState === "home" && lastCompareData) renderComparison(lastCompareData);
+  if (appState === "home" && homeHasData) renderComparisonGrid();
   if (els.pollErrorToast && !els.pollErrorToast.hidden) {
     setPollRetrying(pollRetrying);
   }

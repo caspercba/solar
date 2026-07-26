@@ -108,7 +108,7 @@ No historical power readings are stored.
 
 ## 5. Request path (realtime)
 
-1. Frontend polls `GET /api/systems/:id/data` (and optionally `/all/data`) on an interval.
+1. Frontend polls `GET /api/systems/:id/data` on an interval — once for the active system in DETAIL, once per configured system (independently, so a slow system doesn't block the others) for the HOME tile grid. `GET /api/systems/all/data` remains available as a single-round-trip alternative but the frontend no longer calls it.
 2. Worker authenticates bearer → loads `system:<id>` → decrypts credentials → adapter `fetchData()` (vendor session cache per isolate).
 3. Normalized JSON returned to `renderData()`; generator runtime and UI prefs stay client-side.
 

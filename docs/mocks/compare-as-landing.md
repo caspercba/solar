@@ -129,7 +129,7 @@ Make the **dashboard home** a multi-system summary grid (today’s Compare view)
 
 ## Data / API
 
-- Home: keep using aggregate fetch path already used by compare (`/api/systems/all/data` or equivalent multi-poll), so all tiles can update in one cycle.
+- Home: implemented as one independent `GET /api/systems/:id/data` fetch per system (not the aggregate `/api/systems/all/data`), so a slow system's tile never blocks the others from settling — chosen over the single-round-trip option because that endpoint only resolves once every system has settled, which defeats independent per-tile loading (SOLAR-0165).
 - Detail: existing single-system poll path.
 - No new Worker endpoints required for the UX change.
 - No KV archive changes.

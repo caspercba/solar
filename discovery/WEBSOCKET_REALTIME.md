@@ -139,7 +139,7 @@ No change required. If a future vendor push API appears:
 | Option | Effort | Benefit |
 |--------|--------|---------|
 | Default poll **30 s** for active dashboard | Config only / UI default | Halves staleness |
-| **Parallel** `/api/systems/all/data` | Already implemented | Multi-system refresh in one round-trip |
+| **Parallel** `/api/systems/all/data` | Implemented server-side; HOME now polls per-system instead (independent tile settling, compare-as-landing SOLAR-0165) | Multi-system refresh in one round-trip |
 | **In-memory vendor cache** in Worker (5–10 s TTL) | Small | Dedup when multiple tabs hit same system |
 | **Cron alerts** for SOC/generator | In progress | Timely notifications without browser open |
 
