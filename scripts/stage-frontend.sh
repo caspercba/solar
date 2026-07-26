@@ -8,7 +8,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT/icons" "$OUT/frontend"
 
 cp index.html app.js style.css manifest.json sw.js "$OUT/"
-cp frontend/lib.js "$OUT/frontend/"
+cp frontend/lib.js frontend/i18n.js "$OUT/frontend/"
 cp icons/*.png "$OUT/icons/"
 
 echo "Staged frontend in $OUT"
