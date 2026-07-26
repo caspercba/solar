@@ -7,6 +7,8 @@ import {
   csvCell,
   historyToCsv,
   aggregateHourlyConsumption,
+  aggregateHourlyProduction,
+  aggregateHourlyEnergy,
   escapeAttr,
   clampPct,
   solarPctFromPower,
@@ -210,6 +212,49 @@ describe("aggregateHourlyConsumption", () => {
 
   it("returns an empty result for no points", () => {
     expect(aggregateHourlyConsumption([], 5)).toEqual({ hours: [], totalKwh: 0 });
+  });
+});
+
+describe("aggregateHourlyProduction", () => {
+  it("sums solar power into kWh per hour at the given interval, filling hours from 0", () => {
+    const { hours, totalKwh } = aggregateHourlyProduction(
+      [
+        { time: "06:00", solar: 1200 },
+        { time: "06:05", solar: 1200 },
+        { time: "06:10", solar: 0 },
+        { time: "07:00", solar: 2400 },
+      ],
+      5,
+    );
+    expect(hours).toHaveLength(8);
+    expect(hours[6]).toEqual({ hour: 6, kwh: 0.2 });
+    expect(hours[7]).toEqual({ hour: 7, kwh: 0.2 });
+    expect(hours[0]).toEqual({ hour: 0, kwh: 0 });
+    expect(totalKwh).toBeCloseTo(0.4);
+  });
+
+  it("treats negative solar as zero production", () => {
+    const { hours, totalKwh } = aggregateHourlyProduction(
+      [{ time: "00:00", solar: -50 }],
+      5,
+    );
+    expect(hours).toEqual([{ hour: 0, kwh: 0 }]);
+    expect(totalKwh).toBe(0);
+  });
+
+  it("returns an empty result for no points", () => {
+    expect(aggregateHourlyProduction([], 5)).toEqual({ hours: [], totalKwh: 0 });
+  });
+});
+
+describe("aggregateHourlyEnergy", () => {
+  it("aggregates the requested field", () => {
+    const { totalKwh } = aggregateHourlyEnergy(
+      [{ time: "00:00", solar: 600, load: 1200 }],
+      "solar",
+      60,
+    );
+    expect(totalKwh).toBeCloseTo(0.6);
   });
 });
 

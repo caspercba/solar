@@ -1029,10 +1029,12 @@ header h1 { font-size: 1.15rem; font-weight: 600; }
   margin-top: .65rem;
 }
 
+.production-chart-wrap,
 .consumption-chart-wrap {
   min-height: 160px;
 }
 
+#production-chart,
 #consumption-chart {
   display: block;
   width: 100%;

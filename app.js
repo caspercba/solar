@@ -52,6 +52,7 @@ import {
   httpError,
   isUnauthorizedError,
   aggregateHourlyConsumption,
+  aggregateHourlyProduction,
 } from "./frontend/lib.js";
 import {
   loadStoredLocale,
@@ -366,6 +367,11 @@ const fEls = {
   energyEmptyMsg: $("energy-empty-msg"),
   energyRetryBtn: $("energy-retry-btn"),
   energyLoading: $("energy-loading"),
+  productionChart: $("production-chart"),
+  productionEmpty: $("production-empty"),
+  productionEmptyMsg: $("production-empty-msg"),
+  productionLoading: $("production-loading"),
+  productionTotalValue: $("production-total-value"),
   consumptionChart: $("consumption-chart"),
   consumptionEmpty: $("consumption-empty"),
   consumptionEmptyMsg: $("consumption-empty-msg"),
@@ -1114,6 +1120,7 @@ function refreshChartsForTheme() {
   if (currentView !== "chart") return;
   if (chartHistory?.points?.length) {
     renderChart(chartHistory);
+    renderProductionChart(chartHistory);
     renderConsumptionChart(chartHistory);
   }
   if (lastEnergySummary) renderEnergyChart(lastEnergySummary);
@@ -1187,6 +1194,21 @@ function setEnergyChartState(state, opts = {}) {
   }
 }
 
+function setProductionChartState(state) {
+  if (fEls.productionLoading) fEls.productionLoading.hidden = state !== "loading";
+  if (fEls.productionChart) fEls.productionChart.hidden = state !== "ready";
+  if (fEls.productionEmpty) {
+    fEls.productionEmpty.hidden = state !== "empty" && state !== "error";
+    fEls.productionEmpty.classList.toggle("chart-empty-error", state === "error");
+  }
+  if (fEls.productionEmptyMsg && (state === "empty" || state === "error")) {
+    fEls.productionEmptyMsg.textContent = t("productionEmpty");
+  }
+  if (fEls.productionTotalValue && state !== "ready") {
+    fEls.productionTotalValue.textContent = "–";
+  }
+}
+
 function setConsumptionChartState(state) {
   if (fEls.consumptionLoading) fEls.consumptionLoading.hidden = state !== "loading";
   if (fEls.consumptionChart) fEls.consumptionChart.hidden = state !== "ready";
@@ -1200,6 +1222,79 @@ function setConsumptionChartState(state) {
   if (fEls.consumptionTotalValue && state !== "ready") {
     fEls.consumptionTotalValue.textContent = "–";
   }
+}
+
+function formatHourlyTotalKwh(totalKwh) {
+  return `${totalKwh < 10 ? totalKwh.toFixed(2) : totalKwh.toFixed(1)} kWh`;
+}
+
+/** Shared hourly kWh bar chart for production/consumption tiles. */
+function renderHourlyKwhChart(canvas, hours, color) {
+  if (!canvas || !hours?.length) return false;
+
+  const CHART_COLORS = getChartColors();
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(280, Math.round(rect.width || 500));
+  const height = 160;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.height = height + "px";
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const pad = { top: 16, right: 12, bottom: 24, left: 40 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const n = hours.length;
+  const groupW = plotW / n;
+  const barGap = Math.min(4, groupW * 0.2);
+  const barW = Math.max(3, groupW - barGap);
+
+  let yMax = 0;
+  for (const h of hours) yMax = Math.max(yMax, h.kwh);
+  if (yMax === 0) yMax = 1;
+  yMax += yMax * 0.1 || 0.1;
+
+  ctx.strokeStyle = CHART_COLORS.grid;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (plotH * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + plotW, y);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = CHART_COLORS.text;
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++) {
+    const val = yMax - (yMax * i) / 4;
+    const y = pad.top + (plotH * i) / 4;
+    ctx.fillText(val < 10 ? val.toFixed(1) : Math.round(val).toString(), pad.left - 6, y);
+  }
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const labelEvery = n > 12 ? 3 : n > 6 ? 2 : 1;
+  for (let i = 0; i < n; i += labelEvery) {
+    const cx = pad.left + groupW * i + groupW / 2;
+    ctx.fillText(String(hours[i].hour), cx, pad.top + plotH + 6);
+  }
+
+  ctx.fillStyle = color;
+  for (let i = 0; i < n; i++) {
+    const h = (hours[i].kwh / yMax) * plotH;
+    const x = pad.left + groupW * i + barGap / 2;
+    const y = pad.top + plotH - h;
+    ctx.fillRect(x, y, barW, h);
+  }
+
+  return true;
 }
 
 function chartErrorMessage(err, fallback) {
@@ -1512,6 +1607,23 @@ function renderEnergyChart(data) {
   return true;
 }
 
+function renderProductionChart(data) {
+  const canvas = fEls.productionChart;
+  if (!canvas) return false;
+
+  const points = data?.points || [];
+  if (!points.length) return false;
+
+  const { hours, totalKwh } = aggregateHourlyProduction(points, data.intervalMinutes || 5);
+  if (!hours.length) return false;
+
+  setProductionChartState("ready");
+  if (fEls.productionTotalValue) {
+    fEls.productionTotalValue.textContent = formatHourlyTotalKwh(totalKwh);
+  }
+  return renderHourlyKwhChart(canvas, hours, getChartColors().solar);
+}
+
 function renderConsumptionChart(data) {
   const canvas = fEls.consumptionChart;
   if (!canvas) return false;
@@ -1524,76 +1636,9 @@ function renderConsumptionChart(data) {
 
   setConsumptionChartState("ready");
   if (fEls.consumptionTotalValue) {
-    fEls.consumptionTotalValue.textContent = `${totalKwh < 10 ? totalKwh.toFixed(2) : totalKwh.toFixed(1)} kWh`;
+    fEls.consumptionTotalValue.textContent = formatHourlyTotalKwh(totalKwh);
   }
-  const CHART_COLORS = getChartColors();
-
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  const width = Math.max(280, Math.round(rect.width || 500));
-  const height = 160;
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
-  canvas.style.height = height + "px";
-
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, width, height);
-
-  const pad = { top: 16, right: 12, bottom: 24, left: 40 };
-  const plotW = width - pad.left - pad.right;
-  const plotH = height - pad.top - pad.bottom;
-  const n = hours.length;
-  const groupW = plotW / n;
-  const barGap = Math.min(4, groupW * 0.2);
-  const barW = Math.max(3, groupW - barGap);
-
-  let yMax = 0;
-  for (const h of hours) yMax = Math.max(yMax, h.kwh);
-  if (yMax === 0) yMax = 1;
-  yMax += yMax * 0.1 || 0.1;
-
-  ctx.strokeStyle = CHART_COLORS.grid;
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = pad.top + (plotH * i) / 4;
-    ctx.beginPath();
-    ctx.moveTo(pad.left, y);
-    ctx.lineTo(pad.left + plotW, y);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = CHART_COLORS.text;
-  ctx.font = "11px sans-serif";
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  for (let i = 0; i <= 4; i++) {
-    const val = yMax - (yMax * i) / 4;
-    const y = pad.top + (plotH * i) / 4;
-    ctx.fillText(val < 10 ? val.toFixed(1) : Math.round(val).toString(), pad.left - 6, y);
-  }
-
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  const labelEvery = n > 12 ? 3 : n > 6 ? 2 : 1;
-  for (let i = 0; i < n; i += labelEvery) {
-    const cx = pad.left + groupW * i + groupW / 2;
-    ctx.fillText(String(hours[i].hour), cx, pad.top + plotH + 6);
-  }
-
-  function barHeightFor(kwh) {
-    return (kwh / yMax) * plotH;
-  }
-
-  ctx.fillStyle = CHART_COLORS.load;
-  for (let i = 0; i < n; i++) {
-    const h = barHeightFor(hours[i].kwh);
-    const x = pad.left + groupW * i + barGap / 2;
-    const y = pad.top + plotH - h;
-    ctx.fillRect(x, y, barW, h);
-  }
-
-  return true;
+  return renderHourlyKwhChart(canvas, hours, getChartColors().load);
 }
 
 function loadChartDate() {
@@ -1755,6 +1800,7 @@ async function loadChartView() {
   renderChartWeekStrip(date, todayIsoDate());
   setIntradayChartState("loading");
   setEnergyChartState("loading");
+  setProductionChartState("loading");
   setConsumptionChartState("loading");
   const qs = `?date=${encodeURIComponent(date)}`;
   const [historyResult, summaryResult] = await Promise.allSettled([
@@ -1777,6 +1823,9 @@ async function loadChartView() {
       setIntradayChartState("empty");
       historyOk = true;
     }
+    if (!renderProductionChart(history)) {
+      setProductionChartState("empty");
+    }
     if (!renderConsumptionChart(history)) {
       setConsumptionChartState("empty");
     }
@@ -1786,6 +1835,7 @@ async function loadChartView() {
     setIntradayChartState("error", {
       message: chartErrorMessage(historyResult.reason, t("chartLoadError")),
     });
+    setProductionChartState("error");
     setConsumptionChartState("error");
   }
 

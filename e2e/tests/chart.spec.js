@@ -25,6 +25,10 @@ test.describe("Chart view", () => {
     await expect(page.locator("#chart-view")).toBeVisible();
     await expect(page.locator("#power-chart")).toBeVisible();
     await expect(page.locator("#chart-empty")).toBeHidden();
+    await expect(page.locator("#production-chart")).toBeVisible();
+    await expect(page.locator("#production-empty")).toBeHidden();
+    await expect(page.locator("#production-total-value")).not.toHaveText("–");
+    await expect(page.locator("#consumption-chart")).toBeVisible();
     await expect(page.locator("#energy-chart")).toBeVisible();
     await expect(page.locator("#energy-empty")).toBeHidden();
     await expect(page.locator("#chart-export-btn")).toBeEnabled();
@@ -37,6 +41,8 @@ test.describe("Chart view", () => {
     await expect(page.locator("#power-chart")).toBeHidden();
     await expect(page.locator("#chart-empty")).toBeVisible();
     await expect(page.locator("#chart-empty-msg")).toContainText(/no power data/i);
+    await expect(page.locator("#production-chart")).toBeHidden();
+    await expect(page.locator("#production-empty")).toBeVisible();
     await expect(page.locator("#chart-export-btn")).toBeDisabled();
   });
 
