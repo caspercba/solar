@@ -17,25 +17,19 @@ Board: [Gordofast — solar](http://100.103.17.20:3000/projects/4fef956d-9607-40
 - **SOLAR-0161** — Playwright coverage for the Cards "Today's production" tile (data + empty states); reuses tested `aggregateHourlyProduction` frontend helper
 - Pages stage fix — include `frontend/i18n.js` (`scripts/stage-frontend.sh`)
 - Prior board work through SOLAR-0154 archived `done`
-- **SOLAR-0168** — Compare-as-landing polish: visible keyboard `:focus-visible` ring on HOME tiles (outline, distinct from hover/active); confirmed HOME pull-to-refresh already re-fetches all tiles (shares `pollCompareNow()` via `refreshDashboardNow()`); HOME last-update line now uses the `lastUpdate` i18n string instead of a hardcoded "Last update: …"
+- **Compare as landing (SOLAR-0164…0169)** — HOME summary tiles with independent per-tile loading; DETAIL Cards/Flow/Chart; i18n/a11y; polish; Playwright coverage for landing/tap-through/back (acceptance green). Full suite still red on two unrelated/implementation bugs (SOLAR-0170, SOLAR-0171).
 
 ## In Progress
 
-_None_
+- **SOLAR-0172** — `in_progress`, planner — Tester failure follow-up for SOLAR-0169 (this pass)
 
 ## Up Next
 
 _Live board (`task.list`). Priority order:_
 
-1. **SOLAR-0155** — `backlog`, high — Release: v1.4.0 tag is confirmed pushed to origin; remaining scope narrowed to confirming CI release-gate/deploy (or documenting manual `wrangler deploy`) and that production `/api/health` reports 1.4.0
-2. **SOLAR-0164** — `backlog`, medium — Compare-as-landing: navigation shell (home vs detail states)
-3. **SOLAR-0165** — `backlog`, medium — Compare-as-landing: home tile grid (independent per-tile loading); depends on SOLAR-0164
-4. **SOLAR-0166** — `backlog`, medium — Compare-as-landing: detail wiring (Cards/Flow/Chart for active system); depends on SOLAR-0164
-5. **SOLAR-0167** — `backlog`, medium — Compare-as-landing: i18n + a11y strings; depends on SOLAR-0165/0166
-6. **SOLAR-0168** — `backlog`, low — Compare-as-landing: polish (focus states, home PTR, last-update line); depends on SOLAR-0165/0166
-7. **SOLAR-0169** — `backlog`, medium (tester) — Compare-as-landing: Playwright E2E coverage; depends on SOLAR-0164…0168
-
-**Compare as landing** — spec + mocks approved 2026-07-26; board tasks SOLAR-0164…0169 cut 2026-07-26 (this planning pass) from [`docs/mocks/compare-as-landing.md`](./docs/mocks/compare-as-landing.md)'s suggested task breakdown. Also §5.5 in `PLAN.md`. None started yet — a human still needs to promote SOLAR-0164 from backlog to `todo` to begin.
+1. **SOLAR-0170** — `backlog`, high (developer) — Fix: removing a system does not refresh HOME summary tiles (`detailRemove` skips `renderComparisonGrid` / `pollCompareNow` when removed id ≠ active)
+2. **SOLAR-0171** — `backlog`, high (developer) — Fix: duplicate `#admin-create-user-section` in `index.html` (+ duplicate `els` bindings in `app.js`); keep password+confirm form
+3. **SOLAR-0155** — `backlog`, high (developer) — Release: confirm CI release-gate/deploy or manual `wrangler deploy` for v1.4.0; production `/api/health` reports 1.4.0
 
 **Deferred (no board tasks — wait for human request):**
 
@@ -58,7 +52,7 @@ _None on the live board._
 - **Multi-user — password accounts + invites (ADR 0003)** — shipped end-to-end at v1.4.0; no outbound email; opaque keys and `?token=` retained for machines/migration.
 - **Frontend and Worker stay independently deployable** — Pages vs Workers; CORS allowlist.
 - **Cards today’s production tile** — full-width line graph with kWh overlay (not side-by-side); current day only; mock in `docs/mocks/`.
-- **Compare as landing (approved, board tasks cut, not built)** — dashboard home is multi-system compare tiles; detail is per-system Cards/Flow/Chart; mocks + full task-oriented spec in `docs/mocks/compare-as-landing.md`; implementation tracked as SOLAR-0164…0169.
+- **Compare as landing (shipped)** — dashboard home is multi-system compare tiles; detail is per-system Cards/Flow/Chart; mocks + spec in `docs/mocks/compare-as-landing.md`; SOLAR-0164…0169 done; follow-up fixes SOLAR-0170/0171.
 
 ## Blocked / Open Questions
 
@@ -73,3 +67,4 @@ _None on the live board._
 - **Invite / password sharing** — mitigate with TTL, single-use conversion, revoke, hash-only storage.
 - **Last-admin lockout** — user-admin routes refuse deleting/disabling the final `admin`.
 - **CI unfunded** — GitHub Actions tests/deploys may not run; prefer local `wrangler` + manual tag when releasing.
+- **E2E red on manage-remove + admin create-user** — SOLAR-0170 / SOLAR-0171; Compare-as-landing acceptance coverage itself passed under SOLAR-0169.
