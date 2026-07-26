@@ -139,10 +139,10 @@ Exact paths may shift at implementation time; behavior above is normative.
 | Opaque API keys + roles | Password **users** + magic-link **invites** |
 | Token label ≈ nickname | Real username + hashed password |
 | Mint key → paste in setup | Invite link → set password → login → session token |
-| Done (Phases 1–2) | Planned |
+| Done (Phases 1–2) | Done |
 
-Opaque keys remain; user login should issue or bind a key/session so `checkAuth`, rate limits, and audit `actorId` keep working.
+Opaque keys remain; user login issues or binds a key/session so `checkAuth`, rate limits, and audit `actorId` keep working.
 
 ## Recommendation summary
 
-Implement as a Phase 5 (or Phase 6) product slice: Worker user/invite modules + auth routes first, then frontend login/accept-invite, then admin management UI, then E2E. Keep shared `API_TOKEN` and HA keys working throughout.
+Shipped end-to-end at **v1.4.0**: Worker user/invite modules and auth routes, frontend login/accept-invite and admin management UI, and Playwright E2E. Shared `API_TOKEN` and HA keys remain supported alongside password sessions.
