@@ -3,6 +3,8 @@ import {
   disableServiceWorker,
   clearAppStorage,
   loginViaDeepLink,
+  waitForHomeData,
+  enterSystemDetail,
   waitForDashboardData,
 } from "../helpers.js";
 
@@ -13,7 +15,7 @@ test.describe("Poll interval settings", () => {
     await page.goto("/");
     await clearAppStorage(page);
     await loginViaDeepLink(page);
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
   });
 
   test("shows interval selector with 30/60/120 options in manage modal", async ({ page }) => {
@@ -38,19 +40,20 @@ test.describe("Poll interval settings", () => {
       .toBe("120");
 
     await page.reload();
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
     await page.locator("#manage-btn").click();
     await expect(page.locator("#poll-interval")).toHaveValue("120");
   });
 
   test("restarts polling timer when interval changes", async ({ page }) => {
+    await enterSystemDetail(page, "Mock Cabin", { view: "cards" });
+
     let dataRequestCount = 0;
     await page.route("**/api/systems/*/data", async (route) => {
       dataRequestCount += 1;
       await route.continue();
     });
 
-    await page.locator("#system-tabs button", { hasText: "Mock Cabin" }).click();
     await waitForDashboardData(page);
     const countAfterLoad = dataRequestCount;
 

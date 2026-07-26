@@ -3,7 +3,7 @@ import {
   disableServiceWorker,
   clearAppStorage,
   loginViaDeepLink,
-  waitForDashboardData,
+  waitForHomeData,
   pullToRefresh,
 } from "../helpers.js";
 
@@ -16,7 +16,7 @@ test.describe("Pull-to-refresh", () => {
     await page.goto("/");
     await clearAppStorage(page);
     await loginViaDeepLink(page);
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
   });
 
   test("triggers refresh indicator on mobile pull gesture", async ({ page }) => {

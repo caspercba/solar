@@ -5,6 +5,7 @@ import {
   loginViaDeepLink,
   loginViaTokenPaste,
   loginViaSetupForm,
+  waitForHomeData,
   MOCK_WORKER_URL,
   MOCK_TOKEN,
 } from "../helpers.js";
@@ -25,7 +26,8 @@ test.describe("Legacy token path", () => {
 
     await expect(page.locator("#dashboard-screen")).toBeVisible();
     await expect(page.locator("#setup-screen")).toBeHidden();
-    await expect(page.locator("#system-tabs button")).toHaveCount(2);
+    await waitForHomeData(page);
+    await expect(page.locator(".compare-card")).toHaveCount(2);
 
     const stored = await page.evaluate(() => localStorage.getItem("solar_conn"));
     expect(stored).toBeTruthy();
@@ -39,7 +41,8 @@ test.describe("Legacy token path", () => {
 
     await expect(page.locator("#dashboard-screen")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#setup-screen")).toBeHidden();
-    await expect(page.locator("#system-tabs")).toBeVisible();
+    await waitForHomeData(page);
+    await expect(page.locator(".compare-card")).toHaveCount(2);
 
     const stored = await page.evaluate(() => localStorage.getItem("solar_conn"));
     expect(stored).toBeTruthy();
@@ -90,6 +93,7 @@ test.describe("Legacy token path", () => {
 
     await expect(page.locator("#dashboard-screen")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("#setup-screen")).toBeHidden();
-    await expect(page.locator("#system-tabs")).toBeVisible();
+    await waitForHomeData(page);
+    await expect(page.locator(".compare-card")).toHaveCount(2);
   });
 });

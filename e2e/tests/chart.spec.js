@@ -3,7 +3,8 @@ import {
   disableServiceWorker,
   clearAppStorage,
   loginViaDeepLink,
-  waitForDashboardData,
+  waitForHomeData,
+  enterSystemDetail,
   switchView,
   EMPTY_HISTORY_DATE,
   ESTIMATED_SOC_HISTORY_DATE,
@@ -16,8 +17,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await clearAppStorage(page);
   await loginViaDeepLink(page);
-  await waitForDashboardData(page);
-  await switchView(page, "chart");
+  await waitForHomeData(page);
+  await enterSystemDetail(page, "Mock Home Solar", { view: "chart" });
 });
 
 test.describe("Chart view", () => {

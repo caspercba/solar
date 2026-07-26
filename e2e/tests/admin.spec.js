@@ -3,7 +3,7 @@ import {
   disableServiceWorker,
   clearAppStorage,
   loginViaDeepLink,
-  waitForDashboardData,
+  waitForHomeData,
   openManageModal,
   resetMockAdmin,
   setMockActorRole,
@@ -27,7 +27,7 @@ test.describe("Admin users & invites (ADR 0003)", () => {
     await page.goto("/");
     await clearAppStorage(page);
     await loginViaDeepLink(page);
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
   });
 
   test.afterEach(async ({ request }) => {

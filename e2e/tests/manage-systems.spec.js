@@ -3,7 +3,9 @@ import {
   disableServiceWorker,
   clearAppStorage,
   loginViaDeepLink,
-  waitForDashboardData,
+  waitForHomeData,
+  homeTile,
+  enterSystemDetail,
   MOCK_WORKER_URL,
 } from "../helpers.js";
 import { MOCK_SYSTEM_ID, MOCK_SYSTEM_ID_2 } from "../fixtures/payloads.js";
@@ -55,7 +57,7 @@ test.describe("Manage modal — add/remove systems", () => {
     await page.goto("/");
     await clearAppStorage(page);
     await loginViaDeepLink(page);
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
   });
 
   test.afterEach(async ({ page }) => {
@@ -102,12 +104,12 @@ test.describe("Manage modal — add/remove systems", () => {
     await expect(newRow).toBeVisible();
     await expect(newRow.locator(".manage-service")).toContainText("growatt");
 
-    // Three systems now — tab bar shows all of them.
-    await expect(page.locator("#system-tabs")).toBeVisible();
-    await expect(page.locator("#system-tabs button", { hasText: "E2E Added System" })).toBeVisible();
+    // Three systems now — HOME grid shows all of them.
+    await expect(page.locator(".compare-card")).toHaveCount(3);
+    await expect(homeTile(page, "E2E Added System")).toBeVisible();
   });
 
-  test("adds a system and lands on its dashboard", async ({ page }) => {
+  test("adds a system and can open its DETAIL from HOME", async ({ page }) => {
     await openAddModal(page);
 
     let postBody = null;
@@ -175,14 +177,12 @@ test.describe("Manage modal — add/remove systems", () => {
       gridInputLabel: "generator",
     });
 
-    const tabs = page.locator("#system-tabs .sys-tab");
-    await expect(tabs).toHaveCount(3);
-    const newTab = page.locator("#system-tabs button", { hasText: "New Growatt Site" });
-    await expect(newTab).toBeVisible();
+    await expect(page.locator(".compare-card")).toHaveCount(3);
+    await expect(homeTile(page, "New Growatt Site")).toBeVisible();
 
-    await newTab.click();
+    await enterSystemDetail(page, "New Growatt Site", { view: "cards" });
     await expect(page.locator("#bat-pct")).toHaveText("91");
-    await expect(page.locator("#system-tabs .sys-tab.active")).toHaveText("New Growatt Site");
+    await expect(page.locator("#detail-system-name")).toHaveText("New Growatt Site");
   });
 
   test("adds a system with Grid label selected in the form", async ({ page }) => {
@@ -238,22 +238,8 @@ test.describe("Manage modal — add/remove systems", () => {
     await expect(page.locator("#add-submit")).toBeEnabled();
     await expect(page.locator("#add-submit")).toHaveText("Add System");
 
-    const tabs = page.locator("#system-tabs .sys-tab");
-    await expect(tabs).toHaveCount(2);
-  });
-
-  test("removes a system with confirm dialog and hides the tab bar at one system", async ({ page }) => {
-    await openManageModal(page);
-    await expect(page.locator("#system-tabs")).toBeVisible();
-
-    await removeSystemViaDetail(page, "Mock Cabin");
-
-    await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toHaveCount(0);
-    await expect(page.locator(".manage-row", { hasText: "Mock Home Solar" })).toBeVisible();
-
-    // One system remains — tab bar hides, header shows its name.
-    await expect(page.locator("#system-tabs")).toBeHidden();
-    await expect(page.locator("#header-title")).toHaveText("Mock Home Solar");
+    const cards = page.locator(".compare-card");
+    await expect(cards).toHaveCount(2);
   });
 
   test("dismissing the confirm dialog keeps the system in the list", async ({ page }) => {
@@ -266,7 +252,17 @@ test.describe("Manage modal — add/remove systems", () => {
     await expect(page.locator("#manage-modal")).toBeVisible();
 
     await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toBeVisible();
-    await expect(page.locator("#system-tabs")).toBeVisible();
+    await expect(page.locator(".compare-card")).toHaveCount(2);
+  });
+
+  test("removes a system with confirm dialog and updates the manage list", async ({ page }) => {
+    await openManageModal(page);
+    await expect(page.locator(".compare-card")).toHaveCount(2);
+
+    await removeSystemViaDetail(page, "Mock Cabin");
+
+    await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toHaveCount(0);
+    await expect(page.locator(".manage-row", { hasText: "Mock Home Solar" })).toBeVisible();
   });
 
   test.describe("remove (mocked API)", () => {
@@ -313,8 +309,6 @@ test.describe("Manage modal — add/remove systems", () => {
 
       await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toHaveCount(0);
       await expect(page.locator(".manage-row", { hasText: "Mock Home Solar" })).toBeVisible();
-      await expect(page.locator("#system-tabs")).toBeHidden();
-      await expect(page.locator("#header-title")).toHaveText("Mock Home Solar");
     });
 
     test("cancelling the confirm dialog leaves the system in place", async ({ page }) => {
@@ -334,5 +328,19 @@ test.describe("Manage modal — add/remove systems", () => {
       await expect(page.locator("#manage-modal")).toBeVisible();
       await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toBeVisible();
     });
+  });
+
+  // Keep last in this serial suite: currently fails until remove re-renders HOME tiles.
+  test("removing a system refreshes HOME to a single summary tile", async ({ page }) => {
+    await openManageModal(page);
+    await removeSystemViaDetail(page, "Mock Cabin");
+    await expect(page.locator(".manage-row", { hasText: "Mock Cabin" })).toHaveCount(0);
+
+    await page.locator("#manage-close").click();
+    await expect(page.locator("#manage-modal")).toBeHidden();
+    // Compare-as-landing: HOME grid must drop the removed system without a full reload.
+    await expect(page.locator(".compare-card")).toHaveCount(1);
+    await expect(homeTile(page, "Mock Home Solar")).toBeVisible();
+    await expect(homeTile(page, "Mock Cabin")).toHaveCount(0);
   });
 });

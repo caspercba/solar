@@ -3,7 +3,7 @@ import {
   disableServiceWorker,
   clearAppStorage,
   loginViaDeepLink,
-  waitForDashboardData,
+  waitForHomeData,
 } from "../helpers.js";
 import { MOCK_SYSTEM_ID } from "../fixtures/payloads.js";
 
@@ -13,7 +13,7 @@ test.describe("System detail — alert configuration", () => {
     await page.goto("/");
     await clearAppStorage(page);
     await loginViaDeepLink(page);
-    await waitForDashboardData(page);
+    await waitForHomeData(page);
     await page.locator("#manage-btn").click();
     await expect(page.locator("#manage-modal")).toBeVisible();
     await page.locator(".manage-row", { hasText: "Mock Home Solar" }).click();
