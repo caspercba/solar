@@ -311,7 +311,7 @@ Glanceable **current-day** solar production on the Cards landing (not Chart). Ap
 - [x] **Cards tile UI** — full-width amber line sparkline; **kWh total overlaid** (top-left); title “Today’s production”; reuse solar accent (`--accent-sol`)
 - [x] **Data binding** — current calendar day only; series + total kWh from existing vendor history / production helpers (no new KV archive)
 - [x] **i18n + empty/loading** — EN/ES strings; empty/error states consistent with Chart production tile
-- [ ] **Tests** — frontend unit helpers if extracted; Playwright asserts tile + total on Cards view _(SOLAR-0161)_
+- [x] **Tests** — frontend unit helpers if extracted; Playwright asserts tile + total on Cards view _(SOLAR-0161)_
 
 ---
 

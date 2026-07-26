@@ -7,7 +7,7 @@ import {
   waitForCompareData,
   switchView,
 } from "../helpers.js";
-import { MOCK_SYSTEM_ID_2 } from "../fixtures/payloads.js";
+import { MOCK_SYSTEM_ID, MOCK_SYSTEM_ID_2 } from "../fixtures/payloads.js";
 
 test.beforeEach(async ({ page }) => {
   await disableServiceWorker(page);
@@ -27,6 +27,44 @@ test.describe("Cards view", () => {
     await expect(page.locator("#gen-status")).toHaveText("OFF");
     await expect(page.locator("#inverter-status")).toHaveText("PV Charging");
     await expect(page.locator("#bat-bar")).toHaveAttribute("style", /width:\s*72%/);
+  });
+
+  test("shows today's production tile with kWh total when mock history has data", async ({ page }) => {
+    await expect(page.locator("#card-today-production")).toBeVisible();
+    await expect(page.locator("#today-production-chart")).toBeVisible();
+    await expect(page.locator("#today-production-empty")).toBeHidden();
+    await expect(page.locator("#today-production-value")).not.toHaveText("--");
+  });
+
+  test("shows empty state when today's history has no points", async ({ page }) => {
+    await page.route(`**/api/systems/${MOCK_SYSTEM_ID}/history`, async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("date")) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          systemId: MOCK_SYSTEM_ID,
+          name: "Mock Home Solar",
+          service: "shinemonitor",
+          date: "2026-07-07",
+          timezoneOffset: -6,
+          intervalMinutes: 5,
+          points: [],
+        }),
+      });
+    });
+
+    await page.reload();
+    await waitForDashboardData(page);
+
+    await expect(page.locator("#today-production-chart")).toBeHidden();
+    await expect(page.locator("#today-production-empty")).toBeVisible();
+    await expect(page.locator("#today-production-empty-msg")).toContainText(/no production data/i);
+    await expect(page.locator("#today-production-value")).toHaveText("--");
   });
 });
 
