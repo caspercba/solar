@@ -308,10 +308,10 @@ Normative design: [docs/decisions/0003-password-users-and-magic-link-invites.md]
 
 Glanceable **current-day** solar production on the Cards landing (not Chart). Approved mock: [docs/mocks/daily-solar-production-tile.png](./docs/mocks/daily-solar-production-tile.png).
 
-- [ ] **Cards tile UI** — full-width amber line sparkline; **kWh total overlaid** (top-left); title “Today’s production”; reuse solar accent (`--accent-sol`)
-- [ ] **Data binding** — current calendar day only; series + total kWh from existing vendor history / production helpers (no new KV archive)
-- [ ] **i18n + empty/loading** — EN/ES strings; empty/error states consistent with Chart production tile
-- [ ] **Tests** — frontend unit helpers if extracted; Playwright asserts tile + total on Cards view
+- [x] **Cards tile UI** — full-width amber line sparkline; **kWh total overlaid** (top-left); title “Today’s production”; reuse solar accent (`--accent-sol`)
+- [x] **Data binding** — current calendar day only; series + total kWh from existing vendor history / production helpers (no new KV archive)
+- [x] **i18n + empty/loading** — EN/ES strings; empty/error states consistent with Chart production tile
+- [ ] **Tests** — frontend unit helpers if extracted; Playwright asserts tile + total on Cards view _(SOLAR-0161)_
 
 ---
 
@@ -477,7 +477,7 @@ Pure helpers were extracted into `frontend/lib.js` (formatting, CSV export, esca
 15. **Generator runtime tracking** — done. Session-only counter, per system, persisted in `localStorage`, resets on disconnect (§5.1).
 16. **E2E tests** — done for the core flows including alerts config and manage-systems add/remove (§7.3.4).
 17. **Docker-compose local dev** — done (`docker-compose.yml`, `scripts/dev-local.js`).
-18. **Cards “Today’s production” tile** — planned. Full-width amber sparkline with overlay kWh for the current day only; mock approved in `docs/mocks/daily-solar-production-tile.png` (§5.4).
+18. **Cards “Today’s production” tile** — done (UI + data binding + i18n; Playwright coverage tracked separately as SOLAR-0161). Full-width amber sparkline with overlay kWh for the current day only; mock approved in `docs/mocks/daily-solar-production-tile.png` (§5.4).
 
 ---
 
@@ -572,7 +572,7 @@ See [RELEASE_NOTES.md](./RELEASE_NOTES.md) for full changelog.
 - [x] Mutation audit log for admin API routes (ADR 0002 Phase 1)
 - [x] Per-user opaque API keys in KV (ADR 0002 Phase 2)
 - [x] **Password users + magic-link invites (ADR 0003)** — Worker user/invite registry + auth routes; frontend login + accept-invite; admin users/invites UI; E2E; release notes at v1.4.0 (§5.3)
-- [ ] **Cards “Today’s production” tile** — full-width sparkline + overlay kWh for current day only (§5.4; mock in `docs/mocks/`) — board **SOLAR-0160** / **SOLAR-0161**
+- [x] **Cards “Today’s production” tile** — full-width sparkline + overlay kWh for current day only (§5.4; mock in `docs/mocks/`) — board **SOLAR-0160**; Playwright coverage tracked as **SOLAR-0161**
 
 ---
 

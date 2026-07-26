@@ -22,7 +22,7 @@
       document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=27">
+  <link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
 
@@ -120,6 +120,23 @@
       <div id="weather-strip" class="weather-strip" hidden>
         <span class="weather-icon" aria-hidden="true">&#x1F324;</span>
         <span id="weather-text" class="weather-text"></span>
+      </div>
+
+      <!-- Today's production tile -->
+      <div id="card-today-production" class="card card-today-production">
+        <div class="today-production-chart-wrap">
+          <div class="today-production-overlay">
+            <span class="card-title" data-i18n="todayProductionTitle">Today&rsquo;s production</span>
+            <div class="today-production-kwh">
+              <span id="today-production-value" class="big-number">--</span><span class="unit">kWh</span>
+            </div>
+          </div>
+          <canvas id="today-production-chart" width="500" height="200"></canvas>
+          <div id="today-production-empty" class="chart-empty" hidden>
+            <p id="today-production-empty-msg" class="chart-empty-msg" data-i18n="todayProductionEmpty">No production data for today</p>
+          </div>
+          <div id="today-production-loading" class="chart-loading" hidden data-i18n="chartLoading">Loading chart…</div>
+        </div>
       </div>
 
       <!-- Battery card -->
@@ -513,6 +530,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js?v=27"></script>
+  <script type="module" src="app.js?v=28"></script>
 </body>
 </html>
