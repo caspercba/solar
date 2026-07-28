@@ -6,6 +6,7 @@ import {
   formatIntervalTime,
   parseEnergyDayPoints,
   parseSocCapacityPoints,
+  localDate as growattLocalDate,
 } from "../src/services/growatt.js";
 import { mergeSocIntoPoints, socMapFromPoints } from "../src/history.js";
 import shinemonitorDeviceDayPaging from "./fixtures/shinemonitor-device-day-paging.json";
@@ -127,6 +128,20 @@ describe("shinemonitor localDate", () => {
     try {
       expect(localDate(-10800)).toBe("2026-04-03");
       expect(localDate(0)).toBe("2026-04-04");
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+});
+
+describe("growatt localDate", () => {
+  it("formats plant-local calendar date from offset seconds", () => {
+    const utcMidnight = Date.UTC(2026, 3, 4, 2, 0, 0);
+    const originalNow = Date.now;
+    Date.now = () => utcMidnight;
+    try {
+      expect(growattLocalDate(-10800)).toBe("2026-04-03");
+      expect(growattLocalDate(0)).toBe("2026-04-04");
     } finally {
       Date.now = originalNow;
     }

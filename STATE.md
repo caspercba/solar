@@ -19,6 +19,7 @@ Board: [Gordofast — solar](http://100.103.17.20:3000/projects/4fef956d-9607-40
 - Prior board work through SOLAR-0154 archived `done`
 - **Compare as landing (SOLAR-0164…0169)** — HOME summary tiles with independent per-tile loading; DETAIL Cards/Flow/Chart; i18n/a11y; polish; Playwright coverage for landing/tap-through/back (acceptance green). Full suite still red on two unrelated/implementation bugs (SOLAR-0170, SOLAR-0171).
 - **SOLAR-0172** — Tester failure follow-up for SOLAR-0169
+- **SOLAR-0174** — Growatt `fetchHistory()`/`fetchHistorySummary()` now default to the plant-local calendar date (new `localDate(tzOffsetSeconds)` helper, mirrors ShineMonitor) instead of the Worker's UTC date. `discover()` captures the vendor `timezone` field (hours) from `getPlantData` and stores it as `credentials.timezone` (seconds); existing systems without a stored timezone fall back to UTC (unchanged prior behavior) until re-added/re-discovered.
 
 ## In Progress
 
@@ -30,9 +31,8 @@ _Live board (`task.list`). Priority order:_
 
 1. **SOLAR-0170** — `backlog`, high (developer) — Fix: removing a system does not refresh HOME summary tiles (`detailRemove` skips `renderComparisonGrid` / `pollCompareNow` when removed id ≠ active)
 2. **SOLAR-0171** — `backlog`, high (developer) — Fix: duplicate `#admin-create-user-section` in `index.html` (+ duplicate `els` bindings in `app.js`); keep password+confirm form
-3. **SOLAR-0174** — `backlog`, high (developer) — Fix: Growatt `fetchHistory()` defaults to the Worker's UTC calendar date instead of the plant-local date (`worker/src/services/growatt.js`), so the Cards "Today's production" tile is empty for part of each day on non-UTC systems (reported for Casita del Rio, UTC-3). ShineMonitor already has a `localDate(tzOffsetSeconds)` equivalent; Growatt has none and hardcodes `timezoneOffset: 0`. Affects all Growatt systems, most visible far from UTC.
-4. **SOLAR-0175** — `backlog`, high (developer) — Investigate + fix: generator status not shown for Casita del Rio (Growatt off-grid SPF 3500 ES). Shared `isGridActive` / `grid.active` render path looks structurally correct across systems — likely a per-system `gridDetect` threshold misconfig or a live vendor-field quirk on this device; needs a live capture while the generator is running to confirm root cause.
-5. **SOLAR-0155** — `backlog`, high (developer) — Release: confirm CI release-gate/deploy or manual `wrangler deploy` for v1.4.0; production `/api/health` reports 1.4.0
+3. **SOLAR-0175** — `backlog`, high (developer) — Investigate + fix: generator status not shown for Casita del Rio (Growatt off-grid SPF 3500 ES). Shared `isGridActive` / `grid.active` render path looks structurally correct across systems — likely a per-system `gridDetect` threshold misconfig or a live vendor-field quirk on this device; needs a live capture while the generator is running to confirm root cause.
+4. **SOLAR-0155** — `backlog`, high (developer) — Release: confirm CI release-gate/deploy or manual `wrangler deploy` for v1.4.0; production `/api/health` reports 1.4.0
 
 **Deferred (no board tasks — wait for human request):**
 

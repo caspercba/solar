@@ -861,6 +861,7 @@ function buildCredentials(service, password, discovered) {
       storageSn: discovered.storageSn,
       nominalPower: discovered.nominalPower,
       nominalPV: discovered.nominalPV,
+      timezone: discovered.timezone,
       sessionCookies: discovered.sessionCookies,
     };
   }

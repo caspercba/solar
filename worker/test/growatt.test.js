@@ -314,6 +314,95 @@ describe("growatt SOC history supplement", () => {
   });
 });
 
+describe("growatt fetchHistory plant-local default date", () => {
+  let originalFetch;
+  let originalNow;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    originalNow = Date.now;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    Date.now = originalNow;
+    vi.restoreAllMocks();
+  });
+
+  // 2026-07-03 01:30 UTC == 2026-07-02 22:30 at UTC-3 (plant-local "yesterday").
+  const utcJustAfterMidnight = Date.UTC(2026, 6, 3, 1, 30, 0);
+
+  function systemConfigWithTimezone(timezone) {
+    return {
+      id: "growatt-1",
+      name: "Growatt Home",
+      credentials: {
+        user: "growatt-user",
+        password: "secret",
+        plantId: "42",
+        storageSn: "STORAGE-SN",
+        timezone,
+      },
+    };
+  }
+
+  function mockLoginFetch(extraHandler) {
+    globalThis.fetch = vi.fn(async (url, init) => {
+      const u = String(url);
+      if (u.endsWith("/login") && init?.method === "POST") {
+        return new Response(JSON.stringify({ result: 1 }), {
+          headers: { "set-cookie": "JSESSIONID=abc123; Path=/" },
+        });
+      }
+      return extraHandler(u, init);
+    });
+  }
+
+  it("queries the plant-local date, not the Worker's UTC date, across the day boundary", async () => {
+    Date.now = () => utcJustAfterMidnight;
+
+    const requestedDates = [];
+    mockLoginFetch(async (u, init) => {
+      const params = new URLSearchParams(String(init?.body || ""));
+      if (u.includes("getStorageEnergyDayChart") || u.includes("getStorageLineChartData")) {
+        requestedDates.push(params.get("date"));
+        return Response.json({ result: 1, obj: { ppv: ["500"], userLoad: ["300"], batPower: ["0"] } });
+      }
+      if (u.includes("getStorageBatChart")) {
+        return Response.json({ result: 1, obj: { date: params.get("date") || "unused", socChart: { capacity: [] } } });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const data = await fetchHistory(systemConfigWithTimezone(-10800));
+
+    expect(data.date).toBe("2026-07-02");
+    expect(data.timezoneOffset).toBe(-10800);
+    expect(requestedDates).toContain("2026-07-02");
+    expect(requestedDates).not.toContain("2026-07-03");
+  });
+
+  it("falls back to the Worker's UTC date when no timezone is stored", async () => {
+    Date.now = () => utcJustAfterMidnight;
+
+    mockLoginFetch(async (u, init) => {
+      const params = new URLSearchParams(String(init?.body || ""));
+      if (u.includes("getStorageEnergyDayChart") || u.includes("getStorageLineChartData")) {
+        expect(params.get("date")).toBe("2026-07-03");
+        return Response.json({ result: 1, obj: { ppv: ["500"], userLoad: ["300"], batPower: ["0"] } });
+      }
+      if (u.includes("getStorageBatChart")) {
+        return Response.json({ result: 1, obj: { date: "2026-07-03", socChart: { capacity: [] } } });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const data = await fetchHistory(systemConfigWithTimezone(undefined));
+    expect(data.date).toBe("2026-07-03");
+    expect(data.timezoneOffset).toBe(0);
+  });
+});
+
 describe("growatt session credentials", () => {
   let originalFetch;
 
