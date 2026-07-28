@@ -2,9 +2,31 @@
 
 ## Unreleased
 
-- Docs: approved Cards landing mock for **Today’s production** tile (full-width amber sparkline + overlay kWh) — see `docs/mocks/daily-solar-production-tile.png` and PLAN §5.4.
-- Fix: stage `frontend/i18n.js` for Cloudflare Pages deploys (`scripts/stage-frontend.sh`).
-- Chart: daily solar production tile polish (see recent Chart-view work on `main`).
+## v1.5.0
+
+### Dashboard — Compare as landing
+
+- Make multi-system Compare the home screen: per-system summary tiles with
+  independent loading, tap-through into Cards/Flow/Chart detail, and back
+  navigation (SOLAR-0164…0169).
+- Add i18n/a11y strings, focus-ring polish, and last-update copy for home tiles.
+- Add Playwright coverage for the HOME → DETAIL → back flow.
+
+### Dashboard & charts
+
+- Add Cards landing “Today’s production” tile: full-width amber sparkline with
+  overlaid kWh total for the plant-local day (SOLAR-0160/0161).
+- Add daily solar production tile on the Chart view.
+
+### Adapters
+
+- Fix Growatt history/summary to default to the plant-local calendar date
+  (mirroring ShineMonitor) instead of the Worker’s UTC date; store vendor
+  timezone from discovery for existing re-discovered systems (SOLAR-0174).
+
+### Infrastructure
+
+- Fix Cloudflare Pages staging to include `frontend/i18n.js`.
 
 ## v1.4.0
 

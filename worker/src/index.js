@@ -155,7 +155,7 @@ export default {
 
     // GET /api/health — lightweight uptime check (no auth required)
     if (path === "/api/health" && request.method === "GET") {
-      return jsonResponse({ ok: true, version: "1.4.0" }, 200, origin);
+      return jsonResponse({ ok: true, version: "1.5.0" }, 200, origin);
     }
 
     if (isAuthMisconfigured(env)) {
