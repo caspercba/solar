@@ -252,6 +252,8 @@ export async function discover(credentials, plantId = null) {
 
   const plantResp = await postJson(sess, `/panel/getPlantData?plantId=${selectedId}`);
   const nominalPV = plantResp.result === 1 ? parseFloat(plantResp.obj?.nominalPower) || nominalPower : nominalPower;
+  const tzHours = plantResp.result === 1 ? parseFloat(plantResp.obj?.timezone) : NaN;
+  const timezone = Number.isFinite(tzHours) ? Math.round(tzHours * 3600) : 0;
 
   return {
     plants,
@@ -261,6 +263,7 @@ export async function discover(credentials, plantId = null) {
     nominalPower,
     nominalPV,
     deviceModel,
+    timezone,
     sessionCookies: sess.cookies,
   };
 }
@@ -368,6 +371,12 @@ export function statusLabel(statusCode) {
   return STATUS_MAP[key] || `Unknown (${key})`;
 }
 
+/** Plant-local calendar date (YYYY-MM-DD) for a given UTC offset in seconds. */
+export function localDate(tzOffsetSeconds) {
+  const now = new Date(Date.now() + tzOffsetSeconds * 1000);
+  return now.toISOString().slice(0, 10);
+}
+
 export function formatIntervalTime(index) {
   const mins = index * 5;
   const h = Math.floor(mins / 60);
@@ -402,8 +411,9 @@ export function parseSocCapacityPoints(capacity = []) {
 }
 
 export async function fetchHistory(systemConfig, date) {
-  const { plantId, storageSn } = systemConfig.credentials;
-  const queryDate = date || new Date().toISOString().slice(0, 10);
+  const { plantId, storageSn, timezone } = systemConfig.credentials;
+  const tzOffset = timezone ?? 0;
+  const queryDate = date || localDate(tzOffset);
 
   const [energyResp, lineResp] = await Promise.all([
     postJsonWithRetry(systemConfig, "/panel/storage/getStorageEnergyDayChart", { plantId, storageSn, date: queryDate }),
@@ -431,7 +441,7 @@ export async function fetchHistory(systemConfig, date) {
     name: systemConfig.name,
     service: "growatt",
     date: queryDate,
-    timezoneOffset: 0,
+    timezoneOffset: tzOffset,
     intervalMinutes: 5,
     points: mergedPoints,
     socSource: mergedPoints.some((p) => Number.isFinite(p.soc)) ? "api" : null,
@@ -440,8 +450,8 @@ export async function fetchHistory(systemConfig, date) {
 
 /** Intraday SOC series from getStorageBatChart (valid only for obj.date). */
 export async function fetchSocChart(systemConfig, date) {
-  const { plantId, storageSn } = systemConfig.credentials;
-  const queryDate = date || new Date().toISOString().slice(0, 10);
+  const { plantId, storageSn, timezone } = systemConfig.credentials;
+  const queryDate = date || localDate(timezone ?? 0);
 
   const resp = await postJsonWithRetry(systemConfig, "/panel/storage/getStorageBatChart", { plantId, storageSn });
   if (resp.result !== 1) return [];
@@ -466,7 +476,8 @@ function emptySummaryDay(date) {
 
 /** Aggregate daily solar/load kWh for the last N days via fetchHistory. */
 export async function fetchHistorySummary(systemConfig, days = 7, endDate = null) {
-  const end = endDate || new Date().toISOString().slice(0, 10);
+  const tzOffset = systemConfig.credentials.timezone ?? 0;
+  const end = endDate || localDate(tzOffset);
   const dates = dateRange(end, days);
 
   let series = await Promise.all(

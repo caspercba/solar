@@ -292,7 +292,7 @@ describe("worker routes", () => {
         });
       }
       if (u.includes("getPlantData")) {
-        return Response.json({ result: 1, obj: { nominalPower: "6000" } });
+        return Response.json({ result: 1, obj: { nominalPower: "6000", timezone: "-3" } });
       }
       throw new Error(`Unexpected fetch: ${u}`);
     });
@@ -323,6 +323,7 @@ describe("worker routes", () => {
     expect(stored.credentials.sessionCookies).toEqual({ JSESSIONID: "growatt-sess" });
     expect(stored.credentials.plantId).toBe("42");
     expect(stored.credentials.storageSn).toBe("SN1");
+    expect(stored.credentials.timezone).toBe(-10800);
   });
 
   it("PUT /api/systems/:id/credentials updates credentials after re-discovery", async () => {
