@@ -3132,6 +3132,7 @@ function openSystemDetail(sysId) {
     await api("DELETE", `/api/systems/${sys.id}`);
     clearGeneratorRuntimeState(sys.id);
     await loadSystems();
+    delete compareData[sys.id];
     openDetailSysId = null;
     detailModal.hidden = true;
     openManageModal();
@@ -3139,6 +3140,9 @@ function openSystemDetail(sysId) {
       activeSystemId = systems[0].id;
       if (appState === "detail") enterHome();
       startPolling();
+    } else if (appState === "home") {
+      renderComparisonGrid();
+      pollCompareNow();
     }
   };
 }
