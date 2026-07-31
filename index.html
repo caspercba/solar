@@ -450,25 +450,6 @@
         <p id="users-list-msg" class="cred-msg" hidden></p>
       </section>
 
-      <!-- Admin: create user directly with username/password/role (ADR 0003, SOLAR-0128) — shown only for admin role -->
-      <section id="admin-create-user-section" class="settings-section" hidden>
-        <h3 class="settings-section-title" data-i18n="adminCreateUserTitle">Create user</h3>
-        <p class="manage-hint" data-i18n="adminCreateUserHint">Create a password account directly, without a magic-link invite.</p>
-        <form id="admin-create-user-form" class="manage-credentials admin-create-user-form" autocomplete="off">
-          <label for="create-user-username" data-i18n="adminCreateUserUsername">Username</label>
-          <input type="text" id="create-user-username" required maxlength="80" autocomplete="off" spellcheck="false">
-          <label for="create-user-password" data-i18n="adminCreateUserPassword">Password</label>
-          <input type="password" id="create-user-password" required minlength="8" autocomplete="new-password">
-          <label for="create-user-role" data-i18n="adminCreateUserRole">Role</label>
-          <select id="create-user-role" required>
-            <option value="read" data-i18n="roleRead" selected>Read</option>
-            <option value="admin" data-i18n="roleAdmin">Admin</option>
-          </select>
-          <button type="submit" id="create-user-btn" class="cred-save" data-i18n="adminCreateUserCreate">Create user</button>
-          <p id="create-user-msg" class="cred-msg" hidden></p>
-        </form>
-      </section>
-
       <!-- Admin: mint magic-link invite (ADR 0003) — shown only for admin role -->
       <section id="admin-invite-section" class="settings-section" hidden>
         <h3 class="settings-section-title" data-i18n="adminInviteTitle">Invite user</h3>
