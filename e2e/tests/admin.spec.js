@@ -149,7 +149,8 @@ test.describe("Admin users & invites (ADR 0003)", () => {
     await expect(section).toBeVisible();
 
     await section.locator("#create-user-username").fill("direct-user");
-    await section.locator("#create-user-password").fill("password123");
+    await section.locator("#create-user-pass").fill("password123");
+    await section.locator("#create-user-pass-confirm").fill("password123");
     await section.locator("#create-user-role").selectOption("read");
     await section.locator("#create-user-btn").click();
 

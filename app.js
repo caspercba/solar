@@ -329,13 +329,6 @@ const els = {
   usersList: $("users-list"),
   usersListEmpty: $("users-list-empty"),
   usersListMsg: $("users-list-msg"),
-  adminCreateUserSection: $("admin-create-user-section"),
-  adminCreateUserForm: $("admin-create-user-form"),
-  createUserUsername: $("create-user-username"),
-  createUserPassword: $("create-user-password"),
-  createUserRole: $("create-user-role"),
-  createUserBtn: $("create-user-btn"),
-  createUserMsg: $("create-user-msg"),
   adminInviteSection: $("admin-invite-section"),
   adminInviteForm: $("admin-invite-form"),
   inviteRole: $("invite-role"),
@@ -2555,7 +2548,6 @@ function renderGridInputLabelForm(sys) {
 function hideAdminInviteSection() {
   if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = true;
   if (els.adminUsersListSection) els.adminUsersListSection.hidden = true;
-  if (els.adminCreateUserSection) els.adminCreateUserSection.hidden = true;
   if (els.adminInviteSection) els.adminInviteSection.hidden = true;
   if (els.adminInvitesListSection) els.adminInvitesListSection.hidden = true;
   clearInviteResult();
