@@ -448,7 +448,7 @@ export async function fetchHistory(systemConfig, date) {
     const devices = getActiveDevices(systemConfig.credentials);
     const tzOffset = timezone ?? 0;
     const today = localDate(tzOffset);
-    let queryDate = date || today;
+    const queryDate = date || today;
 
     async function fetchRowsForDate(d) {
       const results = await Promise.all(
@@ -464,12 +464,7 @@ export async function fetchHistory(systemConfig, date) {
       return { titles, rows: [], _mergedPoints: mergedPoints };
     }
 
-    let result = await fetchRowsForDate(queryDate);
-
-    if (!result._mergedPoints && !result.rows.length && !date && queryDate === today) {
-      queryDate = localDate(tzOffset - 86400);
-      result = await fetchRowsForDate(queryDate);
-    }
+    const result = await fetchRowsForDate(queryDate);
 
     let points;
     let socSource;

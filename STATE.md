@@ -20,6 +20,7 @@ Board: [Gordofast — solar](http://100.103.17.20:3000/projects/4fef956d-9607-40
 - **Compare as landing (SOLAR-0164…0169)** — HOME summary tiles with independent per-tile loading; DETAIL Cards/Flow/Chart; i18n/a11y; polish; Playwright coverage for landing/tap-through/back (acceptance green). Full suite still red on two unrelated/implementation bugs (SOLAR-0170, SOLAR-0171).
 - **SOLAR-0172** — Tester failure follow-up for SOLAR-0169
 - **SOLAR-0174** — Growatt `fetchHistory()`/`fetchHistorySummary()` now default to the plant-local calendar date (new `localDate(tzOffsetSeconds)` helper, mirrors ShineMonitor) instead of the Worker's UTC date. `discover()` captures the vendor `timezone` field (hours) from `getPlantData` and stores it as `credentials.timezone` (seconds); existing systems without a stored timezone fall back to UTC (unchanged prior behavior) until re-added/re-discovered.
+- **Daily production tile — Rio del medio (ShineMonitor) always current-day** — `shinemonitor.js` `fetchHistory()` no longer falls back to yesterday's data when the current plant-local day has zero rows yet (e.g. right after local midnight, before sunrise); it now returns an empty `today` result so the tile/chart correctly shows empty instead of silently displaying yesterday's full-day production. The equivalent fallback in `fetchData()` (realtime status snapshot) is intentional and unchanged.
 
 ## In Progress
 

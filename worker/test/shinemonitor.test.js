@@ -321,6 +321,29 @@ describe("shinemonitor fetchHistory re-auth", () => {
     expect(history.points).toHaveLength(1);
     expect(history.points[0].solar).toBe(500);
   });
+
+  it("returns an empty today result instead of falling back to yesterday's data", async () => {
+    const systemConfig = { ...SYSTEM_CONFIG, id: "sys-empty-today" };
+    const queriedDates = [];
+
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes("action=auth")) {
+        return Response.json({ err: 0, dat: { secret: "s", token: "tok" } });
+      }
+      if (u.includes("queryDeviceDataOneDayPaging")) {
+        const dateMatch = u.match(/date=([^&]+)/);
+        queriedDates.push(dateMatch?.[1]);
+        return Response.json({ err: 0, dat: { title: [], total: 0, row: [] } });
+      }
+      throw new Error(`Unexpected fetch: ${u}`);
+    });
+
+    const history = await fetchHistory(systemConfig, null);
+    expect(history.points).toEqual([]);
+    // Only today's date should be queried — no silent fallback to yesterday.
+    expect(queriedDates).toHaveLength(1);
+  });
 });
 
 describe("multi-device discovery", () => {
